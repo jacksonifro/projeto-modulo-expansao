@@ -32,12 +32,12 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
   });
 
   const reportTitles: { [key: string]: string } = {
-    'geral-planos': 'Relatório Geral de Planos de Expansão',
-    'geral-escolas': 'Relatório Geral de Escolas',
-    'andamento-obras': 'Relatório de Andamento de Obras',
-    'cronograma': 'Relatório de Cronograma de Entregas',
-    'atividades': 'Relatório de Atividades',
-    'orcamentario': 'Relatório Orçamentário',
+    'diagnostico-demanda': 'Relatório Diagnóstico de Demanda Escolar',
+    'expansao-vagas-obras': 'Relatório de Expansão de Vagas e Obras',
+    'orcamentario-financeiro': 'Relatório Orçamentário e Financeiro',
+    'planejamento-pessoal': 'Relatório de Planejamento de Pessoal',
+    'acompanhamento-execucao': 'Relatório de Acompanhamento de Execução',
+    'geral-plano': 'Relatório Consolidado do Plano',
   };
 
   const handleEmitReport = () => {
@@ -85,21 +85,24 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Escola
-                  </label>
-                  <select
-                    value={filters.escolaId}
-                    onChange={(e) => setFilters({ ...filters, escolaId: e.target.value })}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  >
-                    <option value="">Todas as escolas</option>
-                    {mockSchools.map(school => (
-                      <option key={school.id} value={school.id}>{school.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {/* Filtro de Escola visível apenas em alguns relatórios */}
+                {['diagnostico-demanda', 'acompanhamento-execucao'].includes(reportType) && (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      Unidade Escolar
+                    </label>
+                    <select
+                      value={filters.escolaId}
+                      onChange={(e) => setFilters({ ...filters, escolaId: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    >
+                      <option value="">Todas as unidades</option>
+                      {mockSchools.map(school => (
+                        <option key={school.id} value={school.id}>{school.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -154,7 +157,7 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
             </div>
 
             {/* Filtros Avançados */}
-            {(reportType === 'orcamentario' || reportType === 'geral-planos') && (
+            {(reportType === 'orcamentario-financeiro' || reportType === 'geral-plano') && (
               <div>
                 <h2 className="text-xl font-bold text-slate-800 mb-4 pb-2 border-b-2 border-purple-500 inline-block">
                   Filtros Orçamentários
@@ -207,7 +210,7 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
                   </span>
                 </label>
 
-                {reportType !== 'orcamentario' && (
+                {reportType !== 'orcamentario-financeiro' && reportType !== 'geral-plano' && reportType !== 'planejamento-pessoal' && (
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <input
                       type="checkbox"
@@ -216,7 +219,7 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
                       className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-slate-700 font-medium group-hover:text-blue-600 transition-colors">
-                      Incluir lista de atividades
+                      Incluir lista de atividades detalhadas
                     </span>
                   </label>
                 )}

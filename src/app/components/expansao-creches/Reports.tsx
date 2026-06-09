@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, FileText, Building2, BarChart3, TrendingUp, Calendar, FileBarChart } from 'lucide-react';
+import { ChevronLeft, FileText, Building2, BarChart3, TrendingUp, Calendar, FileBarChart, PieChart, Users, LayoutDashboard } from 'lucide-react';
 
 interface ReportsProps {
   onNavigate: (view: string, reportType?: string) => void;
@@ -9,46 +9,46 @@ interface ReportsProps {
 export default function Reports({ onNavigate, onBack }: ReportsProps) {
   const reportTypes = [
     {
-      id: 'geral-planos',
-      title: 'Geral de Planos de Expansão',
-      description: 'Relatório completo dos planos de expansão cadastrados',
-      icon: FileText,
-      color: 'bg-blue-500',
+      id: 'diagnostico-demanda',
+      title: 'Diagnóstico de Demanda Escolar',
+      description: 'Análise de fila de espera, CadÚnico e taxa de atendimento.',
+      icon: PieChart,
+      color: 'bg-indigo-500',
     },
     {
-      id: 'geral-escolas',
-      title: 'Geral de Escolas',
-      description: 'Listagem detalhada de todas as escolas do sistema',
+      id: 'expansao-vagas-obras',
+      title: 'Expansão de Vagas e Obras',
+      description: 'Mapeamento de novas vagas por obras e ações de ampliação.',
       icon: Building2,
-      color: 'bg-green-500',
+      color: 'bg-emerald-500',
     },
     {
-      id: 'andamento-obras',
-      title: 'Andamento de Obras',
-      description: 'Relatório de progresso e status das obras em andamento',
+      id: 'orcamentario-financeiro',
+      title: 'Orçamentário e Financeiro',
+      description: 'Custos do plano, fluxo de desembolso e fontes de financiamento.',
+      icon: FileBarChart,
+      color: 'bg-blue-600',
+    },
+    {
+      id: 'planejamento-pessoal',
+      title: 'Planejamento de Pessoal',
+      description: 'Necessidade de contratação, professores, auxiliares e impacto financeiro.',
+      icon: Users,
+      color: 'bg-amber-500',
+    },
+    {
+      id: 'acompanhamento-execucao',
+      title: 'Acompanhamento de Execução',
+      description: 'Progresso das atividades e status das obras em andamento.',
       icon: TrendingUp,
       color: 'bg-orange-500',
     },
     {
-      id: 'cronograma',
-      title: 'Cronograma de Entregas',
-      description: 'Cronograma previsto de entregas das unidades escolares',
-      icon: Calendar,
-      color: 'bg-purple-500',
-    },
-    {
-      id: 'atividades',
-      title: 'Relatório de Atividades',
-      description: 'Detalhamento das atividades por escola e status',
-      icon: BarChart3,
-      color: 'bg-pink-500',
-    },
-    {
-      id: 'orcamentario',
-      title: 'Relatório Orçamentário',
-      description: 'Análise financeira e orçamentária dos planos',
-      icon: FileBarChart,
-      color: 'bg-indigo-500',
+      id: 'geral-plano',
+      title: 'Visão Geral do Plano',
+      description: 'Sumário executivo consolidado com objetivos e principais indicadores.',
+      icon: LayoutDashboard,
+      color: 'bg-purple-600',
     },
   ];
 

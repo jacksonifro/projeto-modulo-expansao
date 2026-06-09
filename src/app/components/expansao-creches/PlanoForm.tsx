@@ -799,15 +799,15 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
                           className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all mb-0.5 group ${isActive
-                              ? group === 'planejamento' ? 'bg-blue-600 text-white shadow-md'
-                                : group === 'diagnostico' ? 'bg-amber-500 text-white shadow-md'
-                                  : 'bg-green-600 text-white shadow-md'
-                              : 'text-slate-600 hover:bg-slate-100'
+                            ? group === 'planejamento' ? 'bg-blue-600 text-white shadow-md'
+                              : group === 'diagnostico' ? 'bg-amber-500 text-white shadow-md'
+                                : 'bg-green-600 text-white shadow-md'
+                            : 'text-slate-600 hover:bg-slate-100'
                             }`}
                         >
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-black transition-all ${isActive
-                              ? 'bg-white/25 text-white'
-                              : 'bg-slate-200 text-slate-500 group-hover:bg-slate-300'
+                            ? 'bg-white/25 text-white'
+                            : 'bg-slate-200 text-slate-500 group-hover:bg-slate-300'
                             }`}>
                             {globalIdx + 1}
                           </div>
@@ -848,7 +848,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
             {activeGroup === 'diagnostico' && (
               <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-2 text-amber-800 text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                Painel de leitura — dados diagnósticos de referência que contextualizam o planejamento.
+                <span className='font-semibold'>Painel de Diagnóstico:</span> Dados extraídos do Central de Vagas em Creches e Base de Dados do cadÚnico.
               </div>
             )}
             {activeGroup === 'resultado' && (
@@ -877,9 +877,9 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status do Plano</label>
                       <div className="flex items-center h-[46px]">
                         <span className={`px-3 py-1.5 rounded-full text-sm font-bold border ${statusCalculado === 'Em execução' ? 'bg-green-100 text-green-700 border-green-200' :
-                            statusCalculado === 'Planejamento' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                              statusCalculado === 'Paralisado' ? 'bg-red-100 text-red-700 border-red-200' :
-                                'bg-purple-100 text-purple-700 border-purple-200'
+                          statusCalculado === 'Planejamento' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                            statusCalculado === 'Paralisado' ? 'bg-red-100 text-red-700 border-red-200' :
+                              'bg-purple-100 text-purple-700 border-purple-200'
                           }`}>
                           {statusCalculado}
                         </span>
@@ -1142,8 +1142,8 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                     <div className="flex flex-col md:flex-row items-end gap-3 w-full">
                       <div className="w-full md:w-64">
                         <label className="block text-xs font-semibold text-slate-600 mb-1">Selecionar Servidor</label>
-                        <select 
-                          value={servidorSelecionadoId} 
+                        <select
+                          value={servidorSelecionadoId}
                           onChange={(e) => setServidorSelecionadoId(e.target.value)}
                           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                         >
@@ -1155,8 +1155,8 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                       </div>
                       <div className="w-full md:w-32">
                         <label className="block text-xs font-semibold text-slate-600 mb-1">Papel</label>
-                        <select 
-                          value={papelSelecionado} 
+                        <select
+                          value={papelSelecionado}
                           onChange={(e) => setPapelSelecionado(e.target.value as MembroEquipe['papel'])}
                           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                         >
@@ -1166,7 +1166,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           <option value="membro">Membro</option>
                         </select>
                       </div>
-                      <button 
+                      <button
                         onClick={() => {
                           if (servidorSelecionadoId) {
                             setEquipe(prev => [...prev, { id: `m_${Date.now()}`, servidorId: servidorSelecionadoId, papel: papelSelecionado }]);
@@ -1216,10 +1216,10 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                 </td>
                                 <td className="px-4 py-3">
                                   <span className={`px-2 py-0.5 rounded text-xs font-semibold ${servidor.secretaria === 'SEMED'
-                                      ? 'bg-purple-100 text-purple-700'
-                                      : servidor.secretaria === 'SEMFAZ'
-                                        ? 'bg-green-100 text-green-700'
-                                        : 'bg-slate-100 text-slate-700'
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : servidor.secretaria === 'SEMFAZ'
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-slate-100 text-slate-700'
                                     }`}>
                                     {servidor.secretaria}
                                   </span>
@@ -1669,24 +1669,24 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         </div>
                       </div>
 
-                          {/* Resumo de custo estimado para a obra (por sala e total) */}
-                          <div className="mt-3">
-                            {(() => {
-                              const cc = calcularCustoObraTotal(obra, modelos, ambientes);
-                              return (
-                                <div className="rounded-lg p-3 border border-slate-200 bg-slate-50 flex items-center justify-between">
-                                  <div>
-                                    <div className="text-xs text-slate-600">Custo por Sala (estimado)</div>
-                                    <div className="font-bold text-lg text-slate-800">{cc.costPerSala > 0 ? BRL(Math.round(cc.costPerSala)) : '—'}</div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="text-xs text-slate-600">Custo Total (estimado)</div>
-                                    <div className="font-black text-lg text-blue-700">{cc.total > 0 ? BRL(Math.round(cc.total)) : '—'}</div>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
+                      {/* Resumo de custo estimado para a obra (por sala e total) */}
+                      <div className="mt-3">
+                        {(() => {
+                          const cc = calcularCustoObraTotal(obra, modelos, ambientes);
+                          return (
+                            <div className="rounded-lg p-3 border border-slate-200 bg-slate-50 flex items-center justify-between">
+                              <div>
+                                <div className="text-xs text-slate-600">Custo por Sala (estimado)</div>
+                                <div className="font-bold text-lg text-slate-800">{cc.costPerSala > 0 ? BRL(Math.round(cc.costPerSala)) : '—'}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-slate-600">Custo Total (estimado)</div>
+                                <div className="font-black text-lg text-blue-700">{cc.total > 0 ? BRL(Math.round(cc.total)) : '—'}</div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <div>
@@ -2002,19 +2002,28 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
               {activeTab === 'vagas-turma' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-slate-800">Vagas por Turma e Unidade Escolar</h2>
-                  <p className="text-slate-500 text-sm">Dados de matrículas e ocupação por unidade — ano base 2025</p>
+                  <p className="text-slate-500 text-sm">Dados de matrículas e ocupação por unidade — ano base 2026</p>
                   <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50">
                         <tr>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-700">Unidade</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700">Salas</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700">Maternal</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700">Jardim I</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700">Jardim II</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700">Vagas</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700">Matrículas</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700">Ocupação</th>
+                          <th colSpan={2} className="text-center px-4 py-2 border-b border-r border-slate-200 font-bold text-slate-700">Dados da Unidade</th>
+                          <th colSpan={6} className="text-center px-4 py-2 border-b border-r border-slate-200 font-bold text-slate-700 bg-blue-50/50">Vagas Ofertadas e Ocupação</th>
+                          <th colSpan={4} className="text-center px-4 py-2 border-b border-slate-200 font-bold text-slate-700 bg-orange-50/50">Fila de Espera</th>
+                        </tr>
+                        <tr>
+                          <th className="text-left px-4 py-3 font-semibold text-slate-700 border-r border-slate-200">Unidade</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 border-r border-slate-200">Turmas</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Maternal</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Jardim I</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Jardim II</th>
+                          <th className="text-right px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Vagas</th>
+                          <th className="text-right px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Matrículas</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 border-r border-slate-200 bg-blue-50/30">Ocupação</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Maternal</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Jardim I</th>
+                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Jardim II</th>
+                          <th className="text-right px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Total</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -2022,13 +2031,14 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           const mats = matriculasPorUnidade[u.id] ?? u.totalMatriculas;
                           const ocupacao = u.totalVagas > 0 ? Math.round((mats / u.totalVagas) * 100) : 0;
                           const getVagas = (etapa: EtapaEI) => u.vagasPorEtapa.find(v => v.etapa === etapa)?.vagas ?? 0;
+                          const getEspera = (etapa: EtapaEI) => u.vagasPorEtapa.find(v => v.etapa === etapa)?.listaEspera ?? 0;
                           return (
                             <tr key={u.id} className="hover:bg-slate-50">
-                              <td className="px-4 py-3 font-semibold text-slate-800 max-w-xs">
+                              <td className="px-4 py-3 font-semibold text-slate-800 max-w-xs border-r border-slate-100">
                                 <div className="truncate">{u.nome}</div>
                                 <div className="text-xs text-slate-400 font-normal">{u.bairro}</div>
                               </td>
-                              <td className="px-4 py-3 text-center">{u.salas.filter(s => s.etapaAtendida).length}</td>
+                              <td className="px-4 py-3 text-center border-r border-slate-100">{u.salas.filter(s => s.etapaAtendida).length}</td>
                               <td className="px-4 py-3 text-center">{getVagas('Maternal') > 0 ? getVagas('Maternal') : '—'}</td>
                               <td className="px-4 py-3 text-center">{getVagas('Jardim I') > 0 ? getVagas('Jardim I') : '—'}</td>
                               <td className="px-4 py-3 text-center">{getVagas('Jardim II') > 0 ? getVagas('Jardim II') : '—'}</td>
@@ -2042,26 +2052,44 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                   className="w-20 px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
                               </td>
-                              <td className="px-4 py-3 text-center">
+                              <td className="px-4 py-3 text-center border-r border-slate-100">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ocupacao > 200 ? 'bg-red-100 text-red-700' : ocupacao > 100 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
                                   {ocupacao}%
                                 </span>
                               </td>
+                              <td className="px-4 py-3 text-center text-orange-600 font-medium">{getEspera('Maternal') > 0 ? getEspera('Maternal') : '—'}</td>
+                              <td className="px-4 py-3 text-center text-orange-600 font-medium">{getEspera('Jardim I') > 0 ? getEspera('Jardim I') : '—'}</td>
+                              <td className="px-4 py-3 text-center text-orange-600 font-medium">{getEspera('Jardim II') > 0 ? getEspera('Jardim II') : '—'}</td>
+                              <td className="px-4 py-3 text-right font-bold text-orange-700">{u.totalListaEspera > 0 ? u.totalListaEspera : '—'}</td>
                             </tr>
                           );
                         })}
                       </tbody>
                       <tfoot className="bg-slate-100 border-t-2 border-slate-300">
                         {(() => {
-                          const totalVagas = mockUnidades.reduce((s, u) => s + u.totalVagas, 0);
-                          const totalMats = mockUnidades.reduce((s, u) => s + (matriculasPorUnidade[u.id] ?? u.totalMatriculas), 0);
+                          const validUnidades = mockUnidades.filter(u => u.totalVagas > 0);
+                          const totalVagas = validUnidades.reduce((s, u) => s + u.totalVagas, 0);
+                          const totalMats = validUnidades.reduce((s, u) => s + (matriculasPorUnidade[u.id] ?? u.totalMatriculas), 0);
                           const ocupacaoGeral = totalVagas > 0 ? Math.round((totalMats / totalVagas) * 100) : 0;
+
+                          const totalEsperaMaternal = validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Maternal')?.listaEspera ?? 0), 0);
+                          const totalEsperaJardimI = validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim I')?.listaEspera ?? 0), 0);
+                          const totalEsperaJardimII = validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim II')?.listaEspera ?? 0), 0);
+                          const totalEsperaGeral = validUnidades.reduce((s, u) => s + u.totalListaEspera, 0);
+
                           return (
                             <tr>
-                              <td className="px-4 py-3 font-bold" colSpan={5}>Totais da Rede</td>
-                              <td className="px-4 py-3 text-right font-bold">{totalVagas}</td>
-                              <td className="px-4 py-3 text-right font-bold">{totalMats}</td>
-                              <td className={`px-4 py-3 text-center font-bold ${ocupacaoGeral > 100 ? 'text-red-700' : 'text-green-700'}`}>{ocupacaoGeral}%</td>
+                              <td className="px-4 py-3 font-bold text-right border-r border-slate-300" colSpan={2}>Totais da Rede</td>
+                              <td className="px-4 py-3 text-center font-bold text-slate-700">{validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Maternal')?.vagas ?? 0), 0)}</td>
+                              <td className="px-4 py-3 text-center font-bold text-slate-700">{validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim I')?.vagas ?? 0), 0)}</td>
+                              <td className="px-4 py-3 text-center font-bold text-slate-700">{validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim II')?.vagas ?? 0), 0)}</td>
+                              <td className="px-4 py-3 text-right font-bold text-slate-800">{totalVagas}</td>
+                              <td className="px-4 py-3 text-right font-bold text-slate-800">{totalMats}</td>
+                              <td className={`px-4 py-3 text-center font-bold border-r border-slate-300 ${ocupacaoGeral > 100 ? 'text-red-700' : 'text-green-700'}`}>{ocupacaoGeral}%</td>
+                              <td className="px-4 py-3 text-center font-bold text-orange-700">{totalEsperaMaternal}</td>
+                              <td className="px-4 py-3 text-center font-bold text-orange-700">{totalEsperaJardimI}</td>
+                              <td className="px-4 py-3 text-center font-bold text-orange-700">{totalEsperaJardimII}</td>
+                              <td className="px-4 py-3 text-right font-bold text-orange-700">{totalEsperaGeral}</td>
                             </tr>
                           );
                         })()}
@@ -2088,8 +2116,8 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                             <div className={`h-full rounded-full ${pct < 5 ? 'bg-red-500' : pct < 20 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, pct)}%` }} />
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div><span className="text-slate-500">Residentes:</span> <strong>{d.criancasResidentes.toLocaleString('pt-BR')}</strong></div>
-                            <div><span className="text-slate-500">Vagas:</span> <strong>{d.vagasAtuais}</strong></div>
+                            <div><span className="text-slate-500">Crianças cadÚnico:</span> <strong>{d.criancasResidentes.toLocaleString('pt-BR')}</strong></div>
+                            <div><span className="text-slate-500">Vagas disponíveis:</span> <strong>{d.vagasAtuais}</strong></div>
                             <div><span className="text-slate-500">Déficit:</span> <strong className="text-red-600">{d.deficitAtual}</strong></div>
                             <div><span className="text-slate-500">Novas vagas:</span> <strong className="text-blue-600">+{d.novasVagasPlanejadas}</strong></div>
                           </div>
@@ -2117,7 +2145,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           <tr>
                             <th className="text-left px-4 py-3 font-semibold text-slate-700">Etapa</th>
                             <th className="text-left px-4 py-3 font-semibold text-slate-700">Faixa Etária</th>
-                            <th className="text-right px-4 py-3 font-semibold text-slate-700">Crianças Residentes</th>
+                            <th className="text-right px-4 py-3 font-semibold text-slate-700">Crianças cadÚnico</th>
                             <th className="text-right px-4 py-3 font-semibold text-slate-700">Vagas Atuais</th>
                             <th className="text-right px-4 py-3 font-semibold text-slate-700">Taxa Atual</th>
                             <th className="text-right px-4 py-3 font-semibold text-slate-700">Déficit Atual</th>
@@ -2204,18 +2232,18 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                 <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-slate-800">CadÚnico por Unidade e Raio</h2>
                   <p className="text-slate-500 text-sm">Distribuição das crianças do CadÚnico por etapa e proximidade das escolas</p>
-                  
+
                   <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6 flex flex-col md:flex-row md:items-center gap-6">
                     <div className="flex-1">
                       <label className="block text-sm font-bold text-slate-700 mb-2">Raio de Distância (em metros)</label>
-                      <input 
-                        type="range" 
-                        min="500" 
-                        max="3000" 
-                        step="500" 
-                        value={raioSelecionado} 
+                      <input
+                        type="range"
+                        min="500"
+                        max="3000"
+                        step="500"
+                        value={raioSelecionado}
                         onChange={e => setRaioSelecionado(Number(e.target.value))}
-                        className="w-full accent-blue-600" 
+                        className="w-full accent-blue-600"
                       />
                       <div className="flex justify-between text-xs text-slate-500 mt-2 font-medium">
                         <span>500m</span>
@@ -2251,22 +2279,22 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           // Encontrar o menor raio >= raioSelecionado
                           const distData = d.raios.find(r => r.raioMts >= raioSelecionado) || d.raios[d.raios.length - 1];
                           const etapas: EtapaEI[] = ['Maternal', 'Jardim I', 'Jardim II'];
-                          
+
                           return etapas.map((etapa, idx) => {
                             const demanda = etapa === 'Maternal' ? distData.maternal : (etapa === 'Jardim I' ? distData.jardimI : distData.jardimII);
                             const vagaAtualInfo = uni?.vagasPorEtapa.find(v => v.etapa === etapa);
                             const vagasAtuais = vagaAtualInfo ? vagaAtualInfo.vagas : 0;
-                            
+
                             // Busca na aba de Ações em Unidades se há expansão planejada para esta unidade e etapa
                             const novasVagas = acoes.filter(a => a.unidadeId === d.unidadeId && a.etapaDestino === etapa).reduce((sum, a) => sum + (a.novaCapacidade - a.capacidadeAnterior), 0);
-                            
+
                             const totalVagas = vagasAtuais + novasVagas;
                             const deficit = demanda - totalVagas;
                             const deficitPositivo = deficit > 0 ? deficit : 0;
-                            
+
                             // Porcentagem
                             const taxaAtendimento = demanda > 0 ? Math.min(100, (totalVagas / demanda) * 100) : 100;
-                            
+
                             // Classes visuais
                             const deficitClass = deficitPositivo > 0 ? 'text-red-600 font-bold' : 'text-green-600 font-medium';
                             const taxaClass = taxaAtendimento >= 100 ? 'text-green-700 bg-green-100' : taxaAtendimento >= 50 ? 'text-amber-700 bg-amber-100' : 'text-red-700 bg-red-100';
@@ -2518,11 +2546,11 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                 const demandaGeral = mockDemandaEtapa.reduce((sum, d) => sum + d.criancasResidentes, 0);
                 const vagasAtuaisGeral = mockDemandaEtapa.reduce((sum, d) => sum + d.vagasAtuais, 0);
                 const vagasCriadas = totaisConsolidados.totalVagas;
-                
+
                 const taxaAtual = demandaGeral > 0 ? (vagasAtuaisGeral / demandaGeral) * 100 : 100;
                 const taxaProjetada = demandaGeral > 0 ? ((vagasAtuaisGeral + vagasCriadas) / demandaGeral) * 100 : 100;
                 const deficitResidual = demandaGeral - (vagasAtuaisGeral + vagasCriadas);
-                
+
                 const fontesDisponiveis = totalFontes;
                 const fontesComprometidas = totaisConsolidados.totalInvestimento;
                 const saldoFinalCaixa = fontesDisponiveis - fontesComprometidas;
