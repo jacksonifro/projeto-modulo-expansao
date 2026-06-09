@@ -8,7 +8,7 @@
  */
 
 import {
-  ItemBiblioteca, ModeloAmbiente, ModeloCreche, ServicoAnual, AquisicaoAnual,
+  ItemBiblioteca, ModeloAmbiente, ModeloCreche, ServicoAnual, AquisicaoAnual, CargoReferencia,
 } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -365,6 +365,14 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'aq04', descricao: 'Uniforme e EPI (funcionários)', unidade: 'ano', quantidadeAnual: 1, valorUnitario: 18000 },
       { id: 'aq05', descricao: 'Gás de cozinha', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 1200 },
     ],
+    pessoal: [
+      { id: 'mp01', cargoId: 'cg01', quantidade: 1 }, // Diretor
+      { id: 'mp02', cargoId: 'cg02', quantidade: 2 }, // Coordenador
+      { id: 'mp03', cargoId: 'cg03', quantidade: 20 }, // Professor
+      { id: 'mp04', cargoId: 'cg04', quantidade: 10 }, // Monitor
+      { id: 'mp05', cargoId: 'cg05', quantidade: 4 }, // Merendeira
+      { id: 'mp06', cargoId: 'cg06', quantidade: 4 }, // Aux Limpeza
+    ],
   },
 
   // ── FNDE Tipo 2 — Proinfância C ──────────────────────────────────────────
@@ -408,6 +416,14 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'aq12', descricao: 'Material de limpeza e higiene', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 1800 },
       { id: 'aq13', descricao: 'Uniforme e EPI (funcionários)', unidade: 'ano', quantidadeAnual: 1, valorUnitario: 12000 },
       { id: 'aq14', descricao: 'Gás de cozinha', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 800 },
+    ],
+    pessoal: [
+      { id: 'mp11', cargoId: 'cg01', quantidade: 1 }, // Diretor
+      { id: 'mp12', cargoId: 'cg02', quantidade: 1 }, // Coordenador
+      { id: 'mp13', cargoId: 'cg03', quantidade: 10 }, // Professor
+      { id: 'mp14', cargoId: 'cg04', quantidade: 5 }, // Monitor
+      { id: 'mp15', cargoId: 'cg05', quantidade: 2 }, // Merendeira
+      { id: 'mp16', cargoId: 'cg06', quantidade: 2 }, // Aux Limpeza
     ],
   },
 ];
@@ -471,4 +487,13 @@ export const mockAquisicoesReferencia: AquisicaoAnual[] = [
   { id: 'ref-aq03', descricao: 'Material de limpeza e higiene', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 1800 },
   { id: 'ref-aq04', descricao: 'Uniforme e EPI (funcionários)', unidade: 'ano', quantidadeAnual: 1, valorUnitario: 12000 },
   { id: 'ref-aq05', descricao: 'Gás de cozinha', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 800 },
+];
+
+export const mockCargosReferencia: CargoReferencia[] = [
+  { id: 'cg01', descricao: 'Diretor Escolar', remuneracaoBase: 6500, auxilios: 500, patronal: 1300 },
+  { id: 'cg02', descricao: 'Coordenador Pedagógico', remuneracaoBase: 5800, auxilios: 500, patronal: 1160 },
+  { id: 'cg03', descricao: 'Professor Educação Infantil (40h)', remuneracaoBase: 4420, auxilios: 500, patronal: 884 },
+  { id: 'cg04', descricao: 'Monitor/Auxiliar de Creche', remuneracaoBase: 2200, auxilios: 350, patronal: 440 },
+  { id: 'cg05', descricao: 'Merendeira/Cozinheira', remuneracaoBase: 1800, auxilios: 350, patronal: 360 },
+  { id: 'cg06', descricao: 'Auxiliar de Limpeza', remuneracaoBase: 1500, auxilios: 350, patronal: 300 },
 ];

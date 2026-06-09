@@ -5,11 +5,12 @@ import {
   TrendingUp, MapPin, BookOpen, Wrench, ClipboardList, DollarSign,
 } from 'lucide-react';
 import { mockServidores, mockUnidades, mockDemandaBairro, mockDemandaEtapa, mockProjecaoVagas, mockPlans, mockActivities, mockCadUnicoUnidade } from './mockData';
-import { mockModelosCreche, mockModelosAmbiente, calcularCustoCreche, calcularCustoAmbiente } from './mockDataCusto';
+import { mockModelosCreche, mockModelosAmbiente, calcularCustoCreche, calcularCustoAmbiente, mockCargosReferencia } from './mockDataCusto';
 import {
   ExpansionPlan, EstrategiaExpansao, AcaoUnidade, ObraConstrucao,
   MembroEquipe, FonteFinanciamento, EtapaEI, Prioridade,
-  ModeloCreche, ModeloAmbiente, DesembolsoAnual
+  ModeloCreche, ModeloAmbiente, DesembolsoAnual, CargoReferencia,
+  ConfiguracaoSala, ItemPessoal
 } from './types';
 import { calcularCustoObraTotal, calcularCustoAcaoTotal, calcularAutoDistribuicao } from './utils/planLogic';
 import {
@@ -40,21 +41,7 @@ const ESTRATEGIAS_PADRAO = [
   'Convênio/Credenciamento', 'Parceria público-privada',
 ];
 const VANTAGENS_OPCOES = ['Custo', 'Escala', 'Prazo', 'Complexidade', 'Qualidade', 'Flexibilidade', 'Esforço'];
-const FUNCOES_PESSOAL = [
-  'Professor',
-  'Auxiliar de Sala',
-  'Cuidador AEE',
-  'Diretor',
-  'Vice-Diretor',
-  'Secretário Escolar',
-  'Auxiliar de Secretaria',
-  'Supervisor Escolar',
-  'Demais Especialistas',
-  'Agente de Limpeza',
-  'Merendeira Escolar',
-  'Inspetor Escolar',
-  'Agente de Vigilância',
-];
+
 
 interface TabDef { id: TabId; label: string; group: TabGroup; icon: React.ReactNode; desc: string }
 
@@ -123,12 +110,25 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
   const [modelos] = useState<ModeloCreche[]>(() => {
     const cached = localStorage.getItem("exp_creches_modelos");
-    return cached ? JSON.parse(cached) : mockModelosCreche;
+    if (!cached) return mockModelosCreche;
+    const parsed: ModeloCreche[] = JSON.parse(cached);
+    return parsed.map(m => {
+      if (!m.pessoal) {
+        const mockMatch = mockModelosCreche.find(x => x.id === m.id);
+        return { ...m, pessoal: mockMatch?.pessoal || [] };
+      }
+      return m;
+    });
   });
 
   const [ambientes] = useState<ModeloAmbiente[]>(() => {
     const cached = localStorage.getItem("exp_creches_ambientes");
     return cached ? JSON.parse(cached) : mockModelosAmbiente;
+  });
+
+  const [cargosRef] = useState<CargoReferencia[]>(() => {
+    const cached = localStorage.getItem("exp_creches_cargos_ref");
+    return cached ? JSON.parse(cached) : mockCargosReferencia;
   });
 
   // Localizar plano se for edição
@@ -287,36 +287,12 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   }]);
   const removeObra = (id: string) => setObras(o => o.filter(x => x.id !== id));
 
+
+
   // ═══ ABA 5 — PESSOAL: Estados e Funções ═══════════════════════════════════════
 
-  interface ConfiguracaoSala {
-    id: string;
-    origem: 'obra' | 'acao';
-    origemId: string;
-    nome: string;
-    numeroTurmas: number;
-    etapas: EtapaEI[];
-  }
-
-  interface ItemPessoal {
-    id: string;
-    funcao: string;
-    categoria: 'pedagogico' | 'administrativo' | 'apoio';
-    quantidade: number;
-    remuneracaoBase: number;
-    auxilios: number;
-    autoCalculado?: boolean;
-    observacoes?: string;
-  }
-
-  const [configSalas, setConfigSalas] = useState<ConfiguracaoSala[]>([]);
-  const [pessoal, setPessoal] = useState<ItemPessoal[]>([
-    { id: 'p1', funcao: 'Diretor', categoria: 'administrativo', quantidade: 4, remuneracaoBase: 4967.77, auxilios: 695.49, autoCalculado: false },
-    { id: 'p2', funcao: 'Agente de Limpeza', categoria: 'apoio', quantidade: 8, remuneracaoBase: 1606.00, auxilios: 224.84, autoCalculado: false },
-    { id: 'p3', funcao: 'Merendeira Escolar', categoria: 'apoio', quantidade: 6, remuneracaoBase: 1606.00, auxilios: 224.84, autoCalculado: false },
-    { id: 'p4', funcao: 'Agente de Vigilância', categoria: 'apoio', quantidade: 4, remuneracaoBase: 1800.00, auxilios: 252.00, autoCalculado: false },
-    { id: 'p5', funcao: 'Secretário Escolar', categoria: 'administrativo', quantidade: 2, remuneracaoBase: 1800.00, auxilios: 252.00, autoCalculado: false },
-  ]);
+  const [configSalas, setConfigSalas] = useState<ConfiguracaoSala[]>(() => planParaEditar ? (planParaEditar.configSalas || []) : []);
+  const [pessoal, setPessoal] = useState<ItemPessoal[]>(() => planParaEditar && planParaEditar.pessoal ? planParaEditar.pessoal : []);
 
   // Extrair salas de obras e ações
   const extrairSalasPlanejadas = (): ConfiguracaoSala[] => {
@@ -367,33 +343,52 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   const calcularNecessidadePessoal = () => {
     const salasAtualizadas = configSalas.length === 0 ? extrairSalasPlanejadas() : configSalas;
     const totalTurmas = salasAtualizadas.reduce((s, sala) => s + sala.numeroTurmas, 0);
-    const totalObras = obras.length;
 
-    // Remover itens auto-calculados antigos
+    const cargoMap = new Map<string, number>();
+
+    // Encontrar os IDs dinamicamente pelo catálogo (fallback para os mocks conhecidos)
+    const idProfessor = cargosRef.find(c => c.descricao.toLowerCase().includes('professor'))?.id || 'cg03';
+    const idMonitor = cargosRef.find(c => c.descricao.toLowerCase().includes('monitor') || c.descricao.toLowerCase().includes('auxiliar de creche'))?.id || 'cg04';
+
+    // 1. Pessoal dos Modelos Base das Obras (Pacote Fechado)
+    obras.forEach(obra => {
+      const model = modelos.find(m => m.tipoBase === obra.tipoProjetoFNDE);
+      if (model && model.pessoal) {
+        model.pessoal.forEach(mp => {
+          cargoMap.set(mp.cargoId, (cargoMap.get(mp.cargoId) || 0) + mp.quantidade);
+        });
+      }
+    });
+
+    // 2. Pessoal das Ações (Adaptação/Ampliação - Cálculo Dinâmico por Turma)
+    const turmasDeAcoes = salasAtualizadas.filter(s => s.origem === 'acao').reduce((s, sala) => s + sala.numeroTurmas, 0);
+    if (turmasDeAcoes > 0) {
+      cargoMap.set(idProfessor, (cargoMap.get(idProfessor) || 0) + turmasDeAcoes); // 1 prof por turma nova
+      cargoMap.set(idMonitor, (cargoMap.get(idMonitor) || 0) + turmasDeAcoes); // 1 monitor por turma nova
+    }
+
+    const novosItens: ItemPessoal[] = [];
+    cargoMap.forEach((quantidade, cargoId) => {
+      const cg = cargosRef.find(c => c.id === cargoId);
+      if (cg) {
+        const desc = cg.descricao.toLowerCase();
+        const isApoio = desc.includes('limpeza') || desc.includes('merendeira') || desc.includes('cozinheira') || desc.includes('vigil');
+        const isAdmin = desc.includes('diretor') || desc.includes('coordenador') || desc.includes('secret');
+        const categoria = isAdmin ? 'administrativo' : isApoio ? 'apoio' : 'pedagogico';
+
+        novosItens.push({
+          id: `auto-${cargoId}-${Date.now()}`,
+          funcao: cg.descricao,
+          categoria,
+          quantidade,
+          remuneracaoBase: cg.remuneracaoBase,
+          auxilios: cg.auxilios,
+          autoCalculado: true,
+        });
+      }
+    });
+
     const pessoalManual = pessoal.filter(p => !p.autoCalculado);
-
-    // Adicionar novos itens auto-calculados
-    const novosItens: ItemPessoal[] = [
-      {
-        id: 'auto-professor',
-        funcao: 'Professor',
-        categoria: 'pedagogico',
-        quantidade: totalTurmas,
-        remuneracaoBase: 4867.77,
-        auxilios: 681.69,
-        autoCalculado: true,
-      },
-      {
-        id: 'auto-auxiliar',
-        funcao: 'Auxiliar de Sala',
-        categoria: 'pedagogico',
-        quantidade: totalTurmas,
-        remuneracaoBase: 2700.00,
-        auxilios: 378.00,
-        autoCalculado: true,
-      },
-    ];
-
     setPessoal([...novosItens, ...pessoalManual]);
     if (configSalas.length === 0) {
       setConfigSalas(salasAtualizadas);
@@ -593,6 +588,8 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
       estrategias,
       acoesUnidades: acoes,
       obras,
+      pessoal,
+      configSalas,
       name: nome.trim(),
       year: periodoInicio,
       description: descricao.trim(),
@@ -1627,7 +1624,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         <div className="flex gap-3 items-end flex-wrap">
                           <div className="flex-1 min-w-[200px]">
                             <select
-                              defaultValue=""
+                              value={obra.modeloCrecheId || ''}
                               onChange={e => {
                                 const m = modelos.find(mc => mc.id === e.target.value);
                                 if (!m) return;
@@ -1813,7 +1810,12 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                     </div>
                                   </div>
                                   <div className="col-span-6">
-                                    <div className="text-sm font-semibold text-slate-800 truncate">{sala.nome}</div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-sm font-semibold text-slate-800 truncate">{sala.nome}</div>
+                                      <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-md ${sala.origem === 'obra' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
+                                        {sala.origem === 'obra' ? 'Obra Nova' : 'Ampliação'}
+                                      </span>
+                                    </div>
                                     <div className="text-xs text-slate-500">
                                       {sala.etapas.length > 0 ? sala.etapas.join(', ') : 'Etapas não definidas'}
                                     </div>
@@ -1856,6 +1858,23 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           </div>
                         </div>
                       </div>
+
+                      {pessoal.filter(p => p.autoCalculado).length > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 flex gap-3">
+                          <div className="mt-0.5"><AlertCircle className="w-5 h-5 text-blue-600" /></div>
+                          <div>
+                            <h4 className="font-bold text-blue-800 text-sm">Resumo do Cálculo Automático</h4>
+                            <p className="text-sm text-blue-700 mt-1">
+                              <strong>Para Novas Obras:</strong> A equipe foi pré-carregada integralmente com base no padrão definido no Modelo de Creche.
+                              <br />
+                              <strong>Para Ampliações:</strong> Foi calculada a proporção de 1 Professor e 1 Monitor/Auxiliar para cada turma extra criada.
+                            </p>
+                            <p className="text-xs text-blue-600 mt-2 italic">
+                              Você pode editar as quantidades abaixo ou incluir novos cargos se houver necessidade específica.
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Grid de Pessoal por Categoria */}
                       {['pedagogico', 'administrativo', 'apoio'].map(cat => {
@@ -1907,13 +1926,23 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                           <td className="px-4 py-2.5">
                                             <select
                                               value={item.funcao}
-                                              onChange={e => setPessoal(prev => prev.map(p => p.id === item.id ? { ...p, funcao: e.target.value } : p))}
+                                              onChange={e => {
+                                                const selectedCargo = cargosRef.find(c => c.descricao === e.target.value);
+                                                setPessoal(prev => prev.map(p => p.id === item.id ? { 
+                                                  ...p, 
+                                                  funcao: e.target.value,
+                                                  remuneracaoBase: selectedCargo ? selectedCargo.remuneracaoBase : p.remuneracaoBase,
+                                                  auxilios: selectedCargo ? selectedCargo.auxilios : p.auxilios
+                                                } : p));
+                                              }}
                                               className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                               disabled={item.autoCalculado}
                                             >
-                                              <option value="">Selecione a função...</option>
-                                              {FUNCOES_PESSOAL.map(funcao => (
-                                                <option key={funcao} value={funcao}>{funcao}</option>
+                                              <option value="">Selecione um cargo do catálogo...</option>
+                                              {cargosRef.map(cargo => (
+                                                <option key={cargo.id} value={cargo.descricao}>
+                                                  {cargo.descricao}
+                                                </option>
                                               ))}
                                             </select>
                                           </td>
@@ -1927,18 +1956,14 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                             />
                                           </td>
                                           <td className="px-4 py-2.5 text-right">
-                                            <CurrencyInput
-                                              value={item.remuneracaoBase}
-                                              onChange={v => setPessoal(prev => prev.map(p => p.id === item.id ? { ...p, remuneracaoBase: v } : p))}
-                                              className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
+                                            <div className="w-full px-2 py-1 text-sm text-right border border-slate-200 bg-slate-50 text-slate-500 rounded">
+                                              {BRL(item.remuneracaoBase)}
+                                            </div>
                                           </td>
                                           <td className="px-4 py-2.5 text-right">
-                                            <CurrencyInput
-                                              value={item.auxilios}
-                                              onChange={v => setPessoal(prev => prev.map(p => p.id === item.id ? { ...p, auxilios: v } : p))}
-                                              className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
+                                            <div className="w-full px-2 py-1 text-sm text-right border border-slate-200 bg-slate-50 text-slate-500 rounded">
+                                              {BRL(item.auxilios)}
+                                            </div>
                                           </td>
                                           <td className="px-4 py-2.5 text-right text-slate-600">{BRL(patronal)}</td>
                                           <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{BRL(custoMensal)}</td>

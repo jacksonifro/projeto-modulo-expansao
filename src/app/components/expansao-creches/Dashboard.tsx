@@ -4,24 +4,37 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { mockProjecaoVagas, mockPlans, mockDemandaEtapa, mockCadUnicoUnidade, mockUnidades } from './mockData';
 import { ExpansionPlan } from './types';
 
-const demandaEtapa = mockDemandaEtapa.map(d => ({
-  name: d.etapa,
-  fila: d.criancasResidentes - d.vagasAtuais > 0 ? d.criancasResidentes - d.vagasAtuais : 0,
-  vagas: d.vagasAtuais
-}));
+const demandaEtapa = mockDemandaEtapa.map(d => {
+  const filaReal = mockUnidades.reduce((acc, u) => {
+    const v = u.vagasPorEtapa.find(ve => ve.etapa === d.etapa);
+    return acc + (v ? v.listaEspera : 0);
+  }, 0);
+
+  const deficitTotal = d.criancasResidentes - d.vagasAtuais;
+  const cadUnico = deficitTotal > filaReal ? deficitTotal - filaReal : 0;
+
+  return {
+    name: d.etapa,
+    cadUnico: cadUnico,
+    fila: filaReal,
+    vagas: d.vagasAtuais
+  };
+});
 
 const topUnidadesCriticas = mockCadUnicoUnidade.map(d => {
   const uni = mockUnidades.find(u => u.id === d.unidadeId);
   const maxRaio = d.raios[d.raios.length - 1]; // Maior raio disponível
   const demandaTotal = maxRaio.maternal + maxRaio.jardimI + maxRaio.jardimII;
   const vagasAtuais = uni?.vagasPorEtapa.reduce((sum, v) => sum + v.vagas, 0) || 0;
+  const filaEspera = uni?.vagasPorEtapa.reduce((sum, v) => sum + v.listaEspera, 0) || 0;
   const deficit = demandaTotal - vagasAtuais;
   return {
     id: d.unidadeId,
     nome: uni?.nome || 'Unidade',
     deficit: deficit > 0 ? deficit : 0,
     demanda: demandaTotal,
-    vagas: vagasAtuais
+    vagas: vagasAtuais,
+    filaEspera
   };
 }).sort((a, b) => b.deficit - a.deficit).slice(0, 5);
 
@@ -32,7 +45,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
   });
 
   const planosAtivos = plans.filter(p => p.status === 'Em execução' || p.status === 'Planejamento');
-  
+
   // Total de fontes considerando apenas o saldo acumulado (Caixa Único)
   const investimentoTotal = planosAtivos.reduce((total, p) => total + p.fontesFinanciamento.reduce((a, f) => a + f.valorPrevisto, 0), 0);
   const totalObras = planosAtivos.reduce((total, p) => total + p.obras.length, 0);
@@ -64,7 +77,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fora da Creche</span>
             </div>
             <p className="text-4xl font-black text-slate-800 relative z-10">3.888</p>
-            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">crianças 0–5 anos sem vaga</p>
+            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">crianças do cadÚnico de 0–3 anos sem vaga</p>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-slate-100 relative overflow-hidden group hover:shadow-md transition-shadow">
@@ -136,7 +149,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-red-500" /> Fila de Espera por Etapa (CadÚnico)
+              <MapPin className="w-5 h-5 text-red-500" /> Demanda Potencial por Etapa
             </h3>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={demandaEtapa} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -145,8 +158,9 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
                 <YAxis key="yaxis" stroke="#94a3b8" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip key="tooltip" cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
                 <Legend key="legend" iconType="circle" />
-                <Bar key="bar-vagas" dataKey="vagas" name="Vagas Ofertadas" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={40} />
-                <Bar key="bar-fila" dataKey="fila" name="Fila de Espera (Déficit)" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={40} />
+                <Bar key="bar-cadunico" dataKey="cadUnico" name="Demanda CadÚnico" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={25} />
+                <Bar key="bar-fila" dataKey="fila" name="Fila de Espera" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={25} />
+                <Bar key="bar-vagas" dataKey="vagas" name="Vagas Ofertadas" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={25} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -165,6 +179,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
                     <th className="text-left py-3 px-4 font-bold text-slate-600">Unidade Escolar</th>
                     <th className="text-center py-3 px-4 font-bold text-slate-600">Demanda (Total Raio)</th>
                     <th className="text-center py-3 px-4 font-bold text-slate-600">Vagas Atuais</th>
+                    <th className="text-center py-3 px-4 font-bold text-slate-600">Fila de Espera</th>
                     <th className="text-right py-3 px-4 font-bold text-slate-600">Déficit Absoluto</th>
                   </tr>
                 </thead>
@@ -181,6 +196,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
                       </td>
                       <td className="py-3 px-4 text-center font-medium text-slate-600">{u.demanda}</td>
                       <td className="py-3 px-4 text-center font-medium text-slate-600">{u.vagas}</td>
+                      <td className="py-3 px-4 text-center font-medium text-slate-600">{u.filaEspera}</td>
                       <td className="py-3 px-4 text-right">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 text-red-700 font-bold">
                           <AlertCircle className="w-3.5 h-3.5" />
@@ -200,16 +216,23 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               <DollarSign className="w-32 h-32" />
             </div>
             <h3 className="font-bold text-slate-200 mb-6 flex items-center gap-2 relative z-10">
-              <DollarSign className="w-5 h-5 text-emerald-400" /> Caixa Único (Planos Ativos)
+              <DollarSign className="w-5 h-5 text-emerald-400" /> Estimativa de Custo (Planos Ativos)
             </h3>
             <div className="space-y-6 relative z-10">
               <div>
-                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Recursos Disponíveis</div>
+                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Recursos Necessários</div>
                 <div className="text-3xl font-black text-emerald-400">
                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(investimentoTotal)}
                 </div>
               </div>
-              
+
+              <div>
+                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Recursos disponíveis no exercício</div>
+                <div className="text-2xl font-bold text-slate-200">
+                  R$ 5.350.000
+                </div>
+              </div>
+
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-300">Planos em Andamento</span>
@@ -249,12 +272,11 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               >
                 <div className="flex justify-between items-start mb-3">
                   <h4 className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors">{plan.nome}</h4>
-                  <span className={`px-2.5 py-1 text-[10px] uppercase tracking-wider rounded-full font-bold ${
-                    plan.status === 'Em execução' ? 'bg-emerald-100 text-emerald-700' :
+                  <span className={`px-2.5 py-1 text-[10px] uppercase tracking-wider rounded-full font-bold ${plan.status === 'Em execução' ? 'bg-emerald-100 text-emerald-700' :
                     plan.status === 'Planejamento' ? 'bg-blue-100 text-blue-700' :
-                    plan.status === 'Paralisado' ? 'bg-red-100 text-red-700' :
-                    'bg-slate-200 text-slate-700'
-                  }`}>
+                      plan.status === 'Paralisado' ? 'bg-red-100 text-red-700' :
+                        'bg-slate-200 text-slate-700'
+                    }`}>
                     {plan.status}
                   </span>
                 </div>

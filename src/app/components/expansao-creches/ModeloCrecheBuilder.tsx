@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  Plus, Trash2, Building2, Package, Wrench, ShoppingCart,
+  Plus, Trash2, Building2, Package, Wrench, ShoppingCart, UserPlus,
   ChevronDown, ChevronUp, Settings, AlertCircle, CheckCircle2, X
 } from 'lucide-react';
-import { ModeloCreche, ModeloCrecheAmbiente, ModeloAmbiente, ServicoAnual, AquisicaoAnual } from './types';
+import { ModeloCreche, ModeloCrecheAmbiente, ModeloAmbiente, ServicoAnual, AquisicaoAnual, CargoReferencia, ModeloCrechePessoal } from './types';
 import { calcularCustoAmbiente, calcularCustoCreche } from './mockDataCusto';
 
 const BRL = (v: number) =>
@@ -444,10 +444,160 @@ function AquisicoesTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sub-componente: Folha de Pagamento (Equipe do modelo)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FolhaPagamentoTab({
+  modelo,
+  onUpdate,
+  cargosRef,
+}: {
+  modelo: ModeloCreche;
+  onUpdate: (m: ModeloCreche) => void;
+  cargosRef: CargoReferencia[];
+}) {
+  try {
+    const [addingId, setAddingId] = useState("");
+
+    const addCargo = () => {
+      if (!addingId) return;
+      const refCg = cargosRef.find((c) => c.id === addingId);
+      if (!refCg) return;
+
+      if (modelo.pessoal?.some((p) => p.cargoId === addingId)) {
+        alert("Este cargo já está vinculado à equipe.");
+        return;
+      }
+
+      const novo: ModeloCrechePessoal = {
+        id: `mp-${Date.now()}`,
+        cargoId: addingId,
+        quantidade: 1,
+      };
+      onUpdate({ ...modelo, pessoal: [...(modelo.pessoal || []), novo] });
+      setAddingId("");
+    };
+
+    const updateQt = (id: string, quantidade: number) =>
+      onUpdate({
+        ...modelo,
+        pessoal: modelo.pessoal.map((p) => (p.id === id ? { ...p, quantidade } : p)),
+      });
+
+    const remove = (id: string) =>
+      onUpdate({ ...modelo, pessoal: (Array.isArray(modelo.pessoal) ? modelo.pessoal : []).filter((p) => p.id !== id) });
+
+  const safePessoal = Array.isArray(modelo?.pessoal) ? modelo.pessoal.filter(p => p && p.cargoId) : [];
+  const safeCargosRef = Array.isArray(cargosRef) ? cargosRef.filter(c => c && c.id) : [];
+
+  const totalMensal = safePessoal.reduce((s, p) => {
+    const cg = safeCargosRef.find((c) => c.id === p.cargoId);
+    if (!cg) return s;
+    const custoCargo = (cg.remuneracaoBase || 0) + (cg.auxilios || 0) + (cg.patronal || 0);
+    return s + custoCargo * (p.quantidade || 0);
+  }, 0);
+
+  return (
+    <div className="space-y-4 text-left">
+      <div className="flex items-center gap-2 mb-3 bg-slate-50 p-4 border rounded-xl">
+        <select
+          value={addingId}
+          onChange={(e) => setAddingId(e.target.value)}
+          className="flex-1 text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-gray-800"
+        >
+          <option value="">— Selecione um cargo do catálogo —</option>
+          {safeCargosRef.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.descricao || 'Sem descrição'} · {BRL((c.remuneracaoBase || 0) + (c.auxilios || 0) + (c.patronal || 0))}/mês total
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={addCargo}
+          disabled={!addingId}
+          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shrink-0 shadow-sm"
+        >
+          <Plus className="w-4 h-4" /> Adicionar à Equipe
+        </button>
+      </div>
+
+      {safePessoal.length === 0 ? (
+        <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-6">
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3 border border-blue-100">
+            <UserPlus className="w-5 h-5 text-blue-500" />
+          </div>
+          <p className="font-semibold text-slate-700 text-sm">Nenhum cargo na equipe</p>
+          <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Vincule os cargos necessários para a operação padrão desta creche.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Cargo/Função</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600">Custo Unit. (Mês)</th>
+                <th className="text-center px-4 py-3 font-semibold text-slate-600 w-28">Quantidade</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Total (Mês)</th>
+                <th className="w-8" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {safePessoal.map((p) => {
+                const cg = safeCargosRef.find((c) => c.id === p.cargoId);
+                if (!cg) return null;
+                const unitMensal = (cg.remuneracaoBase || 0) + (cg.auxilios || 0) + (cg.patronal || 0);
+                return (
+                  <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-slate-800">
+                      {cg.descricao || 'Sem descrição'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-600">
+                      {BRL(unitMensal)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <input
+                        type="number"
+                        min={1}
+                        value={p.quantidade || 1}
+                        onChange={(e) => updateQt(p.id, Number(e.target.value))}
+                        className="w-20 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-gray-800 font-bold"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-blue-700">
+                      {BRL(unitMensal * (p.quantidade || 1))}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => remove(p.id)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="bg-slate-100 border-t-2 border-slate-300">
+              <tr>
+                <td className="px-4 py-3 font-bold" colSpan={3}>Custo mensal da equipe</td>
+                <td className="px-4 py-3 text-right font-black text-blue-700">{BRL(totalMensal)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+  } catch (err) {
+    console.error("Erro no FolhaPagamentoTab:", err);
+    return <div className="p-4 bg-red-100 text-red-700 rounded-lg">Erro ao carregar Folha de Pagamento: {String(err)}</div>;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Card principal de um modelo de creche
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ModeloTab = 'ambientes' | 'servicos' | 'aquisicoes' | 'resumo';
+type ModeloTab = 'ambientes' | 'servicos' | 'aquisicoes' | 'folha' | 'resumo';
 
 function ModeloCard({
   modelo,
@@ -456,6 +606,7 @@ function ModeloCard({
   onDelete,
   servicosRef,
   aquisicoesRef,
+  cargosRef,
 }: {
   modelo: ModeloCreche;
   ambientes: ModeloAmbiente[];
@@ -463,6 +614,7 @@ function ModeloCard({
   onDelete: () => void;
   servicosRef: ServicoAnual[];
   aquisicoesRef: AquisicaoAnual[];
+  cargosRef: CargoReferencia[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<ModeloTab>('ambientes');
@@ -473,6 +625,7 @@ function ModeloCard({
     { id: 'ambientes', label: 'Ambientes', icon: <Building2 className="w-3.5 h-3.5" /> },
     { id: 'servicos', label: 'Serviços', icon: <Wrench className="w-3.5 h-3.5" /> },
     { id: 'aquisicoes', label: 'Aquisições', icon: <ShoppingCart className="w-3.5 h-3.5" /> },
+    { id: 'folha', label: 'Folha Pagamento', icon: <UserPlus className="w-3.5 h-3.5" /> },
     { id: 'resumo', label: 'Resumo', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   ];
 
@@ -594,6 +747,9 @@ function ModeloCard({
             {activeTab === 'aquisicoes' && (
               <AquisicoesTab modelo={modelo} onUpdate={onUpdate} aquisicoesRef={aquisicoesRef} />
             )}
+            {activeTab === 'folha' && (
+              <FolhaPagamentoTab modelo={modelo} onUpdate={onUpdate} cargosRef={cargosRef} />
+            )}
             {activeTab === 'resumo' && (
               <ResumoModelo modelo={modelo} ambientes={ambientes} custo={custo} />
             )}
@@ -707,6 +863,7 @@ interface ModeloCrecheBuilderProps {
   onChange: (modelos: ModeloCreche[]) => void;
   servicosRef: ServicoAnual[];
   aquisicoesRef: AquisicaoAnual[];
+  cargosRef: CargoReferencia[];
 }
 
 export default function ModeloCrecheBuilder({
@@ -715,6 +872,7 @@ export default function ModeloCrecheBuilder({
   onChange,
   servicosRef,
   aquisicoesRef,
+  cargosRef,
 }: ModeloCrecheBuilderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [formNome, setFormNome] = useState('');
@@ -747,6 +905,7 @@ export default function ModeloCrecheBuilder({
       ambientes: [],
       servicos: [],
       aquisicoes: [],
+      pessoal: [],
     };
     onChange([...modelos, novo]);
     setIsOpen(false);
@@ -810,6 +969,7 @@ export default function ModeloCrecheBuilder({
               onDelete={() => onChange(modelos.filter(m => m.id !== modelo.id))}
               servicosRef={servicosRef}
               aquisicoesRef={aquisicoesRef}
+              cargosRef={cargosRef}
             />
           ))}
         </div>

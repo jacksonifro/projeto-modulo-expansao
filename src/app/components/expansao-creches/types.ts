@@ -98,6 +98,20 @@ export interface AquisicaoAnual {
   valorUnitario: number;
 }
 
+export interface CargoReferencia {
+  id: string;
+  descricao: string;
+  remuneracaoBase: number;
+  auxilios: number;
+  patronal: number;
+}
+
+export interface ModeloCrechePessoal {
+  id: string;
+  cargoId: string;
+  quantidade: number;
+}
+
 export interface ModeloCreche {
   id: string;
   nome: string;
@@ -108,6 +122,7 @@ export interface ModeloCreche {
   ambientes: ModeloCrecheAmbiente[];
   servicos: ServicoAnual[];
   aquisicoes: AquisicaoAnual[];
+  pessoal: ModeloCrechePessoal[];
 }
 
 // ─── Servidor Municipal ────────────────────────────────────────────────────
@@ -241,6 +256,26 @@ export interface AcaoUnidade {
   desembolsoPorAno: DesembolsoAnual[];
 }
 
+export interface ConfiguracaoSala {
+  id: string;
+  origem: 'obra' | 'acao';
+  origemId: string;
+  nome: string;
+  numeroTurmas: number;
+  etapas: EtapaEI[];
+}
+
+export interface ItemPessoal {
+  id: string;
+  funcao: string;
+  categoria: 'pedagogico' | 'administrativo' | 'apoio';
+  quantidade: number;
+  remuneracaoBase: number;
+  auxilios: number;
+  autoCalculado?: boolean;
+  observacoes?: string;
+}
+
 export interface ObraConstrucao {
   id: string;
   tipo: TipoObra;
@@ -251,6 +286,7 @@ export interface ObraConstrucao {
   numeroConvenio?: string;
   percentualConclusaoAtual?: number;
   tipoProjetoFNDE?: TipoCreche | 'proprio';
+  modeloCrecheId?: string;
   numeroDeSalas: number;
   etapasAtendidas: EtapaEI[];
   desembolsoPorAno: DesembolsoAnual[];
@@ -281,6 +317,9 @@ export interface ExpansionPlan {
   acoesUnidades: AcaoUnidade[];
   // Aba 4 — Obras
   obras: ObraConstrucao[];
+  // Aba 5 — Pessoal
+  pessoal?: ItemPessoal[];
+  configSalas?: ConfiguracaoSala[];
   // Legacy para compatibilidade com componentes existentes
   name: string;
   year: number;

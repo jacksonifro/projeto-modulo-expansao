@@ -36,6 +36,7 @@ import {
   CategoriaAmbiente,
   ServicoAnual,
   AquisicaoAnual,
+  CargoReferencia,
 } from "./types";
 import {
   mockBibliotecaItens,
@@ -45,7 +46,9 @@ import {
   calcularCustoCreche,
   mockServicosReferencia,
   mockAquisicoesReferencia,
+  mockCargosReferencia,
 } from "./mockDataCusto";
+import { UserPlus } from "lucide-react";
 import AmbienteEditor from "./AmbienteEditor";
 import ModeloCrecheBuilder from "./ModeloCrecheBuilder";
 
@@ -1498,12 +1501,261 @@ function SimuladorTab({
   );
 }
 
+// ─── Folha de Pagamento Catalog Tab ────────────────────────────────────────
+interface FolhaPagamentoCatalogTabProps {
+  itens: CargoReferencia[];
+  onAddItem: (item: CargoReferencia) => void;
+  onUpdateItem: (item: CargoReferencia) => void;
+  onDeleteItem: (id: string) => void;
+}
+
+function FolhaPagamentoCatalogTab({
+  itens,
+  onAddItem,
+  onUpdateItem,
+  onDeleteItem,
+}: FolhaPagamentoCatalogTabProps) {
+  const [busca, setBusca] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<CargoReferencia | null>(null);
+  const [formDesc, setFormDesc] = useState("");
+  const [formRemuneracao, setFormRemuneracao] = useState<number>(0);
+  const [formAuxilios, setFormAuxilios] = useState<number>(0);
+  const [formPatronal, setFormPatronal] = useState<number>(0);
+
+  const openModal = (item?: CargoReferencia) => {
+    if (item) {
+      setEditingItem(item);
+      setFormDesc(item.descricao);
+      setFormRemuneracao(item.remuneracaoBase);
+      setFormAuxilios(item.auxilios);
+      setFormPatronal(item.patronal);
+    } else {
+      setEditingItem(null);
+      setFormDesc("");
+      setFormRemuneracao(0);
+      setFormAuxilios(0);
+      setFormPatronal(0);
+    }
+    setIsOpen(true);
+  };
+
+  const handleSave = () => {
+    if (!formDesc.trim()) {
+      alert("Por favor, preencha a descrição do cargo.");
+      return;
+    }
+    if (editingItem) {
+      onUpdateItem({
+        ...editingItem,
+        descricao: formDesc.trim(),
+        remuneracaoBase: formRemuneracao,
+        auxilios: formAuxilios,
+        patronal: formPatronal,
+      });
+    } else {
+      onAddItem({
+        id: `cg-${Date.now()}`,
+        descricao: formDesc.trim(),
+        remuneracaoBase: formRemuneracao,
+        auxilios: formAuxilios,
+        patronal: formPatronal,
+      });
+    }
+    setIsOpen(false);
+  };
+
+  const filtered = itens.filter(
+    (it) =>
+      !busca ||
+      it.descricao.toLowerCase().includes(busca.toLowerCase())
+  );
+
+  return (
+    <div className="p-6 space-y-4 relative">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-800">
+          Catálogo de Cargos (Folha de Pagamento)
+        </h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Cargos de referência para montagem de equipes nas creches.
+        </p>
+      </div>
+
+      <div className="flex gap-3 flex-wrap justify-between items-center">
+        <input
+          className="border rounded-lg px-3 py-2 text-sm flex-1 max-w-md focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
+          placeholder="Buscar cargo..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+        <button
+          onClick={() => openModal()}
+          className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors shadow-sm"
+        >
+          <Plus size={16} /> Novo Cargo
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-gray-600 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-4 py-3">Cargo/Função</th>
+              <th className="text-right px-4 py-3">Salário Base (Mês)</th>
+              <th className="text-right px-4 py-3">Auxílios (Mês)</th>
+              <th className="text-right px-4 py-3">Encargo Patronal (Mês)</th>
+              <th className="text-right px-4 py-3">Custo Mensal Total</th>
+              <th className="w-24 text-center px-4 py-3">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {filtered.map((it) => {
+              const total = it.remuneracaoBase + it.auxilios + it.patronal;
+              return (
+                <tr key={it.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.remuneracaoBase)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.auxilios)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.patronal)}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-gray-800">{BRL(total)}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => openModal(it)}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Editar cargo"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Tem certeza que deseja excluir o cargo "${it.descricao}"?`)) {
+                            onDeleteItem(it.id);
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Excluir cargo"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div className="text-center py-10 text-gray-400">
+            Nenhum cargo encontrado.
+          </div>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-[2px]">
+          <div className="bg-white rounded-2xl shadow-2xl border w-full max-w-lg overflow-hidden flex flex-col animate-in fade-in-50 zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
+              <h3 className="font-bold text-gray-800 text-lg">
+                {editingItem ? "Editar Cargo" : "Adicionar Novo Cargo"}
+              </h3>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-left">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Descrição / Função *
+                </label>
+                <input
+                  type="text"
+                  value={formDesc}
+                  onChange={(e) => setFormDesc(e.target.value)}
+                  placeholder="Ex: Professor Educação Infantil"
+                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Remuneração Base (R$ / Mês)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formRemuneracao}
+                    onChange={(e) => setFormRemuneracao(Number(e.target.value))}
+                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Auxílios (Alimentação/Transp)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formAuxilios}
+                    onChange={(e) => setFormAuxilios(Number(e.target.value))}
+                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Encargo Patronal / Custos Indiretos (Mês)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={formPatronal}
+                  onChange={(e) => setFormPatronal(Number(e.target.value))}
+                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors shadow-sm"
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sidebar Tab Config ───────────────────────────────────────────────────────
 type TabId =
   | "biblioteca"
   | "ambientes"
   | "servicos"
   | "aquisicoes"
+  | "folha"
   | "modelos"
   | "custeio"
   | "simulador";
@@ -1539,6 +1791,12 @@ const TABS: {
     icon: <ShoppingCart size={16} />,
   },
   {
+    id: "folha",
+    label: "Folha de Pagamento",
+    desc: "Cargos e salários de referência",
+    icon: <UserPlus size={16} />,
+  },
+  {
     id: "modelos",
     label: "Modelos de Creche",
     desc: "Composição Tipo B e C",
@@ -1570,7 +1828,15 @@ export default function ConfiguracoesCusto({
   });
   const [modelos, setModelos] = useState<ModeloCreche[]>(() => {
     const cached = localStorage.getItem("exp_creches_modelos");
-    return cached ? JSON.parse(cached) : mockModelosCreche;
+    if (!cached) return mockModelosCreche;
+    const parsed: ModeloCreche[] = JSON.parse(cached);
+    return parsed.map(m => {
+      if (!m.pessoal) {
+        const mockMatch = mockModelosCreche.find(x => x.id === m.id);
+        return { ...m, pessoal: mockMatch?.pessoal || [] };
+      }
+      return m;
+    });
   });
   const [bibliotecaItens, setBibliotecaItens] = useState<ItemBiblioteca[]>(() => {
     const cached = localStorage.getItem("exp_creches_biblioteca");
@@ -1583,6 +1849,10 @@ export default function ConfiguracoesCusto({
   const [aquisicoesRef, setAquisicoesRef] = useState<AquisicaoAnual[]>(() => {
     const cached = localStorage.getItem("exp_creches_aquisicoes_ref");
     return cached ? JSON.parse(cached) : mockAquisicoesReferencia;
+  });
+  const [cargosRef, setCargosRef] = useState<CargoReferencia[]>(() => {
+    const cached = localStorage.getItem("exp_creches_cargos_ref");
+    return cached ? JSON.parse(cached) : mockCargosReferencia;
   });
 
   useEffect(() => {
@@ -1605,6 +1875,10 @@ export default function ConfiguracoesCusto({
     localStorage.setItem("exp_creches_aquisicoes_ref", JSON.stringify(aquisicoesRef));
   }, [aquisicoesRef]);
 
+  useEffect(() => {
+    localStorage.setItem("exp_creches_cargos_ref", JSON.stringify(cargosRef));
+  }, [cargosRef]);
+
   const restaurarPadroes = () => {
     if (confirm("Tem certeza que deseja restaurar as configurações originais padrão? Todas as suas alterações locais serão descartadas.")) {
       localStorage.removeItem("exp_creches_ambientes");
@@ -1618,6 +1892,7 @@ export default function ConfiguracoesCusto({
       setBibliotecaItens(mockBibliotecaItens);
       setServicosRef(mockServicosReferencia);
       setAquisicoesRef(mockAquisicoesReferencia);
+      setCargosRef(mockCargosReferencia);
       alert("Configurações originais restauradas com sucesso.");
     }
   };
@@ -1773,6 +2048,16 @@ export default function ConfiguracoesCusto({
                 onDeleteItem={(id) => setAquisicoesRef(aquisicoesRef.filter((it) => it.id !== id))}
               />
             )}
+            {activeTab === "folha" && (
+              <FolhaPagamentoCatalogTab
+                itens={cargosRef}
+                onAddItem={(item) => setCargosRef([...cargosRef, item])}
+                onUpdateItem={(item) =>
+                  setCargosRef(cargosRef.map((it) => (it.id === item.id ? item : it)))
+                }
+                onDeleteItem={(id) => setCargosRef(cargosRef.filter((it) => it.id !== id))}
+              />
+            )}
             {activeTab === "modelos" && (
               <ModeloCrecheBuilder
                 modelos={modelos}
@@ -1780,6 +2065,7 @@ export default function ConfiguracoesCusto({
                 onChange={setModelos}
                 servicosRef={servicosRef}
                 aquisicoesRef={aquisicoesRef}
+                cargosRef={cargosRef}
               />
             )}
             {activeTab === "custeio" && (

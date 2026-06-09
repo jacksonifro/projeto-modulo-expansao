@@ -107,7 +107,7 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
         <PlanoForm onBack={handleBack} isEdit={false} />
       )}
       {navigation.view === 'edit-plano' && (
-        <PlanoForm onBack={handleBack} isEdit={true} />
+        <PlanoForm onBack={handleBack} isEdit={true} planId={navigation.planId} />
       )}
       {navigation.view === 'all-schools' && (
         <QuadroKanbanGlobal />
