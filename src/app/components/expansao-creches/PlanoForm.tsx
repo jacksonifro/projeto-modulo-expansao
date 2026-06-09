@@ -4,7 +4,7 @@ import {
   Building2, AlertCircle, CheckCircle2, BarChart3, Users,
   TrendingUp, MapPin, BookOpen, Wrench, ClipboardList, DollarSign,
 } from 'lucide-react';
-import { mockServidores, mockUnidades, mockDemandaBairro, mockDemandaEtapa, mockProjecaoVagas, mockPlans, mockActivities } from './mockData';
+import { mockServidores, mockUnidades, mockDemandaBairro, mockDemandaEtapa, mockProjecaoVagas, mockPlans, mockActivities, mockCadUnicoUnidade } from './mockData';
 import { mockModelosCreche, mockModelosAmbiente, calcularCustoCreche, calcularCustoAmbiente } from './mockDataCusto';
 import {
   ExpansionPlan, EstrategiaExpansao, AcaoUnidade, ObraConstrucao,
@@ -26,7 +26,7 @@ interface PlanoFormProps {
 type TabGroup = 'planejamento' | 'diagnostico' | 'resultado';
 type TabId =
   | 'dados' | 'equipe' | 'estrategias' | 'acoes-unidades' | 'obras' | 'desembolso' | 'pessoal' | 'projecao-orcamentaria'
-  | 'vagas-turma' | 'demanda-etapa' | 'demanda-bairro'
+  | 'vagas-turma' | 'demanda-etapa' | 'demanda-bairro' | 'demanda-unidade'
   | 'resultado';
 
 const BRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -70,6 +70,7 @@ const TABS: TabDef[] = [
   { id: 'vagas-turma', label: 'Vagas por Turma', group: 'diagnostico', icon: <BookOpen className="w-4 h-4" />, desc: 'Ocupação por unidade' },
   { id: 'demanda-etapa', label: 'Demanda por Etapa', group: 'diagnostico', icon: <BarChart3 className="w-4 h-4" />, desc: 'Déficit por faixa etária' },
   { id: 'demanda-bairro', label: 'Demanda por Bairro', group: 'diagnostico', icon: <MapPin className="w-4 h-4" />, desc: 'Demanda por região' },
+  { id: 'demanda-unidade', label: 'CadÚnico / Unidade', group: 'diagnostico', icon: <Users className="w-4 h-4" />, desc: 'Crianças por raio' },
   { id: 'resultado', label: 'Resultado', group: 'resultado', icon: <CheckCircle2 className="w-4 h-4" />, desc: 'Consolidado e projeções' },
 ];
 
@@ -141,15 +142,19 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   const [descricao, setDescricao] = useState(() => planParaEditar ? planParaEditar.descricao : '');
   const [objetivo, setObjetivo] = useState(() => planParaEditar ? (planParaEditar.objetivoEstrategico || planParaEditar.description || '') : 'Ampliar o acesso à educação pública de qualidade para a primeira infância, gerando oportunidades e reduzindo desigualdades.');
   const [fontes, setFontes] = useState<FonteFinanciamento[]>(() => planParaEditar ? (planParaEditar.fontesFinanciamento || []) : [
-    { id: 'ff1', fonte: 'FNDE — Proinfância', valorPrevisto: 12415806, anoDesembolso: 2029 },
-    { id: 'ff2', fonte: 'Recurso Próprio', valorPrevisto: 1289758, anoDesembolso: 2028 },
-    { id: 'ff3', fonte: 'Convênio MD Calha Norte', valorPrevisto: 1189777, anoDesembolso: 2026 },
-    { id: 'ff4', fonte: 'Emenda Parlamentar', valorPrevisto: 321184, anoDesembolso: 2027 },
+    { id: 'ff1', fonte: 'FNDE — Proinfância', valorPrevisto: 12415806 },
+    { id: 'ff2', fonte: 'Recurso Próprio', valorPrevisto: 1289758 },
+    { id: 'ff3', fonte: 'Convênio MD Calha Norte', valorPrevisto: 1189777 },
+    { id: 'ff4', fonte: 'Emenda Parlamentar', valorPrevisto: 321184 },
   ]);
+
+  const [novaFonteSelecionada, setNovaFonteSelecionada] = useState(FONTES_OPCOES[0]);
+  const [novoValorFonte, setNovoValorFonte] = useState(0);
 
   const [filtroServidor, setFiltroServidor] = useState('');
   const [servidorSelecionadoId, setServidorSelecionadoId] = useState('');
   const [papelSelecionado, setPapelSelecionado] = useState<MembroEquipe['papel']>('membro');
+  const [raioSelecionado, setRaioSelecionado] = useState<number>(1000);
 
   // Aba 1 — Equipe
   const [equipe, setEquipe] = useState<MembroEquipe[]>(() => planParaEditar ? (planParaEditar.equipe || []) : [
@@ -226,7 +231,14 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   const activeGroup = TABS[currentIdx]?.group ?? 'planejamento';
 
   // Helpers
-  const addFonte = () => setFontes(f => [...f, { id: `ff${Date.now()}`, fonte: 'Recurso Próprio', valorPrevisto: 0, anoDesembolso: periodoInicio }]);
+  const addFonte = () => {
+    if (novoValorFonte <= 0) {
+      alert("Por favor, insira um valor válido para a fonte de financiamento.");
+      return;
+    }
+    setFontes(f => [...f, { id: `ff${Date.now()}`, fonte: novaFonteSelecionada, valorPrevisto: novoValorFonte }]);
+    setNovoValorFonte(0);
+  };
   const removeFonte = (id: string) => setFontes(f => f.filter(x => x.id !== id));
   const totalFontes = fontes.reduce((s, f) => s + f.valorPrevisto, 0);
 
@@ -499,13 +511,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
   const anosPlano = Array.from({ length: periodoFim - periodoInicio + 1 }, (_, i) => periodoInicio + i);
 
-  const fontesPorAno = anosPlano.map(ano => ({
-    ano,
-    valorPrevisto: fontes.filter(f => f.anoDesembolso === ano).reduce((s, f) => s + (f.valorPrevisto || 0), 0),
-    itens: fontes.filter(f => f.anoDesembolso === ano),
-  }));
 
-  const fontesPorAnoMap = Object.fromEntries(fontesPorAno.map(f => [f.ano, f.valorPrevisto] as [number, number]));
 
   const itensDesembolso = [
     ...obras.map(o => ({
@@ -547,15 +553,18 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     valor: itensDesembolso.reduce((s, item) => s + (item.desembolsoByAno.find(d => d.ano === ano)?.valor || 0), 0),
   }));
 
-  const saldoPorAno = anosPlano.map(ano => ({
-    ano,
-    disponivel: fontesPorAnoMap[ano] || 0,
-    demanda: demandaPorAno.find(d => d.ano === ano)?.valor || 0,
-    saldo: (fontesPorAnoMap[ano] || 0) - (demandaPorAno.find(d => d.ano === ano)?.valor || 0),
-  }));
+  const saldoPorAno = [] as { ano: number, disponivel: number, demanda: number, saldo: number }[];
+  let saldoAcumulado = fontes.reduce((s, f) => s + f.valorPrevisto, 0);
+  for (const ano of anosPlano) {
+    const demandaAno = demandaPorAno.find(d => d.ano === ano)?.valor || 0;
+    const disponivelAno = saldoAcumulado;
+    const saldoFinalAno = disponivelAno - demandaAno;
+    saldoPorAno.push({ ano, disponivel: disponivelAno, demanda: demandaAno, saldo: saldoFinalAno });
+    saldoAcumulado = saldoFinalAno;
+  }
 
   const totalDemanda = demandaPorAno.reduce((s, d) => s + d.valor, 0);
-  const totalFonte = fontesPorAno.reduce((s, f) => s + f.valorPrevisto, 0);
+  const totalFonte = fontes.reduce((s, f) => s + f.valorPrevisto, 0);
 
   const handleSalvarPlano = () => {
     if (!nome.trim()) {
@@ -907,9 +916,28 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                   {/* Fontes de financiamento */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <label className="block text-sm font-semibold text-slate-700">Fontes de Financiamento</label>
-                      <button onClick={addFonte} className="flex items-center gap-1.5 text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-800 px-3 py-1.5 rounded-lg font-semibold transition-colors">
-                        <Plus className="w-4 h-4" /> Adicionar Fonte
+                      <label className="block text-sm font-semibold text-slate-700">Fontes de Financiamento Disponíveis</label>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-3 mb-4 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Fonte</label>
+                        <select value={novaFonteSelecionada} onChange={e => setNovaFonteSelecionada(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                          {FONTES_OPCOES.map(o => <option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-full md:w-48">
+                        <label className="block text-xs font-semibold text-slate-500 mb-1">Valor Previsto (R$)</label>
+                        <CurrencyInput
+                          value={novoValorFonte}
+                          onChange={setNovoValorFonte}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-right font-semibold text-slate-800"
+                          placeholder="R$ 0,00"
+                        />
+                      </div>
+                      <button onClick={addFonte} className="w-full md:w-auto flex items-center justify-center gap-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg font-semibold transition-colors">
+                        <Plus className="w-4 h-4" /> Adicionar
                       </button>
                     </div>
 
@@ -918,7 +946,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         <thead className="bg-slate-50 border-b border-slate-200">
                           <tr>
                             <th className="text-left px-4 py-3 font-semibold text-slate-600">Fonte de Financiamento</th>
-                            <th className="text-left px-4 py-3 font-semibold text-slate-600 w-[180px]">Ano Desembolso</th>
                             <th className="text-right px-4 py-3 font-semibold text-slate-600 w-[220px]">Valor Previsto</th>
                             <th className="text-center px-4 py-3 font-semibold text-slate-600 w-[70px]">Ação</th>
                           </tr>
@@ -926,34 +953,17 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         <tbody className="divide-y divide-slate-100">
                           {fontes.length === 0 ? (
                             <tr>
-                              <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+                              <td colSpan={3} className="px-4 py-8 text-center text-slate-400">
                                 Nenhuma fonte de financiamento cadastrada para este plano.
                               </td>
                             </tr>
                           ) : (
                             fontes.map(f => (
                               <tr key={f.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-4 py-2">
-                                  <select value={f.fonte} onChange={e => setFontes(prev => prev.map(x => x.id === f.id ? { ...x, fonte: e.target.value } : x))}
-                                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                                    {FONTES_OPCOES.map(o => <option key={o}>{o}</option>)}
-                                  </select>
-                                </td>
-                                <td className="px-4 py-2">
-                                  <input type="number" value={f.anoDesembolso}
-                                    onChange={e => setFontes(prev => prev.map(x => x.id === f.id ? { ...x, anoDesembolso: Number(e.target.value) } : x))}
-                                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                    placeholder="Ano" />
-                                </td>
-                                <td className="px-4 py-2">
-                                  <CurrencyInput
-                                    value={f.valorPrevisto}
-                                    onChange={v => setFontes(prev => prev.map(x => x.id === f.id ? { ...x, valorPrevisto: v } : x))}
-                                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-right font-semibold text-slate-800"
-                                  />
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                  <button onClick={() => removeFonte(f.id)} className="p-1.5 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-colors">
+                                <td className="px-4 py-3 text-slate-700">{f.fonte}</td>
+                                <td className="px-4 py-3 text-right font-semibold text-green-700">{BRL(f.valorPrevisto)}</td>
+                                <td className="px-4 py-3 text-center">
+                                  <button onClick={() => removeFonte(f.id)} className="p-1.5 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-colors" title="Remover fonte">
                                     <Trash2 className="w-4 h-4" />
                                   </button>
                                 </td>
@@ -986,20 +996,18 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
                   <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                     <div className="bg-white rounded-xl border border-slate-200 p-4">
-                      <div className="mb-3 text-slate-700 font-semibold">Fontes de financiamento por ano</div>
+                      <div className="mb-3 text-slate-700 font-semibold">Fontes de financiamento disponíveis</div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-slate-50">
                             <tr>
-                              <th className="text-left px-4 py-2 font-semibold text-slate-700">Ano</th>
                               <th className="text-left px-4 py-2 font-semibold text-slate-700">Fonte</th>
                               <th className="text-right px-4 py-2 font-semibold text-slate-700">Valor previsto</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {fontes.slice().sort((a, b) => a.anoDesembolso - b.anoDesembolso || a.fonte.localeCompare(b.fonte)).map(fonte => (
-                              <tr key={`${fonte.id}-${fonte.anoDesembolso}`}>
-                                <td className="px-4 py-2 text-slate-700">{fonte.anoDesembolso}</td>
+                            {fontes.slice().sort((a, b) => a.fonte.localeCompare(b.fonte)).map(fonte => (
+                              <tr key={fonte.id}>
                                 <td className="px-4 py-2 text-slate-700">{fonte.fonte || 'Fonte não definida'}</td>
                                 <td className="px-4 py-2 text-right text-slate-800 font-semibold">{BRL(fonte.valorPrevisto)}</td>
                               </tr>
@@ -1007,7 +1015,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           </tbody>
                           <tfoot className="bg-slate-50 font-bold text-slate-800">
                             <tr>
-                              <td colSpan={2} className="px-4 py-2">Total disponível</td>
+                              <td className="px-4 py-2">Total disponível</td>
                               <td className="px-4 py-2 text-right">{BRL(totalFonte)}</td>
                             </tr>
                           </tfoot>
@@ -1125,64 +1133,80 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
               {/* ═══ ABA 1 — EQUIPE ══════════════════════════════════════ */}
               {activeTab === 'equipe' && (
                 <div className="space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-2xl font-bold text-slate-800">Equipe Responsável</h2>
-                      <p className="text-slate-600 text-sm">Gerencie o vínculo e os papéis dos servidores neste plano. (Total na equipe: {equipe.length})</p>
-                    </div>
-                    {/* Filtro de Busca */}
-                    <div className="w-full md:w-80">
-                      <input
-                        type="text"
-                        value={filtroServidor}
-                        onChange={e => setFiltroServidor(e.target.value)}
-                        placeholder="Buscar servidor por nome ou secretaria..."
-                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                      />
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-800 mb-1">Equipe Responsável</h2>
+                    <p className="text-slate-600 text-sm">Gerencie o vínculo e os papéis dos servidores neste plano. (Total na equipe: {equipe.length})</p>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex flex-col md:flex-row items-end gap-3 w-full">
+                      <div className="w-full md:w-64">
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Selecionar Servidor</label>
+                        <select 
+                          value={servidorSelecionadoId} 
+                          onChange={(e) => setServidorSelecionadoId(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">-- Selecione um Servidor --</option>
+                          {mockServidores.filter(s => !equipe.find(e => e.servidorId === s.id)).map(s => (
+                            <option key={s.id} value={s.id}>{s.nome} ({s.cargo})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="w-full md:w-32">
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Papel</label>
+                        <select 
+                          value={papelSelecionado} 
+                          onChange={(e) => setPapelSelecionado(e.target.value as MembroEquipe['papel'])}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="elaborador">Elaborador</option>
+                          <option value="revisor">Revisor</option>
+                          <option value="aprovador">Aprovador</option>
+                          <option value="membro">Membro</option>
+                        </select>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          if (servidorSelecionadoId) {
+                            setEquipe(prev => [...prev, { id: `m_${Date.now()}`, servidorId: servidorSelecionadoId, papel: papelSelecionado }]);
+                            setServidorSelecionadoId('');
+                            setPapelSelecionado('membro');
+                          }
+                        }}
+                        disabled={!servidorSelecionadoId}
+                        className="w-full md:w-auto px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                        Adicionar
+                      </button>
                     </div>
                   </div>
 
-                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-600 w-[70px]">Vínculo</th>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-600">Servidor</th>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-600 w-[240px]">Cargo</th>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-600 w-[150px]">Secretaria</th>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-600 w-[200px]">Papel no Plano</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {mockServidores
-                          .filter(s =>
-                            s.nome.toLowerCase().includes(filtroServidor.toLowerCase()) ||
-                            s.secretaria.toLowerCase().includes(filtroServidor.toLowerCase()) ||
-                            s.cargo.toLowerCase().includes(filtroServidor.toLowerCase())
-                          )
-                          .map(servidor => {
-                            const membro = equipe.find(e => e.servidorId === servidor.id);
-                            const isLinked = !!membro;
+                  {equipe.length > 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="text-left px-4 py-3 font-semibold text-slate-600">Servidor</th>
+                            <th className="text-left px-4 py-3 font-semibold text-slate-600 w-[240px]">Cargo</th>
+                            <th className="text-left px-4 py-3 font-semibold text-slate-600 w-[150px]">Secretaria</th>
+                            <th className="text-left px-4 py-3 font-semibold text-slate-600 w-[200px]">Papel no Plano</th>
+                            <th className="text-center px-4 py-3 font-semibold text-slate-600 w-[80px]">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {equipe.map(membro => {
+                            const servidor = mockServidores.find(s => s.id === membro.servidorId);
+                            if (!servidor) return null;
 
                             return (
-                              <tr key={servidor.id} className={`hover:bg-slate-50 transition-colors ${isLinked ? 'bg-blue-50/20' : ''}`}>
-                                <td className="px-4 py-3 text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={isLinked}
-                                    onChange={() => toggleMembro(servidor.id)}
-                                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
-                                  />
-                                </td>
+                              <tr key={membro.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 ${isLinked
-                                        ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                                        : 'bg-gradient-to-br from-slate-300 to-slate-400'
-                                      }`}>
+                                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 bg-gradient-to-br from-blue-500 to-indigo-600">
                                       {servidor.nome.split(' ').slice(0, 2).map(n => n[0]).join('')}
                                     </div>
-                                    <span className={`font-semibold ${isLinked ? 'text-slate-800' : 'text-slate-600'}`}>
+                                    <span className="font-semibold text-slate-800">
                                       {servidor.nome}
                                     </span>
                                   </div>
@@ -1202,11 +1226,9 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                 </td>
                                 <td className="px-4 py-3">
                                   <select
-                                    value={membro?.papel || 'membro'}
-                                    disabled={!isLinked}
+                                    value={membro.papel}
                                     onChange={e => updatePapelMembro(servidor.id, e.target.value as MembroEquipe['papel'])}
-                                    className={`text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white outline-none w-full ${!isLinked ? 'opacity-40 cursor-not-allowed bg-slate-50' : 'focus:ring-2 focus:ring-blue-500'
-                                      }`}
+                                    className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white outline-none w-full focus:ring-2 focus:ring-blue-500"
                                   >
                                     <option value="elaborador">Elaborador</option>
                                     <option value="revisor">Revisor</option>
@@ -1214,12 +1236,26 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                     <option value="membro">Membro</option>
                                   </select>
                                 </td>
+                                <td className="px-4 py-3 text-center">
+                                  <button
+                                    onClick={() => setEquipe(prev => prev.filter(e => e.servidorId !== servidor.id))}
+                                    className="text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 transition-colors"
+                                    title="Remover Servidor"
+                                  >
+                                    <X className="w-4 h-4 mx-auto" />
+                                  </button>
+                                </td>
                               </tr>
                             );
                           })}
-                      </tbody>
-                    </table>
-                  </div>
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center text-slate-500">
+                      Nenhum servidor vinculado a este plano ainda. Use os campos acima para adicionar.
+                    </div>
+                  )}
 
                   <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
                     <strong>Fluxo de aprovação:</strong> Elaborador → Revisor → Aprovador (Secretário de Educação) → Secretaria de Planejamento → Prefeito
@@ -1485,7 +1521,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         )}
 
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Etapa Destino</label>
                             <select value={acao.etapaDestino} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, etapaDestino: e.target.value as EtapaEI } : x))} className={inputCls}>{ETAPAS.map(e => <option key={e}>{e}</option>)}</select>
@@ -1493,10 +1529,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Nova Capacidade</label>
                             <input type="number" value={acao.novaCapacidade} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, novaCapacidade: Number(e.target.value) } : x))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Fonte Financiamento</label>
-                            <select value={acao.fonteFinanciamento} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, fonteFinanciamento: e.target.value } : x))} className={inputCls}>{FONTES_OPCOES.map(f => <option key={f}>{f}</option>)}</select>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Previsão de Conclusão</label>
@@ -1656,17 +1688,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                             })()}
                           </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Tipo de Projeto</label>
-                          <select value={obra.tipoProjetoFNDE ?? 'proprio'}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, tipoProjetoFNDE: e.target.value as ObraConstrucao['tipoProjetoFNDE'] } : x))}
-                            className={inputCls}>
-                            <option value="tipo1">Creche Tipo 1 (FNDE)</option>
-                            <option value="tipo2">Creche Tipo 2 (FNDE)</option>
-                            <option value="proprio">Projeto Próprio</option>
-                          </select>
-                        </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-semibold text-slate-600 mb-1">Nº de Salas</label>
                           <input type="number" value={obra.numeroDeSalas}
@@ -2177,6 +2199,107 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                 </div>
               )}
 
+              {/* ═══ ABA 9 — DEMANDA POR UNIDADE (CADUNICO E RAIO) ═════════════════════════════ */}
+              {activeTab === 'demanda-unidade' && (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold text-slate-800">CadÚnico por Unidade e Raio</h2>
+                  <p className="text-slate-500 text-sm">Distribuição das crianças do CadÚnico por etapa e proximidade das escolas</p>
+                  
+                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6 flex flex-col md:flex-row md:items-center gap-6">
+                    <div className="flex-1">
+                      <label className="block text-sm font-bold text-slate-700 mb-2">Raio de Distância (em metros)</label>
+                      <input 
+                        type="range" 
+                        min="500" 
+                        max="3000" 
+                        step="500" 
+                        value={raioSelecionado} 
+                        onChange={e => setRaioSelecionado(Number(e.target.value))}
+                        className="w-full accent-blue-600" 
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-2 font-medium">
+                        <span>500m</span>
+                        <span>1000m</span>
+                        <span>1500m</span>
+                        <span>2000m</span>
+                        <span>2500m</span>
+                        <span>3000m</span>
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 px-6 py-4 rounded-lg border border-blue-100 flex flex-col items-center justify-center min-w-[150px]">
+                      <span className="text-sm font-medium text-blue-700 mb-1">Raio Atual</span>
+                      <span className="text-2xl font-black text-blue-900">{raioSelecionado}m</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                        <tr>
+                          <th className="px-6 py-4 font-bold">Unidade Escolar</th>
+                          <th className="px-4 py-4 font-bold">Etapa</th>
+                          <th className="px-4 py-4 font-bold text-center">Demanda (Raio)</th>
+                          <th className="px-4 py-4 font-bold text-center">Vagas Atuais</th>
+                          <th className="px-4 py-4 font-bold text-center">Novas Vagas</th>
+                          <th className="px-4 py-4 font-bold text-center">Déficit</th>
+                          <th className="px-4 py-4 font-bold text-center">Atendimento</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {mockCadUnicoUnidade.map((d, unitIndex) => {
+                          const uni = mockUnidades.find(u => u.id === d.unidadeId);
+                          // Encontrar o menor raio >= raioSelecionado
+                          const distData = d.raios.find(r => r.raioMts >= raioSelecionado) || d.raios[d.raios.length - 1];
+                          const etapas: EtapaEI[] = ['Maternal', 'Jardim I', 'Jardim II'];
+                          
+                          return etapas.map((etapa, idx) => {
+                            const demanda = etapa === 'Maternal' ? distData.maternal : (etapa === 'Jardim I' ? distData.jardimI : distData.jardimII);
+                            const vagaAtualInfo = uni?.vagasPorEtapa.find(v => v.etapa === etapa);
+                            const vagasAtuais = vagaAtualInfo ? vagaAtualInfo.vagas : 0;
+                            
+                            // Busca na aba de Ações em Unidades se há expansão planejada para esta unidade e etapa
+                            const novasVagas = acoes.filter(a => a.unidadeId === d.unidadeId && a.etapaDestino === etapa).reduce((sum, a) => sum + (a.novaCapacidade - a.capacidadeAnterior), 0);
+                            
+                            const totalVagas = vagasAtuais + novasVagas;
+                            const deficit = demanda - totalVagas;
+                            const deficitPositivo = deficit > 0 ? deficit : 0;
+                            
+                            // Porcentagem
+                            const taxaAtendimento = demanda > 0 ? Math.min(100, (totalVagas / demanda) * 100) : 100;
+                            
+                            // Classes visuais
+                            const deficitClass = deficitPositivo > 0 ? 'text-red-600 font-bold' : 'text-green-600 font-medium';
+                            const taxaClass = taxaAtendimento >= 100 ? 'text-green-700 bg-green-100' : taxaAtendimento >= 50 ? 'text-amber-700 bg-amber-100' : 'text-red-700 bg-red-100';
+
+                            return (
+                              <tr key={`${d.unidadeId}-${etapa}`} className={`hover:bg-slate-50 transition-colors ${idx === 0 && unitIndex !== 0 ? 'border-t-2 border-slate-200' : ''}`}>
+                                {idx === 0 && (
+                                  <td className="px-6 py-3 font-semibold text-slate-800 border-r border-slate-100" rowSpan={3}>
+                                    {uni?.nome || 'Unidade Desconhecida'}
+                                  </td>
+                                )}
+                                <td className="px-4 py-3 text-slate-600 font-medium bg-slate-50/30">{etapa}</td>
+                                <td className="px-4 py-3 text-center font-bold text-slate-700 bg-blue-50/30">{demanda}</td>
+                                <td className="px-4 py-3 text-center text-slate-600">{vagasAtuais}</td>
+                                <td className="px-4 py-3 text-center text-green-600 font-bold">{novasVagas > 0 ? `+${novasVagas}` : '-'}</td>
+                                <td className={`px-4 py-3 text-center ${deficitClass}`}>
+                                  {deficitPositivo}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${taxaClass}`}>
+                                    {taxaAtendimento.toFixed(1)}%
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* ═══ ABA 10 — PROJEÇÃO ORÇAMENTÁRIA ═════════════════════ */}
               {activeTab === 'projecao-orcamentaria' && (
                 <div className="space-y-6">
@@ -2391,141 +2514,156 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
               )}
 
               {/* ═══ ABA 11 — RESULTADO ══════════════════════════════════ */}
-              {activeTab === 'resultado' && (
-                <div className="space-y-8">
-                  <h2 className="text-2xl font-bold text-slate-800">Demandas vs. Planejamento de Expansão</h2>
+              {activeTab === 'resultado' && (() => {
+                const demandaGeral = mockDemandaEtapa.reduce((sum, d) => sum + d.criancasResidentes, 0);
+                const vagasAtuaisGeral = mockDemandaEtapa.reduce((sum, d) => sum + d.vagasAtuais, 0);
+                const vagasCriadas = totaisConsolidados.totalVagas;
+                
+                const taxaAtual = demandaGeral > 0 ? (vagasAtuaisGeral / demandaGeral) * 100 : 100;
+                const taxaProjetada = demandaGeral > 0 ? ((vagasAtuaisGeral + vagasCriadas) / demandaGeral) * 100 : 100;
+                const deficitResidual = demandaGeral - (vagasAtuaisGeral + vagasCriadas);
+                
+                const fontesDisponiveis = totalFontes;
+                const fontesComprometidas = totaisConsolidados.totalInvestimento;
+                const saldoFinalCaixa = fontesDisponiveis - fontesComprometidas;
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {[
-                      { label: 'Taxa atual (2025)', value: '15,33%', sub: 'crianças 0-3 atendidas', color: 'bg-red-500', icon: '📉' },
-                      { label: 'Taxa projetada (2029)', value: '29,97%', sub: 'com o plano concluído', color: 'bg-blue-500', icon: '📈' },
-                      { label: 'Novas vagas planejadas', value: '672', sub: 'entre 2026 e 2029', color: 'bg-green-500', icon: '🏫' },
-                      { label: 'Déficit residual (2029)', value: '939', sub: 'vagas ainda faltantes', color: 'bg-amber-500', icon: '⚠️' },
-                    ].map(kpi => (
-                      <div key={kpi.label} className="bg-white rounded-xl border border-slate-200 p-5">
-                        <div className="text-2xl mb-2">{kpi.icon}</div>
-                        <div className={`text-3xl font-black text-white ${kpi.color} px-3 py-1 rounded-lg inline-block mb-2`}>{kpi.value}</div>
-                        <div className="font-semibold text-slate-700 text-sm">{kpi.label}</div>
-                        <div className="text-xs text-slate-500">{kpi.sub}</div>
-                      </div>
-                    ))}
-                  </div>
+                let acumVagas = 0;
+                const evolucaoVagas = totaisConsolidados.vagasPorAno.filter(v => v.vagas > 0).map(v => {
+                  acumVagas += v.vagas;
+                  const taxaAno = demandaGeral > 0 ? ((vagasAtuaisGeral + acumVagas) / demandaGeral) * 100 : 100;
+                  return { ano: v.ano, vagas: v.vagas, acum: acumVagas, taxa: taxaAno.toFixed(2) + '%' };
+                });
 
-                  <div className="bg-white rounded-xl border border-slate-200 p-6">
-                    <h3 className="font-bold text-slate-700 mb-4">Evolução das Vagas Criadas (2026–2029)</h3>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <AreaChart data={mockProjecaoVagas.filter(p => p.ano > 2025)}>
-                        <defs>
-                          <linearGradient id="colorVagas" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis key="xaxis" dataKey="ano" />
-                        <YAxis key="yaxis-left" yAxisId="left" />
-                        <YAxis key="yaxis-right" yAxisId="right" orientation="right" tickFormatter={v => `${v}%`} />
-                        <Tooltip key="tooltip" formatter={(v, name) => [name === 'taxaAtendimento' ? `${v}%` : v, name === 'taxaAtendimento' ? 'Taxa Atendimento' : 'Vagas Acumuladas']} />
-                        <Area key="acumulado" yAxisId="left" type="monotone" dataKey="acumulado" name="Vagas Acumuladas" stroke="#3b82f6" fill="url(#colorVagas)" strokeWidth={2} />
-                        <Area key="taxa" yAxisId="right" type="monotone" dataKey="taxaAtendimento" name="Taxa Atendimento %" stroke="#10b981" fill="none" strokeWidth={2} strokeDasharray="5 5" />
-                        <Legend key="legend" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
+                return (
+                  <div className="space-y-8">
+                    <h2 className="text-2xl font-bold text-slate-800">Raio-X do Plano: Impacto e Projeções</h2>
 
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-700">Ano</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700">Novas Vagas</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700">Acumulado</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700">Taxa Atendimento</th>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-700">Ação Principal</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {[
-                          { ano: 2026, vagas: 160, acum: 160, taxa: '18,81%', acao: 'Adaptação Balão Mágico + Retomada Obra Liberdade' },
-                          { ano: 2027, vagas: 64, acum: 224, taxa: '20,17%', acao: 'Ampliação Pedro Kemper (2 salas)' },
-                          { ano: 2028, vagas: 96, acum: 320, taxa: '22,24%', acao: 'Ampliação Luiz Lenzi (3 salas)' },
-                          { ano: 2029, vagas: 352, acum: 672, taxa: '29,97%', acao: '3 novas creches (FNDE Tipo 1, Tipo 2 + Calha Norte)' },
-                        ].map(row => (
-                          <tr key={row.ano} className="hover:bg-slate-50">
-                            <td className="px-4 py-3 font-bold text-slate-800">{row.ano}</td>
-                            <td className="px-4 py-3 text-right font-semibold text-green-700">+{row.vagas}</td>
-                            <td className="px-4 py-3 text-right font-bold text-blue-700">{row.acum}</td>
-                            <td className="px-4 py-3 text-right">
-                              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">{row.taxa}</span>
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">{row.acao}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
-                    <h3 className="font-bold text-xl mb-4">Resumo do Investimento Total</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {fontes.map(f => (
-                        <div key={f.id}>
-                          <div className="text-blue-200 text-xs mb-1">{f.fonte}</div>
-                          <div className="font-bold text-xl">{BRL(f.valorPrevisto)}</div>
-                          <div className="text-blue-200 text-xs">em {f.anoDesembolso}</div>
+                      {[
+                        { label: 'Taxa atual (Base)', value: `${taxaAtual.toFixed(2)}%`, sub: 'de atendimento global', color: 'bg-red-500', icon: '📉' },
+                        { label: 'Novas vagas do Plano', value: vagasCriadas, sub: 'impacto direto das metas', color: 'bg-blue-500', icon: '🏫' },
+                        { label: 'Taxa projetada', value: `${taxaProjetada.toFixed(2)}%`, sub: 'após conclusão do plano', color: 'bg-green-500', icon: '📈' },
+                        { label: 'Déficit residual', value: deficitResidual > 0 ? deficitResidual : 0, sub: 'vagas que ainda faltarão', color: 'bg-amber-500', icon: '⚠️' },
+                      ].map(kpi => (
+                        <div key={kpi.label} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                          <div className="text-2xl mb-2">{kpi.icon}</div>
+                          <div className={`text-3xl font-black text-white ${kpi.color} px-3 py-1 rounded-lg inline-block mb-2`}>{kpi.value}</div>
+                          <div className="font-semibold text-slate-700 text-sm">{kpi.label}</div>
+                          <div className="text-xs text-slate-500">{kpi.sub}</div>
                         </div>
                       ))}
                     </div>
-                    <div className="mt-4 pt-4 border-t border-blue-500 flex justify-between items-center">
-                      <span className="font-bold text-lg">TOTAL INVESTIMENTO</span>
-                      <span className="font-black text-2xl">{BRL(totalFontes)}</span>
-                    </div>
-                  </div>
-                  <div className="bg-gradient-to-r from-orange-600 to-amber-700 rounded-xl p-6 text-white">
-                    <h3 className="font-bold text-xl mb-4">Resumo do Custeio Operacional Anual Estimado (Pós-Implantação)</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      <div>
-                        <div className="text-orange-200 text-xs mb-1">Pessoal (Contratações do Plano)</div>
-                        <div className="font-bold text-xl">{BRL(totalCustoAnualPessoal)}</div>
-                        <div className="text-orange-200 text-xs">Inclui encargos patronais (14%) e 13º</div>
-                      </div>
-                      <div>
-                        <div className="text-orange-200 text-xs mb-1">Serviços e Contratos Operacionais</div>
-                        <div className="font-bold text-xl">
-                          {BRL(obras.reduce((acc, obra) => {
-                            const model = modelos.find(m => m.tipoBase === obra.tipoProjetoFNDE);
-                            return acc + (model ? (model.servicos || []).reduce((s, sv) => s + sv.valorAnual, 0) : 0);
-                          }, 0))}
-                        </div>
-                        <div className="text-orange-200 text-xs">Energia, segurança, manutenção e limpeza</div>
-                      </div>
-                      <div>
-                        <div className="text-orange-200 text-xs mb-1">Aquisições e Consumo de Referência</div>
-                        <div className="font-bold text-xl">
-                          {BRL(obras.reduce((acc, obra) => {
-                            const model = modelos.find(m => m.tipoBase === obra.tipoProjetoFNDE);
-                            return acc + (model ? (model.aquisicoes || []).reduce((s, aq) => s + aq.quantidadeAnual * aq.valorUnitario, 0) : 0);
-                          }, 0))}
-                        </div>
-                        <div className="text-orange-200 text-xs">Merenda escolar, material pedagógico e uniforme</div>
-                      </div>
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-orange-500 flex justify-between items-center">
-                      <span className="font-bold text-lg">CUSTEIO TOTAL OPERACIONAL ANUAL</span>
-                      <span className="font-black text-2xl">{BRL(totalCustoAnualPessoal + totalCusteioModelos)}</span>
-                    </div>
-                  </div>
 
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-                    <h3 className="font-bold text-amber-800 mb-2">Crianças em Situação de Vulnerabilidade</h3>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div><div className="text-3xl font-black text-amber-700">1.231</div><div className="text-sm text-amber-600">Crianças 0-3a no CadÚnico</div></div>
-                      <div><div className="text-3xl font-black text-red-600">1.215</div><div className="text-sm text-red-500">Não frequentam creche</div></div>
-                      <div><div className="text-3xl font-black text-red-700">1,30%</div><div className="text-sm text-red-500">Taxa de atendimento (CadÚnico)</div></div>
+                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="font-bold text-slate-700 mb-4">Evolução da Taxa de Atendimento (Por Ano de Conclusão)</h3>
+                      {evolucaoVagas.length > 0 ? (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                          <table className="w-full text-sm">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Ano da Conclusão</th>
+                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Novas Vagas Entregues</th>
+                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Acumulado (Plano)</th>
+                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Taxa de Atendimento Global</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {evolucaoVagas.map(row => (
+                                <tr key={row.ano} className="hover:bg-slate-50">
+                                  <td className="px-4 py-4 text-center font-bold text-slate-800">{row.ano}</td>
+                                  <td className="px-4 py-4 text-center font-semibold text-green-700">+{row.vagas}</td>
+                                  <td className="px-4 py-4 text-center font-bold text-blue-700">{row.acum}</td>
+                                  <td className="px-4 py-4 text-center">
+                                    <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-bold">{row.taxa}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-slate-500">Nenhuma meta com ano de conclusão cadastrada ou vagas geradas.</div>
+                      )}
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-xl p-6 text-white shadow-md">
+                        <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
+                          <DollarSign className="w-5 h-5 text-emerald-200" /> Balanço Financeiro (Caixa Único)
+                        </h3>
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-end border-b border-emerald-500 pb-3">
+                            <div>
+                              <div className="text-emerald-100 text-sm">Total de Fontes Disponíveis</div>
+                            </div>
+                            <div className="font-bold text-xl">{BRL(fontesDisponiveis)}</div>
+                          </div>
+                          <div className="flex justify-between items-end border-b border-emerald-500 pb-3">
+                            <div>
+                              <div className="text-emerald-100 text-sm">Investimento Comprometido (Metas)</div>
+                            </div>
+                            <div className="font-bold text-xl text-red-200">-{BRL(fontesComprometidas)}</div>
+                          </div>
+                          <div className="flex justify-between items-end pt-2">
+                            <div>
+                              <div className="font-bold text-lg">Saldo Restante</div>
+                            </div>
+                            <div className={`font-black text-3xl ${saldoFinalCaixa < 0 ? 'text-red-300' : 'text-emerald-100'}`}>
+                              {BRL(saldoFinalCaixa)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-orange-600 to-amber-700 rounded-xl p-6 text-white shadow-md">
+                        <h3 className="font-bold text-xl mb-4">Custeio Operacional Pós-Plano</h3>
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center border-b border-orange-500 pb-3">
+                            <span className="text-orange-100 text-sm">Custo com Pessoal / Ano</span>
+                            <span className="font-bold text-lg">{BRL(totalCustoAnualPessoal)}</span>
+                          </div>
+                          <div className="flex justify-between items-center border-b border-orange-500 pb-3">
+                            <span className="text-orange-100 text-sm">Custo Médio de Investimento / Vaga</span>
+                            <span className="font-bold text-lg">
+                              {vagasCriadas > 0 ? BRL(fontesComprometidas / vagasCriadas) : '—'}
+                            </span>
+                          </div>
+                          <div className="pt-2">
+                            <p className="text-orange-200 text-xs">
+                              O custeio operacional estima os salários e encargos dos novos profissionais que precisarão ser contratados para atender as {vagasCriadas} vagas criadas.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 shadow-sm">
+                      <h3 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
+                        <Users className="w-5 h-5 text-blue-700" /> CadÚnico Geral da Rede
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div className="bg-white rounded-lg p-4 shadow-sm">
+                          <div className="text-2xl font-black text-slate-800">{demandaGeral}</div>
+                          <div className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wide">Crianças Cadastradas</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-4 shadow-sm">
+                          <div className="text-2xl font-black text-red-600">{demandaGeral - vagasAtuaisGeral}</div>
+                          <div className="text-xs font-semibold text-red-500 mt-1 uppercase tracking-wide">Sem Vaga Atual</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-4 shadow-sm">
+                          <div className="text-2xl font-black text-green-600">{deficitResidual > 0 ? deficitResidual : 0}</div>
+                          <div className="text-xs font-semibold text-green-600 mt-1 uppercase tracking-wide">Déficit com Plano</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-4 shadow-sm">
+                          <div className="text-2xl font-black text-blue-600">{vagasCriadas}</div>
+                          <div className="text-xs font-semibold text-blue-600 mt-1 uppercase tracking-wide">Vagas do Plano</div>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Footer */}

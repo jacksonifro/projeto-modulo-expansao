@@ -49,9 +49,8 @@ export const calcularAutoDistribuicao = (
   const anosPlano: number[] = [];
   for (let y = periodoInicio; y <= periodoFim; y++) anosPlano.push(y);
 
-  // disponibilidade por ano (fontes)
-  const disponivelPorAno: Record<number, number> = {};
-  anosPlano.forEach(y => { disponivelPorAno[y] = fontes.filter(f => f.anoDesembolso === y).reduce((s, f) => s + (f.valorPrevisto || 0), 0); });
+  // disponibilidade total
+  const totalFontes = fontes.reduce((s, f) => s + (f.valorPrevisto || 0), 0);
 
   // gerar alocação desejada
   type AllocItem = { id: string; tipo: 'obra' | 'acao'; arr: { ano: number; valor: number; fonte?: string }[] };
@@ -87,63 +86,49 @@ export const calcularAutoDistribuicao = (
     desired.push({ id: a.id, tipo: 'acao', arr });
   });
 
-  // demanda por ano
-  const demandaPorAno: Record<number, number> = {};
-  anosPlano.forEach(y => demandaPorAno[y] = 0);
-  desired.forEach(item => item.arr.forEach(d => { demandaPorAno[d.ano] = (demandaPorAno[d.ano] || 0) + d.valor; }));
+  // sweep cumulativo
+  let saldoAtual = totalFontes;
+  const newObras = obras.map(o => ({ ...o, desembolsoPorAno: [] as {ano: number; valor: number; fonte: string}[] }));
+  const newAcoes = acoes.map(a => ({ ...a, desembolsoPorAno: [] as {ano: number; valor: number; fonte: string}[] }));
 
-  // fator de escala por ano
-  const escalaPorAno: Record<number, number> = {};
-  anosPlano.forEach(y => {
-    const disp = disponivelPorAno[y] || 0;
-    const dem = demandaPorAno[y] || 0;
-    escalaPorAno[y] = dem > 0 ? Math.min(1, disp / dem) : 1;
-  });
+  anosPlano.forEach(ano => {
+    const allDesiredForYear = desired.map(d => ({
+      id: d.id, tipo: d.tipo, req: d.arr.find(x => x.ano === ano)
+    })).filter(x => x.req && x.req.valor > 0);
 
-  // aplicar escala e montar novos objetos
-  const newObras = obras.map(o => {
-    const item = desired.find(d => d.id === o.id && d.tipo === 'obra');
-    if (!item) return { ...o, desembolsoPorAno: [] };
-    const arr = item.arr.map(d => ({ ano: d.ano, valor: Math.round(d.valor * escalaPorAno[d.ano]), fonte: d.fonte }));
-    return { ...o, desembolsoPorAno: arr };
-  });
+    const totalReqAno = allDesiredForYear.reduce((s, x) => s + x.req!.valor, 0);
+    
+    // Aprova o máximo que o saldo atual permite
+    const approvedTotalForYear = Math.min(saldoAtual, totalReqAno);
+    const escala = totalReqAno > 0 ? approvedTotalForYear / totalReqAno : 1;
+    
+    saldoAtual -= approvedTotalForYear;
 
-  const newAcoes = acoes.map(a => {
-    const item = desired.find(d => d.id === a.id && d.tipo === 'acao');
-    if (!item) return { ...a, desembolsoPorAno: [] };
-    const arr = item.arr.map(d => ({ ano: d.ano, valor: Math.round(d.valor * escalaPorAno[d.ano]), fonte: d.fonte }));
-    return { ...a, desembolsoPorAno: arr };
-  });
+    // Distribuir o aprovado
+    let approvedSoma = 0;
+    allDesiredForYear.forEach((item, idx) => {
+      let approvedValor = Math.round(item.req!.valor * escala);
+      
+      // Corrigir arredondamento no último item
+      if (idx === allDesiredForYear.length - 1) {
+         approvedValor = approvedTotalForYear - approvedSoma;
+      }
+      approvedSoma += approvedValor;
 
-  // Garantir que por ano a soma não exceda o disponível (corrigir por arredondamento)
-  const adjustPerYear = (objs: ({ id: string; desembolsoPorAno: { ano: number; valor: number; fonte: string }[] }[])) => {
-    anosPlano.forEach(ano => {
-      const somaAno = objs.reduce((s, it) => s + (it.desembolsoPorAno.find(d => d.ano === ano)?.valor || 0), 0);
-      const dispon = disponivelPorAno[ano] || 0;
-      if (somaAno > dispon && somaAno > 0) {
-        let diff = somaAno - dispon;
-        for (let obj of objs) {
-          const d = obj.desembolsoPorAno.find(x => x.ano === ano);
-          if (!d || d.valor <= 0) continue;
-          const reduc = Math.min(d.valor, diff);
-          d.valor = Math.max(0, d.valor - reduc);
-          diff -= reduc;
-          if (diff <= 0) break;
+      if (approvedValor > 0) {
+        if (item.tipo === 'obra') {
+          const ob = newObras.find(o => o.id === item.id);
+          if (ob) ob.desembolsoPorAno.push({ ano, valor: approvedValor, fonte: item.req!.fonte || '' });
+        } else {
+          const ac = newAcoes.find(a => a.id === item.id);
+          if (ac) ac.desembolsoPorAno.push({ ano, valor: approvedValor, fonte: item.req!.fonte || '' });
         }
       }
     });
-  };
+  });
 
-  const finalObras = newObras.map(o => ({
-    ...o,
-    desembolsoPorAno: o.desembolsoPorAno.map(d => ({ ano: d.ano, valor: d.valor, fonte: d.fonte || '' }))
-  }));
-  const finalAcoes = newAcoes.map(a => ({
-    ...a,
-    desembolsoPorAno: a.desembolsoPorAno.map(d => ({ ano: d.ano, valor: d.valor, fonte: d.fonte || '' }))
-  }));
-
-  adjustPerYear([...finalObras, ...finalAcoes]);
+  const finalObras = newObras;
+  const finalAcoes = newAcoes;
 
   return {
     finalObras: finalObras as unknown as ObraConstrucao[],

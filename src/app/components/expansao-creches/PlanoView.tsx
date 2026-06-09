@@ -157,7 +157,6 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold text-slate-700">Fonte</th>
                   <th className="text-right px-4 py-3 font-semibold text-slate-700">Valor Previsto</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-700">Desembolso</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -165,13 +164,11 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                   <tr key={f.id}>
                     <td className="px-4 py-3 font-semibold text-slate-700">{f.fonte}</td>
                     <td className="px-4 py-3 text-right text-green-700 font-semibold">{BRL(f.valorPrevisto)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{f.anoDesembolso}</td>
                   </tr>
                 ))}
                 <tr className="bg-slate-50 font-bold">
                   <td className="px-4 py-3 text-slate-800">Total</td>
                   <td className="px-4 py-3 text-right text-blue-700">{BRL(investimentoTotal)}</td>
-                  <td />
                 </tr>
               </tbody>
             </table>
@@ -197,19 +194,20 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                   const end = plan.periodoFim || (start + 3);
                   const anos = [] as number[];
                   for (let y = start; y <= end; y++) anos.push(y);
-                  const disponiveisByYear: Record<number, number> = {};
-                  plan.fontesFinanciamento.forEach(f => { disponiveisByYear[f.anoDesembolso] = (disponiveisByYear[f.anoDesembolso] || 0) + f.valorPrevisto; });
+                  
+                  let saldoAcumulado = plan.fontesFinanciamento.reduce((s, f) => s + f.valorPrevisto, 0);
 
                   return anos.map(ano => {
-                    const dispon = disponiveisByYear[ano] || 0;
+                    const dispon = saldoAcumulado;
                     const demanda = (plan.obras || []).reduce((s, o) => s + ((o.desembolsoPorAno || []).filter(d => d.ano === ano).reduce((ss, d) => ss + d.valor, 0) || 0), 0)
                       + (plan.acoesUnidades || []).reduce((s, a) => s + ((a.desembolsoPorAno || []).filter(d => d.ano === ano).reduce((ss, d) => ss + d.valor, 0) || 0), 0);
+                    saldoAcumulado = dispon - demanda;
                     return (
                       <tr key={ano}>
                         <td className="px-4 py-3 text-slate-700">{ano}</td>
                         <td className="px-4 py-3 text-right text-green-700 font-semibold">{BRL(dispon)}</td>
                         <td className="px-4 py-3 text-right text-slate-700">{BRL(demanda)}</td>
-                        <td className={`px-4 py-3 text-right font-semibold ${dispon - demanda < 0 ? 'text-red-600' : 'text-slate-800'}`}>{BRL(dispon - demanda)}</td>
+                        <td className={`px-4 py-3 text-right font-semibold ${saldoAcumulado < 0 ? 'text-red-600' : 'text-slate-800'}`}>{BRL(saldoAcumulado)}</td>
                       </tr>
                     );
                   });

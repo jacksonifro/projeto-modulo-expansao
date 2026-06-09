@@ -207,10 +207,10 @@ export const mockPlans: ExpansionPlan[] = [
     descricao: 'Plano municipal de ampliação do acesso à educação pública de qualidade para a primeira infância, com meta de criar 672 novas vagas e elevar a taxa de atendimento de 15,33% para 29,97%.',
     objetivoEstrategico: 'Ampliar o acesso à educação pública de qualidade para a primeira infância, gerando oportunidades e reduzindo desigualdades.',
     fontesFinanciamento: [
-      { id: 'ff1', fonte: 'FNDE — Proinfância', valorPrevisto: 12415806, anoDesembolso: 2029 },
-      { id: 'ff2', fonte: 'Recurso Próprio', valorPrevisto: 1289758, anoDesembolso: 2028 },
-      { id: 'ff3', fonte: 'Convênio MD Calha Norte', valorPrevisto: 1189777, anoDesembolso: 2026 },
-      { id: 'ff4', fonte: 'Emenda Parlamentar', valorPrevisto: 321184, anoDesembolso: 2027 },
+      { id: 'ff1', fonte: 'FNDE — Proinfância', valorPrevisto: 12415806 },
+      { id: 'ff2', fonte: 'Recurso Próprio', valorPrevisto: 1289758 },
+      { id: 'ff3', fonte: 'Convênio MD Calha Norte', valorPrevisto: 1189777 },
+      { id: 'ff4', fonte: 'Emenda Parlamentar', valorPrevisto: 321184 },
     ],
     responsavelId: 's1',
     dataElaboracao: '2025-11-15',
@@ -528,4 +528,80 @@ export const mockAquisicoes: ItemAquisicao[] = [
   { id: 'aq18', codigo: '2', descricao: 'Merenda escolar', tipoCreche: 'sala', unidade: 'aluno/dia letivo', quantidadeAnual: 4000, valorUnitario: 16.37 },
   { id: 'aq19', codigo: '3', descricao: 'Material pedagógico', tipoCreche: 'sala', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 800 },
   { id: 'aq20', codigo: '4', descricao: 'Material de limpeza e consumo', tipoCreche: 'sala', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 350 },
+];
+
+// ─── Diagnóstico — CadÚnico por Unidade e Raio (MOCK) ──────────────────────
+export const mockCadUnicoUnidade = [
+  {
+    unidadeId: 'ue1', // CEI Terezinha Geneci de Oliveira
+    raios: [
+      { raioMts: 500, maternal: 12, jardimI: 18, jardimII: 22 },
+      { raioMts: 1000, maternal: 34, jardimI: 45, jardimII: 50 },
+      { raioMts: 2000, maternal: 80, jardimI: 95, jardimII: 110 },
+      { raioMts: 3000, maternal: 120, jardimI: 140, jardimII: 165 },
+    ]
+  },
+  {
+    unidadeId: 'ue2', // CMEI Josino Brito
+    raios: [
+      { raioMts: 500, maternal: 8, jardimI: 10, jardimII: 15 },
+      { raioMts: 1000, maternal: 22, jardimI: 30, jardimII: 42 },
+      { raioMts: 2000, maternal: 65, jardimI: 80, jardimII: 92 },
+      { raioMts: 3000, maternal: 105, jardimI: 125, jardimII: 140 },
+    ]
+  },
+  {
+    unidadeId: 'ue3', // CMEI Balão Mágico
+    raios: [
+      { raioMts: 500, maternal: 15, jardimI: 22, jardimII: 28 },
+      { raioMts: 1000, maternal: 40, jardimI: 55, jardimII: 68 },
+      { raioMts: 2000, maternal: 95, jardimI: 110, jardimII: 130 },
+      { raioMts: 3000, maternal: 150, jardimI: 175, jardimII: 190 },
+    ]
+  },
+  {
+    unidadeId: 'ue4', // CMEI Vereador Expedito Alves de Macedo
+    raios: [
+      { raioMts: 500, maternal: 10, jardimI: 15, jardimII: 20 },
+      { raioMts: 1000, maternal: 28, jardimI: 38, jardimII: 45 },
+      { raioMts: 2000, maternal: 70, jardimI: 88, jardimII: 98 },
+      { raioMts: 3000, maternal: 115, jardimI: 135, jardimII: 155 },
+    ]
+  },
+  {
+    unidadeId: 'ue5', // CMEI Monica Francisca da Cruz
+    raios: [
+      { raioMts: 500, maternal: 5, jardimI: 8, jardimII: 12 },
+      { raioMts: 1000, maternal: 18, jardimI: 25, jardimII: 35 },
+      { raioMts: 2000, maternal: 55, jardimI: 70, jardimII: 85 },
+      { raioMts: 3000, maternal: 90, jardimI: 110, jardimII: 125 },
+    ]
+  },
+  {
+    unidadeId: 'ue6', // CMEI Dercy Gomes Rodrigues
+    raios: [
+      { raioMts: 500, maternal: 20, jardimI: 28, jardimII: 35 },
+      { raioMts: 1000, maternal: 50, jardimI: 65, jardimII: 80 },
+      { raioMts: 2000, maternal: 110, jardimI: 135, jardimII: 150 },
+      { raioMts: 3000, maternal: 175, jardimI: 210, jardimII: 235 },
+    ]
+  },
+  {
+    unidadeId: 'ue7', // CMEI José Simões
+    raios: [
+      { raioMts: 500, maternal: 14, jardimI: 20, jardimII: 25 },
+      { raioMts: 1000, maternal: 36, jardimI: 48, jardimII: 60 },
+      { raioMts: 2000, maternal: 85, jardimI: 105, jardimII: 120 },
+      { raioMts: 3000, maternal: 130, jardimI: 160, jardimII: 185 },
+    ]
+  },
+  {
+    unidadeId: 'ue8', // EMEIEF José de Almeida e Silva
+    raios: [
+      { raioMts: 500, maternal: 2, jardimI: 3, jardimII: 5 },
+      { raioMts: 1000, maternal: 8, jardimI: 12, jardimII: 15 },
+      { raioMts: 2000, maternal: 25, jardimI: 35, jardimII: 40 },
+      { raioMts: 3000, maternal: 45, jardimI: 60, jardimII: 70 },
+    ]
+  },
 ];

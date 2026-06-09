@@ -200,7 +200,6 @@ export interface FonteFinanciamento {
   id: string;
   fonte: string;
   valorPrevisto: number;
-  anoDesembolso: number;
 }
 
 export interface MembroEquipe {
@@ -381,4 +380,16 @@ export interface ProjecaoVagas {
   novasVagas: number;
   acumulado: number;
   taxaAtendimento: number;
+}
+
+export interface CadUnicoRaioData {
+  raioMts: number;
+  maternal: number;
+  jardimI: number;
+  jardimII: number;
+}
+
+export interface CadUnicoPorUnidade {
+  unidadeId: string;
+  raios: CadUnicoRaioData[];
 }
