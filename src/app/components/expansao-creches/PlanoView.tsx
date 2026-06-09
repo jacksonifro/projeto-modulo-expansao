@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ChevronLeft, Building2, Users, Wrench, TrendingUp, DollarSign, Calendar, CheckCircle2, Target, AlertCircle, Kanban } from 'lucide-react';
-import { mockPlans, mockServidores, mockUnidades, mockProjecaoVagas } from './mockData';
+import { ChevronLeft, Building2, Users, Wrench, TrendingUp, DollarSign, Calendar, CheckCircle2, Target, AlertCircle, Kanban, Activity, Baby, Info } from 'lucide-react';
+import { mockPlans, mockServidores, mockUnidades, mockProjecaoVagas, mockDemandaBairro } from './mockData';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import KanbanBoard from './KanbanBoard';
 import { ObraConstrucao, AcaoUnidade, ExpansionPlan } from './types';
+import { calculateViewMetrics } from './utils/planoViewLogic';
 
 interface PlanoViewProps {
   planId?: string;
@@ -40,7 +41,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
   });
 
   const plan = plans.find(p => p.id === planId) ?? plans[0] ?? mockPlans[0];
-  const investimentoTotal = plan.fontesFinanciamento.reduce((s, f) => s + f.valorPrevisto, 0);
+  const metrics = calculateViewMetrics(plan as any);
 
   const [kanbanState, setKanbanState] = useState<KanbanState>({
     open: false,
@@ -105,9 +106,9 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Investimento Total', value: BRL(investimentoTotal), icon: <DollarSign className="w-5 h-5 text-blue-600" />, color: 'border-blue-400' },
-            { label: 'Obras planejadas', value: String(plan.obras.length), icon: <Building2 className="w-5 h-5 text-purple-600" />, color: 'border-purple-400' },
-            { label: 'Ações em unidades', value: String(plan.acoesUnidades.length), icon: <Wrench className="w-5 h-5 text-amber-600" />, color: 'border-amber-400' },
+            { label: 'Investimento Total', value: BRL(metrics.totalInvestimento), icon: <DollarSign className="w-5 h-5 text-blue-600" />, color: 'border-blue-400' },
+            { label: 'Vagas Criadas', value: String(metrics.totalVagas), icon: <Baby className="w-5 h-5 text-purple-600" />, color: 'border-purple-400' },
+            { label: 'Salas Criadas', value: String(metrics.totalSalas), icon: <Building2 className="w-5 h-5 text-amber-600" />, color: 'border-amber-400' },
             { label: 'Membros da equipe', value: String(plan.equipe.length), icon: <Users className="w-5 h-5 text-green-600" />, color: 'border-green-400' },
           ].map(k => (
             <div key={k.label} className={`bg-white rounded-2xl shadow-lg p-5 border-l-4 ${k.color}`}>
@@ -168,7 +169,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                 ))}
                 <tr className="bg-slate-50 font-bold">
                   <td className="px-4 py-3 text-slate-800">Total</td>
-                  <td className="px-4 py-3 text-right text-blue-700">{BRL(investimentoTotal)}</td>
+                  <td className="px-4 py-3 text-right text-blue-700">{BRL(plan.fontesFinanciamento.reduce((s,f) => s + f.valorPrevisto, 0))}</td>
                 </tr>
               </tbody>
             </table>
@@ -189,34 +190,24 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(() => {
-                  const start = plan.periodoInicio || plan.year || 2026;
-                  const end = plan.periodoFim || (start + 3);
-                  const anos = [] as number[];
-                  for (let y = start; y <= end; y++) anos.push(y);
-                  
-                  let saldoAcumulado = plan.fontesFinanciamento.reduce((s, f) => s + f.valorPrevisto, 0);
-
-                  return anos.map(ano => {
-                    const dispon = saldoAcumulado;
-                    const demanda = (plan.obras || []).reduce((s, o) => s + ((o.desembolsoPorAno || []).filter(d => d.ano === ano).reduce((ss, d) => ss + d.valor, 0) || 0), 0)
-                      + (plan.acoesUnidades || []).reduce((s, a) => s + ((a.desembolsoPorAno || []).filter(d => d.ano === ano).reduce((ss, d) => ss + d.valor, 0) || 0), 0);
-                    saldoAcumulado = dispon - demanda;
-                    return (
-                      <tr key={ano}>
-                        <td className="px-4 py-3 text-slate-700">{ano}</td>
-                        <td className="px-4 py-3 text-right text-green-700 font-semibold">{BRL(dispon)}</td>
-                        <td className="px-4 py-3 text-right text-slate-700">{BRL(demanda)}</td>
-                        <td className={`px-4 py-3 text-right font-semibold ${saldoAcumulado < 0 ? 'text-red-600' : 'text-slate-800'}`}>{BRL(saldoAcumulado)}</td>
-                      </tr>
-                    );
-                  });
-                })()}
+                {metrics.anosPlano.map(ano => {
+                  const dispon = plan.fontesFinanciamento.reduce((s,f) => s + f.valorPrevisto, 0) / metrics.anosPlano.length;
+                  const inv = metrics.investimentoPorAno.find(d => d.ano === ano)?.valor || 0;
+                  const saldo = dispon - inv;
+                  return (
+                    <tr key={ano}>
+                      <td className="px-4 py-3 text-slate-700">{ano}</td>
+                      <td className="px-4 py-3 text-right text-green-700 font-semibold">{BRL(dispon)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{BRL(inv)}</td>
+                      <td className={`px-4 py-3 text-right font-semibold ${saldo < 0 ? 'text-red-600' : 'text-slate-800'}`}>{BRL(saldo)}</td>
+                    </tr>
+                  );
+                })}
                 <tr className="bg-slate-50 font-bold">
-                  <td className="px-4 py-3">Total</td>
-                  <td className="px-4 py-3 text-right text-blue-700">{BRL(plan.fontesFinanciamento.reduce((s, f) => s + f.valorPrevisto, 0))}</td>
-                  <td className="px-4 py-3 text-right text-blue-700">{BRL((plan.obras || []).reduce((s, o) => s + ((o.desembolsoPorAno || []).reduce((ss, d) => ss + d.valor, 0) || 0), 0) + (plan.acoesUnidades || []).reduce((s, a) => s + ((a.desembolsoPorAno || []).reduce((ss, d) => ss + d.valor, 0) || 0), 0))}</td>
-                  <td className="px-4 py-3" />
+                  <td className="px-4 py-3 text-slate-800">Total</td>
+                  <td className="px-4 py-3 text-right text-blue-700">{BRL(plan.fontesFinanciamento.reduce((s,f)=>s+f.valorPrevisto,0))}</td>
+                  <td className="px-4 py-3 text-right text-blue-700">{BRL(metrics.totalInvestimento)}</td>
+                  <td className="px-4 py-3"></td>
                 </tr>
               </tbody>
             </table>
@@ -272,7 +263,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                       <div className="flex gap-4 text-xs text-slate-500 flex-wrap">
                         <span>Etapa destino: <strong className="text-slate-700">{a.etapaDestino}</strong></span>
                         <span>Cap. {a.capacidadeAnterior} → <strong className="text-green-700">{a.novaCapacidade}</strong></span>
-                        {a.custoPorSala > 0 && <span>Custo: <strong className="text-blue-700">{BRL(a.custoPorSala)}</strong></span>}
+                        {(() => { const it = metrics.itens.find((i:any) => i.id === a.id); return it ? <><span>Investimento: <strong className="text-blue-700">{BRL(it.totalInvestimento)}</strong></span><span>Custeio Anual: <strong className="text-blue-700">{BRL(it.custoPessoalAnual)}</strong></span></> : null; })()}
                       </div>
                       <button
                         onClick={() => abrirKanban(a.id, 'acao-unidade', a)}
@@ -316,6 +307,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                       <span><strong className="text-slate-700">{o.bairro}</strong> · {o.setor}</span>
                       <span>{o.numeroDeSalas} sala{o.numeroDeSalas !== 1 ? 's' : ''}</span>
                       <span>Etapas: {o.etapasAtendidas.join(', ')}</span>
+                      {(() => { const it = metrics.itens.find((i:any) => i.id === o.id); return it ? <><span>Investimento: <strong className="text-purple-700">{BRL(it.totalInvestimento)}</strong></span><span>Custeio Anual: <strong className="text-purple-700">{BRL(it.custoPessoalAnual)}</strong></span></> : null; })()}
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-4">
@@ -364,6 +356,58 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
             </div>
           </div>
         )}
+
+        {/* RESULTADOS / DASHBOARD */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border-2 border-blue-500">
+          <div className="flex items-center gap-2 mb-6">
+            <Activity className="w-6 h-6 text-blue-600" />
+            <h2 className="text-2xl font-bold text-slate-800">Resultados Esperados (Dashboard)</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-2xl border border-blue-200">
+              <div className="flex items-center gap-2 mb-2 text-blue-700 font-semibold"><Baby className="w-5 h-5" /> Novas Vagas vs Déficit</div>
+              <div className="text-3xl font-black text-blue-800 mb-1">{metrics.totalVagas} <span className="text-base font-normal text-blue-600">vagas criadas</span></div>
+              <p className="text-sm text-blue-600">Atendendo {((metrics.totalVagas / Math.max(1, mockDemandaBairro.reduce((s,d) => s + d.naoFrequentam, 0))) * 100).toFixed(1)}% da demanda reprimida atual do CadÚnico.</p>
+            </div>
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-5 rounded-2xl border border-amber-200">
+              <div className="flex items-center gap-2 mb-2 text-amber-700 font-semibold"><DollarSign className="w-5 h-5" /> Custo Médio por Vaga</div>
+              <div className="text-3xl font-black text-amber-800 mb-1">{metrics.totalVagas > 0 ? BRL(metrics.totalInvestimento / metrics.totalVagas) : '—'}</div>
+              <p className="text-sm text-amber-600">Investimento médio estimado por criança atendida.</p>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-2xl border border-purple-200">
+              <div className="flex items-center gap-2 mb-2 text-purple-700 font-semibold"><Building2 className="w-5 h-5" /> Custo Médio por Sala</div>
+              <div className="text-3xl font-black text-purple-800 mb-1">{metrics.totalSalas > 0 ? BRL(metrics.totalInvestimento / metrics.totalSalas) : '—'}</div>
+              <p className="text-sm text-purple-600">Considerando as {metrics.totalSalas} salas planejadas.</p>
+            </div>
+          </div>
+          
+          <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+            <h3 className="font-bold text-slate-800 mb-3">Evolução do Plano de Expansão</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-200/50">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-700 rounded-l-lg">Ano</th>
+                    <th className="text-right px-4 py-3 font-semibold text-slate-700">Investimento Previsto</th>
+                    <th className="text-right px-4 py-3 font-semibold text-slate-700">Vagas Entregues</th>
+                    <th className="text-right px-4 py-3 font-semibold text-slate-700 rounded-r-lg">Salas Concluídas</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/50">
+                  {metrics.anosPlano.map(ano => (
+                    <tr key={ano}>
+                      <td className="px-4 py-3 font-medium text-slate-800">{ano}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{BRL(metrics.investimentoPorAno.find(d => d.ano === ano)?.valor || 0)}</td>
+                      <td className="px-4 py-3 text-right text-blue-600 font-bold">+{metrics.vagasPorAno.find(d => d.ano === ano)?.vagas || 0}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{metrics.salasPorAno.find(d => d.ano === ano)?.salas || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
         {/* Datas */}
         <div className="bg-white rounded-2xl shadow-lg p-6">

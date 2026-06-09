@@ -71,16 +71,17 @@ A navegação lateral (`App.tsx`) controla a visualização principal:
 
 ## 5. Atualizações recentes (junho de 2026)
 
-Nesta atualização foram feitas melhorias importantes no fluxo de criação e edição de planos de expansão, principalmente em `src/app/components/expansao-creches/PlanoForm.tsx`:
+Nesta atualização foram feitas melhorias importantes no fluxo de criação e edição de planos de expansão, principalmente em `src/app/components/expansao-creches/PlanoForm.tsx` e `PlanoView.tsx`:
 
-*   Reorganizada a aba de `Desembolso` para exibir:
-    *   lista de fontes de financiamento por ano conforme cadastradas em `Dados Gerais`;
-    *   saldo anual entre disponibilidade e desembolso;
-    *   distribuição por obra e por ação com total previsto.
-*   Permitido ao usuário editar valores de desembolso manualmente por ano.
-*   Adicionado suporte para múltiplas fontes de financiamento por ano em cada obra/ação.
-*   Disponibilizada seleção de fonte por item/ano, permitindo indicar quais fontes são aplicadas em cada desembolso.
-*   Expandida a `Projeção Orçamentária` para incluir o detalhamento de desembolso por ano e por fonte.
+*   **Integração do CadÚnico:** Nova aba de diagnóstico adicionada ao planejamento, importando os dados de demanda reprimida (fila de espera do CadÚnico).
+*   **Resultados e Dashboard de ROI:** Implementado um painel final (Resultados) no modo de edição que calcula automaticamente a redução do déficit com base nas vagas planejadas, bem como o Custo Médio por Vaga e Custo Médio por Sala.
+*   **Custeio com Pessoal:** Adicionada aba de "Pessoal" para planejamento de contratações (professores, auxiliares), com simulação automática do impacto na folha de pagamento durante e após a execução do plano.
+*   **Sincronização do Visualizador (`PlanoView.tsx`):** A visualização de planos foi inteiramente reescrita para consumir um novo motor isolado de cálculos (`planoViewLogic.ts`). Agora ela exibe em tempo real o fluxo de caixa, as vagas entregues ano a ano, o investimento e o mesmo Dashboard de Resultados presente na edição.
+*   **Aba Desembolso & Projeção Orçamentária:**
+    *   Exibição do saldo anual entre disponibilidade e desembolso.
+    *   Distribuição por obra e por ação com total previsto.
+    *   Suporte para múltiplas fontes de financiamento selecionadas por item/ano.
+*   **Navegação e UX:** O "Dashboard de Expansão" tornou-se a página inicial padrão (aba "Início" removida), e layouts de formulários (ex: aba Equipe) foram padronizados para garantir melhor leitura.
 
 ---
 
