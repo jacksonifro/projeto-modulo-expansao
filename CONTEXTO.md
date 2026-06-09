@@ -82,6 +82,9 @@ Nesta atualização foram feitas melhorias importantes no fluxo de criação e e
     *   Distribuição por obra e por ação com total previsto.
     *   Suporte para múltiplas fontes de financiamento selecionadas por item/ano.
 *   **Navegação e UX:** O "Dashboard de Expansão" tornou-se a página inicial padrão (aba "Início" removida), e layouts de formulários (ex: aba Equipe) foram padronizados para garantir melhor leitura.
+*   **Centralização da Folha de Pagamento:** Criação da aba "Folha de Pagamento" nas Configurações de Custo, consolidando o catálogo de cargos (professores, apoio, diretores) baseados nos padrões FNDE para Modelos Tipo 1 e Tipo 2. 
+*   **Automação do Pessoal em Novos Planos:** A aba de "Pessoal" no `PlanoForm` agora busca os dados centralizados das Configurações de Custo para sugerir equipes completas automaticamente de acordo com a quantidade de novas salas construídas (em Obras ou Ampliações). O usuário ainda mantém flexibilidade para personalização manual.
+*   **Correção de Persistência no Formulário de Planos:** Correção de um bug crítico de roteamento no `ExpansaoCreches.tsx` que criava planos duplicados em vez de atualizá-los, e correção da seleção do "Modelo de Custo" nas Obras.
 
 ---
 
