@@ -101,8 +101,8 @@ export default function MapaDemandasView({ onBack }: MapaDemandasViewProps) {
             <ChevronLeft className="w-4 h-4" />
             Voltar
           </button>
-          <h1 className="text-2xl font-bold text-slate-800">Mapas Interativos</h1>
-          <p className="text-slate-500 text-sm">Acesso aos mapas interativos de crianças e unidades escolares para visualizar os registros na cidade escolhida.</p>
+          <h1 className="text-2xl font-bold text-slate-800">Mapa de Demanda do cadÚnico por Plano de Expansão</h1>
+          <p className="text-slate-500 text-sm">Selecione um plano de expansão e uma Unidade Escolar ou obra para visualizar as crianças do cadÚnico em volta da Unidade Escolar.</p>
         </div>
       </div>
 
@@ -234,7 +234,7 @@ export default function MapaDemandasView({ onBack }: MapaDemandasViewProps) {
               Selecione uma obra ou escola para visualizar o mapa
             </div>
           )}
-          
+
           {/* Legend Overlay */}
           <div className="absolute bottom-6 left-6 z-[400] bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-xs">
             <div className="space-y-2.5">
