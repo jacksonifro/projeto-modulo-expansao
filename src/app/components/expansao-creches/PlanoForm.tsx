@@ -197,6 +197,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         { ano: 2026, valor: 708000, fonte: 'Convênio MD Calha Norte' },
       ],
       contrapartidaMunicipal: 53, previsaoConclusao: '2026-12-31', statusObra: 'em_execucao',
+      coordenadas: { lat: -11.4500, lng: -61.4500 }
     },
   ]);
 
@@ -284,6 +285,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     id: `ob${Date.now()}`, tipo: 'nova', nome: '', localizacao: '', bairro: '', setor: '',
     modeloCrecheId: '', numeroDeSalas: 0, etapasAtendidas: [], desembolsoPorAno: [],
     previsaoConclusao: '2029-12-31', statusObra: 'planejada',
+    coordenadas: { lat: -11.4343, lng: -61.4484 }
   }]);
   const removeObra = (id: string) => setObras(o => o.filter(x => x.id !== id));
 
@@ -1615,6 +1617,23 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                             onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, bairro: e.target.value, localizacao: e.target.value } : x))}
                             className={inputCls}
                             placeholder="Bairro/setor de destino" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Latitude</label>
+                          <input type="number" step="any" value={obra.coordenadas?.lat || ''}
+                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, coordenadas: { ...x.coordenadas!, lat: parseFloat(e.target.value) } } : x))}
+                            className={inputCls}
+                            placeholder="-11.4343" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Longitude</label>
+                          <input type="number" step="any" value={obra.coordenadas?.lng || ''}
+                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, coordenadas: { ...x.coordenadas!, lng: parseFloat(e.target.value) } } : x))}
+                            className={inputCls}
+                            placeholder="-61.4484" />
                         </div>
                       </div>
 

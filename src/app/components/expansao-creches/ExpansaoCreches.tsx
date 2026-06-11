@@ -16,7 +16,10 @@ import UnidadesEscolares from './UnidadesEscolares';
 import PlanoView from './PlanoView';
 import QuadroKanbanGlobal from './QuadroKanbanGlobal';
 
-type View = 'dashboard' | 'schools' | 'kanban' | 'planos' | 'all-schools' | 'new-plano' | 'edit-plano' | 'view-plano' | 'new-school' | 'edit-school' | 'view-school' | 'reports' | 'report-filters' | 'report-view' | 'servidores' | 'configuracoes-custo' | 'unidades-escolares';
+import MapasMenu from './MapasMenu';
+import MapaDemandasView from './MapaDemandasView';
+
+type View = 'dashboard' | 'schools' | 'kanban' | 'planos' | 'all-schools' | 'new-plano' | 'edit-plano' | 'view-plano' | 'new-school' | 'edit-school' | 'view-school' | 'reports' | 'report-filters' | 'report-view' | 'servidores' | 'configuracoes-custo' | 'unidades-escolares' | 'mapas' | 'mapa-demandas';
 
 interface NavigationState {
   view: View;
@@ -68,6 +71,10 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
       setNavigation({ view: 'unidades-escolares' });
     } else if (view === 'view-plano') {
       setNavigation({ view: 'view-plano', planId: id });
+    } else if (view === 'mapas') {
+      setNavigation({ view: 'mapas' });
+    } else if (view === 'mapa-demandas') {
+      setNavigation({ view: 'mapa-demandas' });
     } else {
       setNavigation({ view: 'dashboard' });
     }
@@ -90,6 +97,8 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
       setNavigation({ view: 'reports' });
     } else if (navigation.view === 'report-view') {
       setNavigation({ view: 'report-filters', reportType: navigation.reportType });
+    } else if (navigation.view === 'mapa-demandas') {
+      setNavigation({ view: 'mapas' });
     } else {
       setNavigation({ view: 'dashboard' });
     }
@@ -170,6 +179,12 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
           onBack={handleBack}
           onEdit={() => handleNavigate('edit-plano', navigation.planId)}
         />
+      )}
+      {navigation.view === 'mapas' && (
+        <MapasMenu onNavigate={handleNavigate} onBack={handleBack} />
+      )}
+      {navigation.view === 'mapa-demandas' && (
+        <MapaDemandasView onBack={handleBack} />
       )}
     </>
   );

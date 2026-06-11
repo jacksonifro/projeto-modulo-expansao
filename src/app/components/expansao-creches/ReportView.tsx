@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ChevronLeft, Download, Printer, FileText, Mail, Users, TrendingUp, PieChart, Building2, LayoutDashboard, FileBarChart } from 'lucide-react';
-import { mockPlans, mockSchools, mockActivities, mockDemandaEtapa, mockUnidades } from './mockData';
+import { mockPlans, mockSchools, mockActivities, mockDemandaEtapa, mockUnidades, mockDemandaBairro } from './mockData';
 import { ExpansionPlan, MembroEquipe, ObraConstrucao, AcaoUnidade } from './types';
+import { getActivities } from './Kanban';
 
 interface ReportViewProps {
   reportType: string;
@@ -43,6 +44,27 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
   const obras = activePlan?.obras || [];
   const acoes = activePlan?.acoesUnidades || [];
   const equipe = activePlan?.equipe || [];
+
+  const atividadesPlano = getActivities().filter(a => a.planId === activePlan?.id);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'FEITO': return <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">FEITO</span>;
+      case 'FAZENDO': return <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">FAZENDO</span>;
+      default: return <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-bold">A FAZER</span>;
+    }
+  };
+
+  const getCategoryDotColor = (category: string | undefined) => {
+    switch (category) {
+      case 'Planejamento e Captação': return 'bg-purple-500';
+      case 'Licitação e Contratação': return 'bg-blue-500';
+      case 'Execução da Obra': return 'bg-amber-500';
+      case 'Entrega da Obra': return 'bg-green-500';
+      case 'Implantação da Escola': return 'bg-pink-500';
+      default: return 'bg-slate-400';
+    }
+  };
 
   const filteredUnidades = filters.escolaId
     ? mockUnidades.filter(s => s.id === filters.escolaId)
@@ -254,6 +276,8 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                       <th className="px-4 py-2 text-left font-semibold text-slate-700">Ação</th>
                       <th className="px-4 py-2 text-center font-semibold text-slate-700">Salas Add</th>
                       <th className="px-4 py-2 text-center font-semibold text-slate-700">Vagas Add</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-700">Previsão Conclusão</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-700">Atividades (%)</th>
                       <th className="px-4 py-2 text-left font-semibold text-slate-700">Status</th>
                     </tr>
                   </thead>
@@ -261,12 +285,31 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                     {acoes.map(a => {
                       const unidade = mockUnidades.find(u => u.id === a.unidadeId);
                       const vagasAdd = a.novaCapacidade - a.capacidadeAnterior;
+                      
+                      const atividadesDestaAcao = atividadesPlano.filter(t => t.itemId === a.id && t.itemType === 'acao-unidade');
+                      const totalAtiv = atividadesDestaAcao.length;
+                      const concluidas = atividadesDestaAcao.filter(t => t.status === 'FEITO').length;
+                      const porcentagem = totalAtiv > 0 ? Math.round((concluidas / totalAtiv) * 100) : 0;
+
                       return (
                       <tr key={a.id}>
                         <td className="px-4 py-2">{unidade?.nome || 'Unidade'}</td>
                         <td className="px-4 py-2">{a.tipo}</td>
                         <td className="px-4 py-2 text-center">1</td>
                         <td className="px-4 py-2 text-center text-blue-600 font-bold">+{vagasAdd}</td>
+                        <td className="px-4 py-2">{a.previsaoConclusao || '-'}</td>
+                        <td className="px-4 py-2">
+                          {totalAtiv > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 bg-slate-200 rounded-full h-2">
+                                <div className="bg-green-500 h-2 rounded-full" style={{ width: `${porcentagem}%` }}></div>
+                              </div>
+                              <span className="text-xs font-semibold text-slate-600">{porcentagem}%</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-xs">Sem kanban</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2">Planejada</td>
                       </tr>
                     )})}
@@ -281,19 +324,84 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                       <th className="px-4 py-2 text-left font-semibold text-slate-700">Tipo</th>
                       <th className="px-4 py-2 text-center font-semibold text-slate-700">Salas</th>
                       <th className="px-4 py-2 text-left font-semibold text-slate-700">Previsão Conclusão</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-700">Atividades (%)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {obras.map(o => (
+                    {obras.map(o => {
+                      const atividadesDestaObra = atividadesPlano.filter(t => t.itemId === o.id && t.itemType === 'obra');
+                      const totalAtiv = atividadesDestaObra.length;
+                      const concluidas = atividadesDestaObra.filter(t => t.status === 'FEITO').length;
+                      const porcentagem = totalAtiv > 0 ? Math.round((concluidas / totalAtiv) * 100) : 0;
+                      
+                      return (
                       <tr key={o.id}>
                         <td className="px-4 py-2 font-semibold">{o.nome}</td>
                         <td className="px-4 py-2">{o.tipoProjetoFNDE === 'proprio' ? 'Projeto Próprio' : (o.tipoProjetoFNDE || 'Padrão FNDE')}</td>
                         <td className="px-4 py-2 text-center">{o.numeroDeSalas}</td>
                         <td className="px-4 py-2">{o.previsaoConclusao}</td>
+                        <td className="px-4 py-2">
+                          {totalAtiv > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 bg-slate-200 rounded-full h-2">
+                                <div className="bg-green-500 h-2 rounded-full" style={{ width: `${porcentagem}%` }}></div>
+                              </div>
+                              <span className="text-xs font-semibold text-slate-600">{porcentagem}%</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-xs">Sem kanban</span>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
+
+                {atividadesPlano.length > 0 && (
+                  <>
+                    <h4 className="text-lg font-bold text-slate-800 mt-8 mb-4">Situação das Tarefas (Kanban)</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm border-collapse">
+                        <thead className="bg-slate-100">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Ação / Obra</th>
+                            <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Tarefa</th>
+                            <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Categoria</th>
+                            <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-300">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {atividadesPlano.map(a => {
+                            let itemName = 'Desconhecido';
+                            if (a.itemType === 'obra') {
+                              const obra = obras.find(o => o.id === a.itemId);
+                              if (obra) itemName = obra.nome;
+                            } else if (a.itemType === 'acao-unidade') {
+                              const acao = acoes.find(ac => ac.id === a.itemId);
+                              if (acao) {
+                                const unidade = mockUnidades.find(u => u.id === acao.unidadeId);
+                                itemName = unidade ? `Ação: ${unidade.nome}` : 'Ação em Unidade';
+                              }
+                            }
+                            return (
+                              <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-4 py-3 font-medium text-slate-800">{itemName}</td>
+                                <td className="px-4 py-3 text-slate-600">{a.name}</td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${getCategoryDotColor(a.category)} flex-shrink-0`} />
+                                    <span className="text-slate-600 truncate max-w-[150px]" title={a.category}>{a.category || 'Sem Categoria'}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-center">{getStatusBadge(a.status)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -430,15 +538,15 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                     <p className="text-sm text-slate-600 font-semibold mb-1">A Fazer</p>
-                    <p className="text-2xl font-bold text-slate-800">{mockActivities.filter(a => a.status === 'A_FAZER').length}</p>
+                    <p className="text-2xl font-bold text-slate-800">{atividadesPlano.filter(a => a.status === 'A FAZER').length}</p>
                   </div>
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <p className="text-sm text-blue-700 font-semibold mb-1">Em Andamento</p>
-                    <p className="text-2xl font-bold text-blue-900">{mockActivities.filter(a => a.status === 'EM_ANDAMENTO').length}</p>
+                    <p className="text-2xl font-bold text-blue-900">{atividadesPlano.filter(a => a.status === 'FAZENDO').length}</p>
                   </div>
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                     <p className="text-sm text-green-700 font-semibold mb-1">Concluídas</p>
-                    <p className="text-2xl font-bold text-green-900">{mockActivities.filter(a => a.status === 'FEITO').length}</p>
+                    <p className="text-2xl font-bold text-green-900">{atividadesPlano.filter(a => a.status === 'FEITO').length}</p>
                   </div>
                 </div>
 
@@ -452,26 +560,22 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {mockActivities.map(a => (
-                      <tr key={a.id}>
-                        <td className="px-4 py-2 font-medium">{a.title}</td>
+                    {atividadesPlano.map(a => (
+                      <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-2 font-medium text-slate-800">{a.name}</td>
                         <td className="px-4 py-2">
                           <span className="inline-flex items-center gap-2">
                             <span className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
-                              {a.assignee.substring(0, 2)}
+                              {(a.responsible || 'NI').substring(0, 2).toUpperCase()}
                             </span>
-                            {a.assignee}
+                            {a.responsible || 'Não informado'}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-center text-slate-500">{new Date(a.dueDate).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-4 py-2 text-center text-slate-500">
+                          {a.deadline ? new Date(a.deadline).toLocaleDateString('pt-BR') : '-'}
+                        </td>
                         <td className="px-4 py-2">
-                           <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            a.status === 'FEITO' ? 'bg-green-100 text-green-700' :
-                            a.status === 'EM_ANDAMENTO' ? 'bg-blue-100 text-blue-700' :
-                            'bg-slate-100 text-slate-700'
-                          }`}>
-                            {a.status.replace('_', ' ')}
-                          </span>
+                          {getStatusBadge(a.status)}
                         </td>
                       </tr>
                     ))}

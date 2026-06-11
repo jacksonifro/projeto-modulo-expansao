@@ -1,6 +1,6 @@
 import {
   Servidor, UnidadeEscolar, ExpansionPlan, School, Activity,
-  ItemMobiliario, ItemEquipamento, ItemAquisicao, DemandaBairro, DemandaEtapa, ProjecaoVagas,
+  ItemMobiliario, ItemEquipamento, ItemAquisicao, DemandaBairro, DemandaEtapa, ProjecaoVagas, CriancaCadUnico
 } from './types';
 
 // ─── Servidores ────────────────────────────────────────────────────────────
@@ -63,6 +63,7 @@ export const mockUnidades: UnidadeEscolar[] = [
       { etapa: 'Jardim I', faixaEtaria: '2a–2a11m', vagas: 16, matriculas: 18, listaEspera: 5 },
       { etapa: 'Jardim II', faixaEtaria: '3a–3a11m', vagas: 20, matriculas: 89, listaEspera: 8 },
     ],
+    coordenadas: { lat: -11.4520, lng: -61.4480 }
   },
   {
     id: 'ue4', inep: '11049448', nome: 'CMEI Vereador Expedito Alves de Macedo', codigo: 'CMEI-004',
@@ -162,6 +163,7 @@ export const mockUnidades: UnidadeEscolar[] = [
       { id: 'sl35', unidadeId: 'ue10', nome: 'Sala de Recursos', tipoAtual: 'Ensino Fundamental', capacidadeAtual: 15 },
     ],
     vagasPorEtapa: [],
+    coordenadas: { lat: -11.4250, lng: -61.4250 }
   },
   {
     id: 'ue11', inep: '11027398', nome: 'EMEIEF Luiz Lenzi', codigo: 'EMEIEF-004',
@@ -173,6 +175,7 @@ export const mockUnidades: UnidadeEscolar[] = [
       { id: 'sl38', unidadeId: 'ue11', nome: 'Quadra Coberta', tipoAtual: 'Ensino Fundamental', capacidadeAtual: 0 },
     ],
     vagasPorEtapa: [],
+    coordenadas: { lat: -11.4280, lng: -61.4620 }
   },
   {
     id: 'ue12', inep: '11027002', nome: 'EMEIEF Agustinho Goes de Oliveira', codigo: 'EMEIEF-005',
@@ -277,6 +280,7 @@ export const mockPlans: ExpansionPlan[] = [
         contrapartidaMunicipal: 53,
         previsaoConclusao: '2026-12-31',
         statusObra: 'em_execucao',
+        coordenadas: { lat: -11.4500, lng: -61.4500 }
       },
       {
         id: 'ob2', tipo: 'nova',
@@ -292,6 +296,7 @@ export const mockPlans: ExpansionPlan[] = [
         contrapartidaMunicipal: 10,
         previsaoConclusao: '2029-12-31',
         statusObra: 'planejada',
+        coordenadas: { lat: -11.4200, lng: -61.4200 }
       },
       {
         id: 'ob3', tipo: 'nova',
@@ -307,6 +312,7 @@ export const mockPlans: ExpansionPlan[] = [
         contrapartidaMunicipal: 10,
         previsaoConclusao: '2029-12-31',
         statusObra: 'planejada',
+        coordenadas: { lat: -11.4300, lng: -61.4600 }
       },
       {
         id: 'ob4', tipo: 'nova',
@@ -386,34 +392,51 @@ export const mockSchools: School[] = [
 ];
 
 // ─── Activities (Kanban) ───────────────────────────────────────────────────
-export const mockActivities: Activity[] = [
-  { id: 'a1', schoolId: 'sc1', name: 'Projeto Executivo', description: 'Elaboração do projeto executivo de arquitetura', responsible: 'Marcelo Santos', priority: 'Alta', deadline: '2026-03-31', startDate: '2026-01-10', endDate: '2026-03-25', percentage: 100, status: 'FEITO', comments: [], attachments: [], history: [] },
-  { id: 'a2', schoolId: 'sc1', name: 'Licitação Obra', description: 'Processo licitatório — Pregão Eletrônico', responsible: 'Marcelo Santos', priority: 'Alta', deadline: '2026-05-30', startDate: '2026-04-01', percentage: 70, status: 'FAZENDO', comments: [], attachments: [], history: [] },
-  { id: 'a3', schoolId: 'sc1', name: 'Ordem de Serviço', description: 'Emissão da ordem de serviço à empresa contratada', responsible: 'Gabriel Antunes', priority: 'Alta', deadline: '2026-06-15', percentage: 0, status: 'A FAZER', comments: [], attachments: [], history: [] },
-  { id: 'a4', schoolId: 'sc1', name: 'Obras Civis', description: 'Execução das obras civis de retomada', responsible: 'Fiscal de obra', priority: 'Alta', deadline: '2026-11-30', percentage: 0, status: 'A FAZER', comments: [], attachments: [], history: [] },
-  { id: 'a5', schoolId: 'sc1', name: 'Entrega e Vistoria', description: 'Vistoria final e recebimento da obra', responsible: 'Raquel Santos', priority: 'Média', deadline: '2026-12-15', percentage: 0, status: 'A FAZER', comments: [], attachments: [], history: [] },
-  { id: 'a6', schoolId: 'sc2', name: 'Projeto de Ampliação', description: 'Elaboração do projeto de ampliação de 2 salas', responsible: 'Eng. Municipal', priority: 'Alta', deadline: '2027-02-28', percentage: 0, status: 'A FAZER', comments: [], attachments: [], history: [] },
-  { id: 'a7', schoolId: 'sc2', name: 'Processo Licitatório', description: 'Licitação para construção das 2 novas salas', responsible: 'Marcelo Santos', priority: 'Alta', deadline: '2027-05-31', percentage: 0, status: 'A FAZER', comments: [], attachments: [], history: [] },
-];
+export const mockActivities: Activity[] = [];
 
 // ─── Diagnóstico — Demanda por Bairro (CadÚnico) ──────────────────────────
 export const mockDemandaBairro: DemandaBairro[] = [
-  { id: 'db1', bairro: 'Zona Rural (geral)', setor: 'Zona Rural', totalCadUnico: 270, frequentam: 0, naoFrequentam: 270 },
-  { id: 'db2', bairro: 'Village do Sol', setor: 'Região Leste', totalCadUnico: 100, frequentam: 1, naoFrequentam: 99 },
-  { id: 'db3', bairro: 'Vista Alegre', setor: 'Região Oeste', totalCadUnico: 76, frequentam: 1, naoFrequentam: 75 },
-  { id: 'db4', bairro: 'Distrito de Riozinho', setor: 'Distrito de Riozinho', totalCadUnico: 52, frequentam: 0, naoFrequentam: 52 },
-  { id: 'db5', bairro: 'Teixeirão', setor: 'Região Leste', totalCadUnico: 51, frequentam: 0, naoFrequentam: 51 },
-  { id: 'db6', bairro: 'Paineiras', setor: 'Região Leste', totalCadUnico: 47, frequentam: 4, naoFrequentam: 43 },
-  { id: 'db7', bairro: 'Jardim Clodoaldo', setor: 'Região Central', totalCadUnico: 40, frequentam: 1, naoFrequentam: 39 },
-  { id: 'db8', bairro: 'Josino Brito', setor: 'Região Oeste', totalCadUnico: 35, frequentam: 1, naoFrequentam: 34 },
-  { id: 'db9', bairro: 'Liberdade', setor: 'Região Sul', totalCadUnico: 35, frequentam: 0, naoFrequentam: 35 },
-  { id: 'db10', bairro: 'Habitar Brasil', setor: 'Região Oeste', totalCadUnico: 30, frequentam: 0, naoFrequentam: 30 },
-  { id: 'db11', bairro: 'Alphapark', setor: 'Região Leste', totalCadUnico: 28, frequentam: 2, naoFrequentam: 26 },
-  { id: 'db12', bairro: 'Colina Verde', setor: 'Região Sul', totalCadUnico: 25, frequentam: 2, naoFrequentam: 23 },
-  { id: 'db13', bairro: 'Centro', setor: 'Região Central', totalCadUnico: 22, frequentam: 2, naoFrequentam: 20 },
-  { id: 'db14', bairro: 'Distrito de Divinópolis', setor: 'Distrito de Divinópolis', totalCadUnico: 4, frequentam: 0, naoFrequentam: 4 },
-  { id: 'db15', bairro: 'Aldeias Indígenas', setor: 'Aldeias', totalCadUnico: 7, frequentam: 0, naoFrequentam: 7 },
-  { id: 'db16', bairro: 'Outros bairros', setor: 'Região Central', totalCadUnico: 349, frequentam: 2, naoFrequentam: 347 },
+  { id: 'db1', bairro: 'Zona Rural (geral)', setor: 'Zona Rural', totalCadUnico: 270, frequentam: 0, naoFrequentam: 270, coordenadas: { lat: -11.5000, lng: -61.5000 } },
+  { id: 'db2', bairro: 'Village do Sol', setor: 'Região Leste', totalCadUnico: 100, frequentam: 1, naoFrequentam: 99, coordenadas: { lat: -11.4250, lng: -61.4250 } },
+  { id: 'db3', bairro: 'Vista Alegre', setor: 'Região Oeste', totalCadUnico: 76, frequentam: 1, naoFrequentam: 75, coordenadas: { lat: -11.4350, lng: -61.4550 } },
+  { id: 'db4', bairro: 'Distrito de Riozinho', setor: 'Distrito de Riozinho', totalCadUnico: 52, frequentam: 0, naoFrequentam: 52, coordenadas: { lat: -11.4000, lng: -61.4000 } },
+  { id: 'db5', bairro: 'Teixeirão', setor: 'Região Leste', totalCadUnico: 51, frequentam: 0, naoFrequentam: 51, coordenadas: { lat: -11.4300, lng: -61.4300 } },
+  { id: 'db6', bairro: 'Paineiras', setor: 'Região Leste', totalCadUnico: 47, frequentam: 4, naoFrequentam: 43, coordenadas: { lat: -11.4320, lng: -61.4320 } },
+  { id: 'db7', bairro: 'Jardim Clodoaldo', setor: 'Região Central', totalCadUnico: 40, frequentam: 1, naoFrequentam: 39, coordenadas: { lat: -11.4380, lng: -61.4420 } },
+  { id: 'db8', bairro: 'Josino Brito', setor: 'Região Oeste', totalCadUnico: 35, frequentam: 1, naoFrequentam: 34, coordenadas: { lat: -11.4400, lng: -61.4500 } },
+  { id: 'db9', bairro: 'Liberdade', setor: 'Região Sul', totalCadUnico: 35, frequentam: 0, naoFrequentam: 35, coordenadas: { lat: -11.4520, lng: -61.4480 } },
+  { id: 'db10', bairro: 'Habitar Brasil', setor: 'Região Oeste', totalCadUnico: 30, frequentam: 0, naoFrequentam: 30, coordenadas: { lat: -11.4280, lng: -61.4620 } },
+  { id: 'db11', bairro: 'Alphapark', setor: 'Região Leste', totalCadUnico: 28, frequentam: 2, naoFrequentam: 26, coordenadas: { lat: -11.4200, lng: -61.4280 } },
+  { id: 'db12', bairro: 'Colina Verde', setor: 'Região Sul', totalCadUnico: 25, frequentam: 2, naoFrequentam: 23, coordenadas: { lat: -11.4600, lng: -61.4450 } },
+  { id: 'db13', bairro: 'Centro', setor: 'Região Central', totalCadUnico: 22, frequentam: 2, naoFrequentam: 20, coordenadas: { lat: -11.4343, lng: -61.4484 } },
+  { id: 'db14', bairro: 'Distrito de Divinópolis', setor: 'Distrito de Divinópolis', totalCadUnico: 4, frequentam: 0, naoFrequentam: 4, coordenadas: { lat: -11.3500, lng: -61.3500 } },
+  { id: 'db15', bairro: 'Aldeias Indígenas', setor: 'Aldeias', totalCadUnico: 7, frequentam: 0, naoFrequentam: 7, coordenadas: { lat: -11.5500, lng: -61.5500 } },
+  { id: 'db16', bairro: 'Outros bairros', setor: 'Região Central', totalCadUnico: 349, frequentam: 2, naoFrequentam: 347, coordenadas: { lat: -11.4400, lng: -61.4400 } },
+];
+
+// ─── Diagnóstico — Crianças CadÚnico (Posicionamento exato) ───────────────
+export const mockCriancasCadUnico: CriancaCadUnico[] = [
+  { id: 'c1', nome: 'Noah Emanuel Soares Gomes', idade: '2a 4m', status: 'aguardando', bairro: 'Centro', coordenadas: { lat: -11.4330, lng: -61.4470 } },
+  { id: 'c2', nome: 'Isis Hellena Almeida Costa', idade: '1a 8m', status: 'aguardando', bairro: 'Centro', coordenadas: { lat: -11.4350, lng: -61.4490 } },
+  { id: 'c3', nome: 'Eloá Kimberly Laia De Souza', idade: '3a 2m', status: 'aguardando', bairro: 'Centro', coordenadas: { lat: -11.4340, lng: -61.4450 } },
+  { id: 'c4', nome: 'Israel Brito de Souza', idade: '2a 11m', status: 'aguardando', bairro: 'Josino Brito', coordenadas: { lat: -11.4410, lng: -61.4490 } },
+  { id: 'c5', nome: 'Aylla Mansueto Ferreira', idade: '1a 2m', status: 'aguardando', bairro: 'Josino Brito', coordenadas: { lat: -11.4390, lng: -61.4520 } },
+  { id: 'c6', nome: 'João Miguel Marques Tomaz', idade: '3a 5m', status: 'aguardando', bairro: 'Liberdade', coordenadas: { lat: -11.4510, lng: -61.4460 } },
+  { id: 'c7', nome: 'Yan Phietro Teixeira Ribeiro', idade: '2a 6m', status: 'aguardando', bairro: 'Liberdade', coordenadas: { lat: -11.4530, lng: -61.4490 } },
+  { id: 'c8', nome: 'Peter Conrat Wilke', idade: '1a 10m', status: 'aguardando', bairro: 'Village do Sol', coordenadas: { lat: -11.4240, lng: -61.4230 } },
+  { id: 'c9', nome: 'Maria Eugênia Santos Barbosa', idade: '2a 1m', status: 'aguardando', bairro: 'Village do Sol', coordenadas: { lat: -11.4260, lng: -61.4260 } },
+  { id: 'c10', nome: 'Maria Alice da Silva Neves', idade: '3a 8m', status: 'aguardando', bairro: 'Habitar Brasil', coordenadas: { lat: -11.4270, lng: -61.4600 } },
+  { id: 'c11', nome: 'Ayla Silva De Souza', idade: '2a 7m', status: 'aguardando', bairro: 'Habitar Brasil', coordenadas: { lat: -11.4290, lng: -61.4640 } },
+  { id: 'c12', nome: 'Marya Angellyka Oleias Santos', idade: '1a 5m', status: 'aguardando', bairro: 'Vista Alegre', coordenadas: { lat: -11.4340, lng: -61.4540 } },
+  { id: 'c13', nome: 'Lais Oliveira Duarte', idade: '2a 9m', status: 'aguardando', bairro: 'Vista Alegre', coordenadas: { lat: -11.4360, lng: -61.4570 } },
+  { id: 'c14', nome: 'Benjamim Gabriel Marques Tomaz', idade: '3a 1m', status: 'aguardando', bairro: 'Teixeirão', coordenadas: { lat: -11.4310, lng: -61.4320 } },
+  { id: 'c15', nome: 'Ágatha Sofia Chagas Lopes', idade: '1a 11m', status: 'aguardando', bairro: 'Paineiras', coordenadas: { lat: -11.4330, lng: -61.4300 } },
+  { id: 'c16', nome: 'Gael Lucas Silva', idade: '2a 2m', status: 'aguardando', bairro: 'Jardim Clodoaldo', coordenadas: { lat: -11.4370, lng: -61.4410 } },
+  { id: 'c17', nome: 'Helena Beatriz Costa', idade: '3a 9m', status: 'aguardando', bairro: 'Jardim Clodoaldo', coordenadas: { lat: -11.4390, lng: -61.4430 } },
+  { id: 'c18', nome: 'Theo Almeida Gomes', idade: '1a 7m', status: 'aguardando', bairro: 'Alphapark', coordenadas: { lat: -11.4190, lng: -61.4270 } },
+  { id: 'c19', nome: 'Laura Vitória Nunes', idade: '2a 8m', status: 'aguardando', bairro: 'Alphapark', coordenadas: { lat: -11.4210, lng: -61.4290 } },
+  { id: 'c20', nome: 'Arthur Henrique Barbosa', idade: '3a 4m', status: 'aguardando', bairro: 'Colina Verde', coordenadas: { lat: -11.4610, lng: -61.4440 } },
+  { id: 'c21', nome: 'Alice Maria Souza', idade: '1a 9m', status: 'aguardando', bairro: 'Colina Verde', coordenadas: { lat: -11.4590, lng: -61.4460 } },
 ];
 
 // ─── Diagnóstico — Demanda por Etapa ──────────────────────────────────────

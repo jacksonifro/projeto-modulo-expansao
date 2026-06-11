@@ -9,9 +9,7 @@ interface KanbanProps {
   schoolId: string;
   onBack: () => void;
 }
-
-const STORAGE_KEY = "exp_creches_activities";
-
+const STORAGE_KEY = "exp_creches_activities_v2";
 export const getActivities = (): Activity[] => {
   const cached = localStorage.getItem(STORAGE_KEY);
   return cached ? JSON.parse(cached) : mockActivities;

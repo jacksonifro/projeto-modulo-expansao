@@ -15,6 +15,7 @@ import {
   Baby,
   ChevronLeft,
   ChevronRight,
+  MapPin,
 } from 'lucide-react';
 
 type SidebarView =
@@ -26,7 +27,8 @@ type SidebarView =
   | 'unidades-escolares'
   | 'planos'
   | 'all-schools'
-  | 'reports';
+  | 'reports'
+  | 'mapas';
 
 interface NavItem {
   id: SidebarView;
@@ -42,6 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'planos', label: 'Planos de Expansão', icon: <FolderKanban className="w-5 h-5" />, num: '3', section: 'expansao' },
   { id: 'all-schools', label: 'Quadro Kanban', icon: <BarChart3 className="w-5 h-5" />, num: '4', section: 'expansao' },
   { id: 'reports', label: 'Relatórios', icon: <FileText className="w-5 h-5" />, num: '5', section: 'expansao' },
+  { id: 'mapas', label: 'Mapas Interativos', icon: <MapPin className="w-5 h-5" />, num: '6', section: 'expansao' },
 ];
 
 export default function App() {

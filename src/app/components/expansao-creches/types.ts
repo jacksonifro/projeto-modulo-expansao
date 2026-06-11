@@ -168,6 +168,7 @@ export interface UnidadeEscolar {
   totalListaEspera: number;
   salas: SalaUE[];
   vagasPorEtapa: VagaEtapa[];
+  coordenadas?: { lat: number; lng: number };
 }
 
 // ─── Configurações de Custo ────────────────────────────────────────────────
@@ -293,6 +294,16 @@ export interface ObraConstrucao {
   contrapartidaMunicipal?: number;
   previsaoConclusao: string;
   statusObra: StatusObra;
+  coordenadas?: { lat: number; lng: number };
+}
+
+export interface CriancaCadUnico {
+  id: string;
+  nome: string;
+  idade: string;
+  status: 'aguardando' | 'matriculada';
+  bairro: string;
+  coordenadas: { lat: number; lng: number };
 }
 
 export interface ExpansionPlan {
@@ -401,6 +412,7 @@ export interface DemandaBairro {
   totalCadUnico: number;
   frequentam: number;
   naoFrequentam: number;
+  coordenadas?: { lat: number; lng: number };
 }
 
 export interface DemandaEtapa {
