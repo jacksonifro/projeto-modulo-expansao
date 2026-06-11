@@ -156,6 +156,9 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   const [papelSelecionado, setPapelSelecionado] = useState<MembroEquipe['papel']>('membro');
   const [raioSelecionado, setRaioSelecionado] = useState<number>(1000);
 
+  const [filtroTipoObra, setFiltroTipoObra] = useState<'todas' | 'nova' | 'retomada'>('todas');
+  const [filtroTipoAcao, setFiltroTipoAcao] = useState<'todas' | 'ampliacao' | 'adaptacao'>('todas');
+
   // Aba 1 — Equipe
   const [equipe, setEquipe] = useState<MembroEquipe[]>(() => planParaEditar ? (planParaEditar.equipe || []) : [
     { id: 'eq1', servidorId: 's1', papel: 'aprovador' },
@@ -1357,7 +1360,17 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                     </button>
                   </div>
 
-                  {acoes.map(acao => {
+                  <div className="flex bg-slate-100 p-1 rounded-lg w-fit">
+                    {(['todas', 'adaptacao', 'ampliacao'] as const).map(tipo => (
+                      <button key={tipo}
+                        onClick={() => setFiltroTipoAcao(tipo)}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${filtroTipoAcao === tipo ? (tipo === 'adaptacao' ? 'bg-purple-600 text-white shadow-sm' : tipo === 'ampliacao' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-600 hover:text-slate-900'}`}>
+                        {tipo === 'todas' ? 'Todas as Ações' : tipo === 'adaptacao' ? 'Apenas Adaptações' : 'Apenas Ampliações'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {acoes.filter(a => filtroTipoAcao === 'todas' || a.tipo === filtroTipoAcao).map(acao => {
                     const unidade = mockUnidades.find(u => u.id === acao.unidadeId);
 
                     // Derivar tipo da unidade a partir das salas cadastradas
@@ -1586,7 +1599,17 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                     </button>
                   </div>
 
-                  {obras.map(obra => (
+                  <div className="flex bg-slate-100 p-1 rounded-lg w-fit">
+                    {(['todas', 'nova', 'retomada'] as const).map(tipo => (
+                      <button key={tipo}
+                        onClick={() => setFiltroTipoObra(tipo)}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${filtroTipoObra === tipo ? (tipo === 'nova' ? 'bg-green-600 text-white shadow-sm' : tipo === 'retomada' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-600 hover:text-slate-900'}`}>
+                        {tipo === 'todas' ? 'Todas as Obras' : tipo === 'nova' ? 'Apenas Novas' : 'Apenas Retomadas'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {obras.filter(o => filtroTipoObra === 'todas' || o.tipo === filtroTipoObra).map(obra => (
                     <div key={obra.id} className="border border-slate-200 rounded-xl p-5 space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2">
