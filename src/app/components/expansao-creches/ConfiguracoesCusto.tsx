@@ -918,44 +918,82 @@ function AquisicoesCatalogTab({
   );
 }
 
-// ─── Custeio Tab ─────────────────────────────────────────────────────────────
-function CusteioTab({
+// ─── Simulador & Custeio Tab ──────────────────────────────────────────────────
+function SimuladorCusteioTab({
   modelos,
   ambientes,
+  cargosRef,
 }: {
   modelos: ModeloCreche[];
   ambientes: ModeloAmbiente[];
+  cargosRef: CargoReferencia[];
 }) {
-  const [modeloSel, setModeloSel] = useState(modelos[0]?.id ?? "");
+  const [quantidades, setQuantidades] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    modelos.forEach((m, idx) => {
+      init[m.id] = idx === 0 ? 1 : 0; // Default to 1 for the first model
+    });
+    return init;
+  });
   const [inflacao, setInflacao] = useState(4.5);
-  const modelo = modelos.find((m) => m.id === modeloSel);
 
-  if (!modelo)
-    return (
-      <div className="p-6 text-gray-400">
-        Nenhum modelo disponível.
-      </div>
-    );
+  const handleIncrement = (id: string) => {
+    setQuantidades((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
+  };
 
-  const totalServicos = modelo.servicos.reduce(
-    (s, sv) => s + sv.valorAnual,
-    0,
-  );
-  const totalAquisicoes = modelo.aquisicoes.reduce(
-    (s, aq) => s + aq.quantidadeAnual * aq.valorUnitario,
-    0,
-  );
-  const totalCusteio = totalServicos + totalAquisicoes;
-  const capacidade = modelo.capacidadeAlunos || 120;
-  
-  const custoAlunoAno = totalCusteio / capacidade;
+  const handleDecrement = (id: string) => {
+    setQuantidades((prev) => ({
+      ...prev,
+      [id]: Math.max(0, (prev[id] || 0) - 1),
+    }));
+  };
+
+  const rows = modelos.map((m) => {
+    const c = calcularCustoCreche(m, ambientes, cargosRef);
+    return {
+      modelo: m,
+      custos: c,
+    };
+  });
+
+  // Totais do cenário consolidado
+  let cenarioInvestimento = 0;
+  let cenarioCusteio = 0;
+  let cenarioPessoal = 0;
+  let cenarioServicos = 0;
+  let cenarioAquisicoes = 0;
+  let cenarioVagas = 0;
+  let cenarioSalas = 0;
+  let cenarioUnidades = 0;
+
+  rows.forEach(({ modelo, custos }) => {
+    const qty = quantidades[modelo.id] || 0;
+    cenarioInvestimento += custos.investimento * qty;
+    cenarioCusteio += custos.custeioAnual * qty;
+    cenarioPessoal += (custos.detalheCusteio?.pessoal || 0) * qty;
+    cenarioServicos += (custos.detalheCusteio?.servicos || 0) * qty;
+    cenarioAquisicoes += (custos.detalheCusteio?.aquisicoes || 0) * qty;
+    cenarioVagas += (modelo.capacidadeAlunos || 120) * qty;
+
+    const salasPorCreche = modelo.ambientes
+      .filter((ma) => {
+        const amb = ambientes.find((a) => a.id === ma.modeloAmbienteId);
+        return amb && (amb.categoria === "sala-atividades" || amb.categoria === "bercario");
+      })
+      .reduce((sum, ma) => sum + ma.quantidade, 0);
+
+    cenarioSalas += salasPorCreche * qty;
+    cenarioUnidades += qty;
+  });
+
+  const custoAlunoAno = cenarioVagas > 0 ? cenarioCusteio / cenarioVagas : 0;
   const custoAlunoMes = custoAlunoAno / 12;
 
   // Gerar dados para a projeção de 5 anos
   const projData = [];
   let acumulado = 0;
   for (let i = 1; i <= 5; i++) {
-    const custoAnualAjustado = totalCusteio * Math.pow(1 + inflacao / 100, i - 1);
+    const custoAnualAjustado = cenarioCusteio * Math.pow(1 + inflacao / 100, i - 1);
     acumulado += custoAnualAjustado;
     projData.push({
       ano: `Ano ${i}`,
@@ -964,80 +1002,120 @@ function CusteioTab({
     });
   }
 
-  const pctServicos = totalCusteio > 0 ? (totalServicos / totalCusteio) * 100 : 0;
-  const pctAquisicoes = totalCusteio > 0 ? (totalAquisicoes / totalCusteio) * 100 : 0;
+  const pctPessoal = cenarioCusteio > 0 ? (cenarioPessoal / cenarioCusteio) * 100 : 0;
+  const pctServicos = cenarioCusteio > 0 ? (cenarioServicos / cenarioCusteio) * 100 : 0;
+  const pctAquisicoes = cenarioCusteio > 0 ? (cenarioAquisicoes / cenarioCusteio) * 100 : 0;
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
+        <div className="text-left">
           <h2 className="text-lg font-semibold text-gray-800">
-            Custeio Anual Operacional
+            Simulador de Custeio e Expansão
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Custos recorrentes de operação e manutenção após a entrega das unidades.
+            Planeje expansões de rede e simule o impacto financeiro consolidado de investimento e custeio.
           </p>
         </div>
-        <select
-          className="border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white text-slate-700 font-semibold"
-          value={modeloSel}
-          onChange={(e) => setModeloSel(e.target.value)}
-        >
-          {modelos.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.nome}
-            </option>
-          ))}
-        </select>
       </div>
 
-      {/* KPI Indicators */}
+      {/* Network Scenario Builder */}
+      <div className="bg-slate-50/50 border border-slate-200 rounded-2xl p-5 text-left space-y-4">
+        <h3 className="font-extrabold text-slate-800 text-sm">
+          Planejamento de Unidades (Quantidade por Modelo)
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {modelos.map((modelo) => {
+            const qty = quantidades[modelo.id] || 0;
+            const singleC = rows.find((r) => r.modelo.id === modelo.id)?.custos;
+            return (
+              <div key={modelo.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between space-y-3">
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm truncate">{modelo.nome}</h4>
+                  <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{modelo.descricao}</p>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    Capacidade: <span className="font-semibold text-slate-700">{modelo.capacidadeAlunos || 120} alunos</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Investimento unit: <span className="font-bold text-blue-700">{BRL(singleC?.investimento || 0)}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Custeio unit/ano: <span className="font-bold text-orange-600">{BRL(singleC?.custeioAnual || 0)}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                  <span className="text-xs text-slate-400 font-semibold">Qtd. Simulação</span>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => handleDecrement(modelo.id)}
+                      className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                    >
+                      -
+                    </button>
+                    <span className="w-6 text-center font-bold text-slate-800 text-sm">{qty}</span>
+                    <button 
+                      onClick={() => handleIncrement(modelo.id)}
+                      className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Scenario Consolidated Results Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-4 border border-blue-100 shadow-sm text-left">
           <p className="text-xs text-blue-600 font-bold uppercase tracking-wide">
-            Custeio Total
+            Investimento Total
           </p>
           <p className="text-2xl font-extrabold text-blue-700 mt-1">
-            {BRL(totalCusteio)}
+            {BRL(cenarioInvestimento)}
           </p>
           <p className="text-xs text-blue-500 mt-1">
-            {modelo.servicos.length + modelo.aquisicoes.length} contratos ativos/ano
+            {cenarioUnidades} unidades planejadas
           </p>
         </div>
         
-        <div className="bg-gradient-to-br from-teal-50 to-teal-100/50 rounded-2xl p-4 border border-teal-100 shadow-sm text-left">
-          <p className="text-xs text-teal-600 font-bold uppercase tracking-wide">
-            Capacidade Atendimento
-          </p>
-          <p className="text-2xl font-extrabold text-teal-700 mt-1">
-            {capacidade} crianças
-          </p>
-          <p className="text-xs text-teal-500 mt-1">
-            Definido na ficha técnica do modelo
-          </p>
-        </div>
-
-        <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-2xl p-4 border border-green-100 shadow-sm text-left">
-          <p className="text-xs text-green-600 font-bold uppercase tracking-wide">
-            Custo por Aluno / Ano
-          </p>
-          <p className="text-2xl font-extrabold text-green-700 mt-1">
-            {BRL(custoAlunoAno)}
-          </p>
-          <p className="text-xs text-green-500 mt-1">
-            Fração per capita do custeio
-          </p>
-        </div>
-
         <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl p-4 border border-orange-100 shadow-sm text-left">
           <p className="text-xs text-orange-600 font-bold uppercase tracking-wide">
-            Custo por Aluno / Mês
+            Custeio Anual Consolidado
           </p>
           <p className="text-2xl font-extrabold text-orange-700 mt-1">
-            {BRL(custoAlunoMes)}
+            {BRL(cenarioCusteio)}
           </p>
           <p className="text-xs text-orange-500 mt-1">
-            Fator mensal por matrícula
+            Pessoal, Serviços e Consumo
+          </p>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-2xl p-4 border border-emerald-100 shadow-sm text-left">
+          <p className="text-xs text-emerald-600 font-bold uppercase tracking-wide">
+            Novas Vagas de EI
+          </p>
+          <p className="text-2xl font-extrabold text-emerald-700 mt-1">
+            +{cenarioVagas} crianças
+          </p>
+          <p className="text-xs text-emerald-500 mt-1">
+            Atendimento nas {cenarioSalas} novas salas
+          </p>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-2xl p-4 border border-purple-100 shadow-sm text-left">
+          <p className="text-xs text-purple-600 font-bold uppercase tracking-wide">
+            Custo por Aluno / Mês
+          </p>
+          <p className="text-2xl font-extrabold text-purple-700 mt-1">
+            {BRL(custoAlunoMes)}
+          </p>
+          <p className="text-xs text-purple-500 mt-1">
+            Média ponderada da rede
           </p>
         </div>
       </div>
@@ -1071,21 +1149,35 @@ function CusteioTab({
 
           <div className="border-t border-slate-200 pt-4">
             <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">
-              Distribuição de Gastos
+              Distribuição de Gastos do Custeio
             </h4>
             <div className="space-y-3">
               <div>
                 <div className="flex justify-between text-xs text-slate-600 mb-1">
                   <span className="font-medium flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
+                    Folha de Pagamento
+                  </span>
+                  <span className="font-bold text-indigo-700">{pctPessoal.toFixed(1)}%</span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2">
+                  <div className="bg-indigo-500 h-2 rounded-full transition-all duration-300" style={{ width: `${pctPessoal}%` }} />
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(cenarioPessoal)}/ano</div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs text-slate-600 mb-1">
+                  <span className="font-medium flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
-                    Serviços Operacionais
+                    Serviços Terceirizados
                   </span>
                   <span className="font-bold text-blue-700">{pctServicos.toFixed(1)}%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-2">
                   <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: `${pctServicos}%` }} />
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(totalServicos)}/ano</div>
+                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(cenarioServicos)}/ano</div>
               </div>
 
               <div>
@@ -1099,16 +1191,16 @@ function CusteioTab({
                 <div className="w-full bg-slate-200 rounded-full h-2">
                   <div className="bg-teal-500 h-2 rounded-full transition-all duration-300" style={{ width: `${pctAquisicoes}%` }} />
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(totalAquisicoes)}/ano</div>
+                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(cenarioAquisicoes)}/ano</div>
               </div>
             </div>
           </div>
         </div>
 
         {/* Projection Chart */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 lg:col-span-2 text-left flex flex-col h-[280px]">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 lg:col-span-2 text-left flex flex-col h-[320px]">
           <h3 className="font-bold text-slate-800 text-sm mb-3">
-            Projeção Plurianual de Custeio (Acumulada)
+            Projeção Plurianual de Custeio (Rede Consolidada)
           </h3>
           <div className="flex-1 min-h-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -1138,365 +1230,6 @@ function CusteioTab({
           </div>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-2 text-left">
-            Serviços Contratados
-          </h3>
-          <div className="rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="text-left px-4 py-2.5">Descrição</th>
-                  <th className="text-left px-4 py-2.5 w-24">Unidade</th>
-                  <th className="text-right px-4 py-2.5 w-32">Valor Anual</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-left">
-                {modelo.servicos.map((sv) => (
-                  <tr key={sv.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-800 font-medium">{sv.descricao}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{sv.unidade}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-slate-700">
-                      {BRL(sv.valorAnual)}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-blue-50/50 font-bold">
-                  <td className="px-4 py-2.5 text-blue-700" colSpan={2}>
-                    Subtotal Serviços
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-blue-700">
-                    {BRL(totalServicos)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-2 text-left">
-            Aquisições Regulares
-          </h3>
-          <div className="rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="text-left px-4 py-2.5">Descrição</th>
-                  <th className="text-center px-4 py-2.5 w-28">Qtd/ano</th>
-                  <th className="text-right px-4 py-2.5 w-28">V. Unit.</th>
-                  <th className="text-right px-4 py-2.5 w-32">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-left">
-                {modelo.aquisicoes.map((aq) => (
-                  <tr key={aq.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-800 font-medium">{aq.descricao}</td>
-                    <td className="px-4 py-2.5 text-center text-gray-500">
-                      {aq.quantidadeAnual} {aq.unidade}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-gray-500">
-                      {BRL(aq.valorUnitario)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-slate-700">
-                      {BRL(aq.quantidadeAnual * aq.valorUnitario)}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-green-50/50 font-bold">
-                  <td className="px-4 py-2.5 text-green-700" colSpan={3}>
-                    Subtotal Aquisições
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-green-700">
-                    {BRL(totalAquisicoes)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Simulador Tab ────────────────────────────────────────────────────────────
-function SimuladorTab({
-  modelos,
-  ambientes,
-}: {
-  modelos: ModeloCreche[];
-  ambientes: ModeloAmbiente[];
-}) {
-  const [quantidades, setQuantidades] = useState<Record<string, number>>(() => {
-    const init: Record<string, number> = {};
-    modelos.forEach((m) => {
-      init[m.id] = 0;
-    });
-    return init;
-  });
-
-  const handleIncrement = (id: string) => {
-    setQuantidades((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
-  };
-
-  const handleDecrement = (id: string) => {
-    setQuantidades((prev) => ({
-      ...prev,
-      [id]: Math.max(0, (prev[id] || 0) - 1),
-    }));
-  };
-
-  const rows = modelos.map((m) => {
-    const c = calcularCustoCreche(m, ambientes);
-    return {
-      modelo: m,
-      custos: c,
-    };
-  });
-
-  // Totais do cenário consolidado
-  let cenarioInvestimento = 0;
-  let cenarioCusteio = 0;
-  let cenarioVagas = 0;
-  let cenarioSalas = 0;
-  let cenarioUnidades = 0;
-
-  rows.forEach(({ modelo, custos }) => {
-    const qty = quantidades[modelo.id] || 0;
-    cenarioInvestimento += custos.investimento * qty;
-    cenarioCusteio += custos.custeioAnual * qty;
-    cenarioVagas += (modelo.capacidadeAlunos || 120) * qty;
-
-    // Calcular salas de aula baseando-se nas categorias nos ambientes do modelo
-    const salasPorCreche = modelo.ambientes
-      .filter((ma) => {
-        const amb = ambientes.find((a) => a.id === ma.modeloAmbienteId);
-        return amb && (amb.categoria === "sala-atividades" || amb.categoria === "bercario");
-      })
-      .reduce((sum, ma) => sum + ma.quantidade, 0);
-
-    cenarioSalas += salasPorCreche * qty;
-    cenarioUnidades += qty;
-  });
-
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div className="text-left">
-          <h2 className="text-lg font-semibold text-gray-800">
-            Simulador de Cenários de Expansão
-          </h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Planeje expansões de rede e simule o impacto financeiro consolidado de investimento e custeio.
-          </p>
-        </div>
-      </div>
-
-      {/* Network Scenario Builder */}
-      <div className="bg-slate-50/50 border border-slate-200 rounded-2xl p-5 text-left space-y-4">
-        <h3 className="font-extrabold text-slate-800 text-sm">
-          Planejamento de Expansão de Rede (Quantidade de Unidades)
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {modelos.map((modelo) => {
-            const qty = quantidades[modelo.id] || 0;
-            const singleC = rows.find((r) => r.modelo.id === modelo.id)?.custos;
-            return (
-              <div key={modelo.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between space-y-3">
-                <div>
-                  <h4 className="font-bold text-slate-800 text-sm truncate">{modelo.nome}</h4>
-                  <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{modelo.descricao}</p>
-                  <div className="text-[11px] text-slate-500 mt-1">
-                    Capacidade: <span className="font-semibold text-slate-700">{modelo.capacidadeAlunos || 120} alunos</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Investimento unit: <span className="font-bold text-blue-700">{BRL(singleC?.investimento || 0)}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                  <span className="text-xs text-slate-400 font-semibold">Qtd. no Plano</span>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => handleDecrement(modelo.id)}
-                      className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-                    >
-                      -
-                    </button>
-                    <span className="w-6 text-center font-bold text-slate-800 text-sm">{qty}</span>
-                    <button 
-                      onClick={() => handleIncrement(modelo.id)}
-                      className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Scenario Consolidated Results Dashboard */}
-      {cenarioUnidades > 0 && (
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white shadow-xl rounded-2xl p-6 text-left animate-in fade-in duration-200">
-          <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-200">
-              Resumo Consolidado do Plano de Expansão
-            </h3>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <div>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Unidades Planejadas</p>
-              <p className="text-3xl font-black mt-1 text-slate-50">{cenarioUnidades} creches</p>
-              <p className="text-xs text-slate-400 mt-0.5">Totalizando {cenarioSalas} salas de aula</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Investimento Total</p>
-              <p className="text-3xl font-black mt-1 text-emerald-400">{BRL(cenarioInvestimento)}</p>
-              <p className="text-xs text-slate-400 mt-0.5">Estimativa de Referência FNDE/SINAPI</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Custeio Operacional Anual</p>
-              <p className="text-3xl font-black mt-1 text-orange-400">{BRL(cenarioCusteio)}</p>
-              <p className="text-xs text-slate-400 mt-0.5">Recorrência pós-construção</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Novas Vagas de EI</p>
-              <p className="text-3xl font-black mt-1 text-blue-300">+{cenarioVagas} vagas</p>
-              <p className="text-xs text-slate-400 mt-0.5">De atendimento integral/parcial</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Visual Comparison Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 lg:col-span-2 text-left h-[260px] flex flex-col">
-          <h3 className="font-bold text-slate-800 text-sm mb-3">
-            Investimento Estimado Unitário
-          </h3>
-          <div className="flex-1 min-h-0 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={rows} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="modelo.nome" tickFormatter={(v) => v.replace("Creche ", "")} tick={{ fontSize: 9, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={(v) => `${(v/1e6).toFixed(1)}M`} />
-                <Tooltip 
-                  formatter={(value: any) => [BRL(value), ""]} 
-                  contentStyle={{ borderRadius: 8, fontSize: 11 }}
-                />
-                <Bar dataKey="custos.investimento" fill="#3b82f6" radius={[6, 6, 0, 0]} name="Investimento Unitário">
-                  {rows.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.modelo.tipoBase === "tipo1" ? "#3b82f6" : entry.modelo.tipoBase === "tipo2" ? "#10b981" : "#8b5cf6"} />
-                  ))}
-                </Bar>
-                <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Static horizontal breakdown values */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 text-left flex flex-col justify-between space-y-4">
-          <div>
-            <h3 className="font-bold text-slate-800 text-sm">
-              Valores Unitários de Referência
-            </h3>
-            <p className="text-xs text-slate-400">Valores de investimento e custeio base individual por modelo.</p>
-          </div>
-          <div className="space-y-3 flex-1 flex flex-col justify-center">
-            {rows.map(({ modelo, custos }) => (
-              <div key={modelo.id} className="border-b border-slate-100 pb-2 last:border-0">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-semibold text-slate-700">{modelo.nome}</span>
-                </div>
-                <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                  <span>Investimento: <strong className="text-blue-700">{BRL(custos.investimento)}</strong></span>
-                  <span>Custeio: <strong className="text-orange-700">{BRL(custos.custeioAnual)}/ano</strong></span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {rows.length >= 2 && (
-        <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 px-4 py-3 text-left">
-            <h3 className="text-sm font-semibold text-gray-700">
-              Comparativo Direto de Itens de Custo Unitário
-            </h3>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="text-gray-500 border-b border-gray-200">
-              <tr>
-                <th className="text-left px-4 py-2.5">Item</th>
-                {rows.map((r) => (
-                  <th
-                    key={r.modelo.id}
-                    className="text-right px-4 py-2.5"
-                  >
-                    {r.modelo.nome}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-left">
-              {[
-                { key: "obras" as const, label: "Obras Civis" },
-                {
-                  key: "mobiliario" as const,
-                  label: "Mobiliário",
-                },
-                {
-                  key: "equipamentos" as const,
-                  label: "Equipamentos",
-                },
-                { key: "reserva" as const, label: "Reserva de Contingência" },
-                {
-                  key: "investimento" as const,
-                  label: "Investimento Total",
-                },
-                {
-                  key: "custeioAnual" as const,
-                  label: "Custeio Anual Operacional",
-                },
-              ].map(({ key, label }) => (
-                <tr
-                  key={key}
-                  className={
-                    key === "investimento" ||
-                    key === "custeioAnual"
-                      ? "bg-slate-50 font-bold"
-                      : "hover:bg-gray-50"
-                  }
-                >
-                  <td className="px-4 py-2.5 text-gray-700">
-                    {label}
-                  </td>
-                  {rows.map((r) => (
-                    <td
-                      key={r.modelo.id}
-                      className={`px-4 py-2.5 text-right font-semibold ${
-                        key === "investimento" ? "text-blue-700" : key === "custeioAnual" ? "text-orange-700" : "text-slate-800"
-                      }`}
-                    >
-                      {BRL(r.custos[key])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
@@ -1757,8 +1490,7 @@ type TabId =
   | "aquisicoes"
   | "folha"
   | "modelos"
-  | "custeio"
-  | "simulador";
+  | "custeio";
 
 const TABS: {
   id: TabId;
@@ -1804,14 +1536,8 @@ const TABS: {
   },
   {
     id: "custeio",
-    label: "Custeio Anual",
-    desc: "Operação e manutenção",
-    icon: <ShoppingCart size={16} />,
-  },
-  {
-    id: "simulador",
-    label: "Simulador",
-    desc: "Comparativo de custos",
+    label: "Custeio & Simulação",
+    desc: "Planejamento de rede e unitário",
     icon: <BarChart3 size={16} />,
   },
 ];
@@ -2069,15 +1795,10 @@ export default function ConfiguracoesCusto({
               />
             )}
             {activeTab === "custeio" && (
-              <CusteioTab
+              <SimuladorCusteioTab
                 modelos={modelos}
                 ambientes={ambientes}
-              />
-            )}
-            {activeTab === "simulador" && (
-              <SimuladorTab
-                modelos={modelos}
-                ambientes={ambientes}
+                cargosRef={cargosRef}
               />
             )}
           </div>

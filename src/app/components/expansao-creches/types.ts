@@ -72,6 +72,7 @@ export interface ModeloAmbiente {
   areaMq: number;
   custoConstrucaoMq: number; // R$/m² obra civil sem mobília
   padrao: boolean;           // true = template FNDE padrão
+  capacidadeAlunos?: number; // lotação máxima de alunos para salas
   itens: ItemAmbiente[];
 }
 
@@ -289,6 +290,7 @@ export interface ObraConstrucao {
   tipoProjetoFNDE?: TipoCreche | 'proprio';
   modeloCrecheId?: string;
   numeroDeSalas: number;
+  capacidadeAlunos?: number;
   etapasAtendidas: EtapaEI[];
   desembolsoPorAno: DesembolsoAnual[];
   contrapartidaMunicipal?: number;

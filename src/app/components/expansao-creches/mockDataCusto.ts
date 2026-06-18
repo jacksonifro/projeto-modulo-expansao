@@ -105,7 +105,7 @@ export const mockModelosAmbiente: ModeloAmbiente[] = [
   // ── 1. Sala de Atividades (padrão) ────────────────────────────────────────
   {
     id: 'ma01', nome: 'Sala de Atividades (Padrão)', categoria: 'sala-atividades',
-    areaMq: 48, custoConstrucaoMq: CUB, padrao: true,
+    areaMq: 48, custoConstrucaoMq: CUB, padrao: true, capacidadeAlunos: 20,
     itens: [
       { id: 'i001', bibliotecaId: 'b001', tipo: 'mobiliario', descricao: 'Mesa infantil trapezoidal 120x60cm', quantidade: 8, valorUnitario: 420 },
       { id: 'i002', bibliotecaId: 'b002', tipo: 'mobiliario', descricao: 'Cadeira infantil PP sem braço', quantidade: 20, valorUnitario: 148 },
@@ -124,7 +124,7 @@ export const mockModelosAmbiente: ModeloAmbiente[] = [
   // ── 2. Berçário ───────────────────────────────────────────────────────────
   {
     id: 'ma02', nome: 'Berçário', categoria: 'bercario',
-    areaMq: 42, custoConstrucaoMq: CUB, padrao: true,
+    areaMq: 42, custoConstrucaoMq: CUB, padrao: true, capacidadeAlunos: 15,
     itens: [
       { id: 'i020', bibliotecaId: 'b010', tipo: 'mobiliario', descricao: 'Berço grade móvel colchão incluso', quantidade: 8, valorUnitario: 1250 },
       { id: 'i021', bibliotecaId: 'b011', tipo: 'mobiliario', descricao: 'Mesa trocador c/ cuba e gradil', quantidade: 2, valorUnitario: 1680 },
@@ -350,7 +350,6 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'mca16', modeloAmbienteId: 'ma16', quantidade: 1 },
     ],
     servicos: [
-      { id: 'sv01', descricao: 'Pessoal (professores, auxiliares, direção)', unidade: 'ano', valorAnual: 1420000 },
       { id: 'sv02', descricao: 'Energia elétrica', unidade: 'ano', valorAnual: 48000 },
       { id: 'sv03', descricao: 'Água e esgoto', unidade: 'ano', valorAnual: 14400 },
       { id: 'sv04', descricao: 'Internet e telefonia', unidade: 'ano', valorAnual: 7200 },
@@ -402,7 +401,6 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'mca34', modeloAmbienteId: 'ma16', quantidade: 1 },
     ],
     servicos: [
-      { id: 'sv10', descricao: 'Pessoal (professores, auxiliares, direção)', unidade: 'ano', valorAnual: 780000 },
       { id: 'sv11', descricao: 'Energia elétrica', unidade: 'ano', valorAnual: 28800 },
       { id: 'sv12', descricao: 'Água e esgoto', unidade: 'ano', valorAnual: 9600 },
       { id: 'sv13', descricao: 'Internet e telefonia', unidade: 'ano', valorAnual: 7200 },
@@ -445,13 +443,24 @@ export function calcularCustoAmbiente(ambiente: ModeloAmbiente): {
   return { obras, mobiliario, equipamentos, total: obras + mobiliario + equipamentos };
 }
 
+export const mockCargosReferencia: CargoReferencia[] = [
+  { id: 'cg01', descricao: 'Diretor Escolar', remuneracaoBase: 6500, auxilios: 500, patronal: 1300 },
+  { id: 'cg02', descricao: 'Coordenador Pedagógico', remuneracaoBase: 5800, auxilios: 500, patronal: 1160 },
+  { id: 'cg03', descricao: 'Professor Educação Infantil (40h)', remuneracaoBase: 4420, auxilios: 500, patronal: 884 },
+  { id: 'cg04', descricao: 'Monitor/Auxiliar de Creche', remuneracaoBase: 2200, auxilios: 350, patronal: 440 },
+  { id: 'cg05', descricao: 'Merendeira/Cozinheira', remuneracaoBase: 1800, auxilios: 350, patronal: 360 },
+  { id: 'cg06', descricao: 'Auxiliar de Limpeza', remuneracaoBase: 1500, auxilios: 350, patronal: 300 },
+];
+
 export function calcularCustoCreche(
   modelo: ModeloCreche,
-  ambientes: ModeloAmbiente[]
+  ambientes: ModeloAmbiente[],
+  cargosRef: CargoReferencia[] = mockCargosReferencia
 ): {
   obras: number; mobiliario: number; equipamentos: number;
   reserva: number; investimento: number;
   custeioAnual: number;
+  detalheCusteio: { pessoal: number; servicos: number; aquisicoes: number };
 } {
   let obras = 0, mobiliario = 0, equipamentos = 0;
   for (const ma of modelo.ambientes) {
@@ -465,10 +474,23 @@ export function calcularCustoCreche(
   const subtotal = obras + mobiliario + equipamentos;
   const reserva = subtotal * (modelo.reservaPct / 100);
   const investimento = subtotal + reserva;
-  const custeioAnual =
-    modelo.servicos.reduce((s, sv) => s + sv.valorAnual, 0) +
-    modelo.aquisicoes.reduce((s, aq) => s + aq.quantidadeAnual * aq.valorUnitario, 0);
-  return { obras, mobiliario, equipamentos, reserva, investimento, custeioAnual };
+  
+  const custoPessoal = (modelo.pessoal || []).reduce((sum, p) => {
+    const cargo = cargosRef.find(c => c.id === p.cargoId);
+    if (!cargo) return sum;
+    const custoMensal = cargo.remuneracaoBase + cargo.auxilios + cargo.patronal;
+    return sum + (custoMensal * 13.33 * p.quantidade); // 13.33 = 12 meses + 13º + 1/3 férias
+  }, 0);
+
+  const custoServicos = modelo.servicos.reduce((s, sv) => s + sv.valorAnual, 0);
+  const custoAquisicoes = modelo.aquisicoes.reduce((s, aq) => s + aq.quantidadeAnual * aq.valorUnitario, 0);
+
+  const custeioAnual = custoPessoal + custoServicos + custoAquisicoes;
+
+  return { 
+    obras, mobiliario, equipamentos, reserva, investimento, custeioAnual,
+    detalheCusteio: { pessoal: custoPessoal, servicos: custoServicos, aquisicoes: custoAquisicoes }
+  };
 }
 
 export const mockServicosReferencia: ServicoAnual[] = [
@@ -489,11 +511,3 @@ export const mockAquisicoesReferencia: AquisicaoAnual[] = [
   { id: 'ref-aq05', descricao: 'Gás de cozinha', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 800 },
 ];
 
-export const mockCargosReferencia: CargoReferencia[] = [
-  { id: 'cg01', descricao: 'Diretor Escolar', remuneracaoBase: 6500, auxilios: 500, patronal: 1300 },
-  { id: 'cg02', descricao: 'Coordenador Pedagógico', remuneracaoBase: 5800, auxilios: 500, patronal: 1160 },
-  { id: 'cg03', descricao: 'Professor Educação Infantil (40h)', remuneracaoBase: 4420, auxilios: 500, patronal: 884 },
-  { id: 'cg04', descricao: 'Monitor/Auxiliar de Creche', remuneracaoBase: 2200, auxilios: 350, patronal: 440 },
-  { id: 'cg05', descricao: 'Merendeira/Cozinheira', remuneracaoBase: 1800, auxilios: 350, patronal: 360 },
-  { id: 'cg06', descricao: 'Auxiliar de Limpeza', remuneracaoBase: 1500, auxilios: 350, patronal: 300 },
-];

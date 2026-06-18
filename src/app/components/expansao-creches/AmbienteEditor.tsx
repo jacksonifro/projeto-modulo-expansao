@@ -10,7 +10,7 @@ const BRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 const CATEGORIAS: { value: CategoriaAmbiente; label: string }[] = [
-  { value: 'sala-atividades', label: 'Sala de Atividades' },
+  { value: 'sala-atividades', label: 'Sala de Aula (Atividades)' },
   { value: 'bercario', label: 'Berçário' },
   { value: 'solario', label: 'Solário' },
   { value: 'fraldario', label: 'Fraldário' },
@@ -208,7 +208,7 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
       {expanded && (
         <div className="border-t border-slate-200 bg-white">
           {/* Dados do ambiente */}
-          <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-slate-100 bg-slate-50">
+          <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-4 border-b border-slate-100 bg-slate-50">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
               <select value={ambiente.categoria}
@@ -229,6 +229,15 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
                 onChange={v => onUpdate({ ...ambiente, custoConstrucaoMq: v })}
                 className={`${inputCls} w-full`} />
             </div>
+            {(ambiente.categoria === 'sala-atividades' || ambiente.categoria === 'bercario') && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Capacidade (vagas)</label>
+                <input type="number" value={ambiente.capacidadeAlunos || ''} min={0}
+                  onChange={e => onUpdate({ ...ambiente, capacidadeAlunos: Number(e.target.value) })}
+                  placeholder="Ex: 20"
+                  className={`${inputCls} w-full`} />
+              </div>
+            )}
             <div className="flex flex-col justify-center bg-green-50 border border-green-200 rounded-xl p-3 text-center">
               <div className="text-xs text-green-600 font-semibold">Obra civil total</div>
               <div className="font-bold text-green-700 text-lg">{BRL(custo.obras)}</div>
@@ -446,6 +455,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
   const [formArea, setFormArea] = useState<number>(20);
   const [formCusto, setFormCusto] = useState<number>(4950);
   const [formPadrao, setFormPadrao] = useState(false);
+  const [formCapacidade, setFormCapacidade] = useState<number | undefined>();
 
   const openAddModal = () => {
     setFormNome('');
@@ -453,6 +463,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
     setFormArea(20);
     setFormCusto(4950);
     setFormPadrao(false);
+    setFormCapacidade(undefined);
     setIsOpen(true);
   };
 
@@ -468,6 +479,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
       areaMq: formArea,
       custoConstrucaoMq: formCusto,
       padrao: formPadrao,
+      capacidadeAlunos: (formCategoria === 'sala-atividades' || formCategoria === 'bercario') ? (formCapacidade || 0) : undefined,
       itens: [],
     };
     onChange([...ambientes, novo]);
@@ -631,7 +643,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     Custo de Construção / m² (R$) *
@@ -644,6 +656,21 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
                     className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800"
                   />
                 </div>
+                {(formCategoria === 'sala-atividades' || formCategoria === 'bercario') && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Capacidade (alunos/vagas)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formCapacidade || ''}
+                      onChange={(e) => setFormCapacidade(Number(e.target.value))}
+                      placeholder="Ex: 20"
+                      className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800"
+                    />
+                  </div>
+                )}
                 <div className="flex items-center pt-5">
                   <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
                     <input

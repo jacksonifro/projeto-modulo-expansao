@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ChevronLeft, Download, Printer, FileText, Mail, Users, TrendingUp, PieChart, Building2, LayoutDashboard, FileBarChart } from 'lucide-react';
 import { mockPlans, mockSchools, mockActivities, mockDemandaEtapa, mockUnidades, mockDemandaBairro } from './mockData';
-import { ExpansionPlan, MembroEquipe, ObraConstrucao, AcaoUnidade } from './types';
+import { mockCargosReferencia } from './mockDataCusto';
+import { ExpansionPlan, MembroEquipe, ObraConstrucao, AcaoUnidade, CargoReferencia } from './types';
 import { getActivities } from './Kanban';
 
 interface ReportViewProps {
@@ -33,6 +34,11 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
   const [plans] = useState<ExpansionPlan[]>(() => {
     const cached = localStorage.getItem("exp_creches_plans");
     return cached ? JSON.parse(cached) : mockPlans;
+  });
+
+  const [cargosRef] = useState<CargoReferencia[]>(() => {
+    const cached = localStorage.getItem("exp_creches_cargos_ref");
+    return cached ? JSON.parse(cached) : mockCargosReferencia;
   });
 
   const filteredPlans = filters.planoId
@@ -89,15 +95,22 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
 
   // Pessoal
   const novasSalasPrevistas = obras.reduce((sum, o) => sum + (o.numeroDeSalas || 0), 0) + acoes.length;
-  const profsPorSala = 1.5; // Estimativa (1 prof regente + cobertura)
-  const auxsPorSala = 1;
-  const totalProfessores = Math.ceil(novasSalasPrevistas * profsPorSala);
-  const totalAuxiliares = novasSalasPrevistas * auxsPorSala;
-  const salarioMedioProf = 4500;
-  const salarioMedioAux = 2500;
-  const encargos = 1.6; // 60% de encargos e benefícios
-  const custoMensalPessoal = ((totalProfessores * salarioMedioProf) + (totalAuxiliares * salarioMedioAux)) * encargos;
-  const custoAnualPessoal = custoMensalPessoal * 13.3; // 12 meses + 13º + 1/3 Férias
+  
+  const pessoal = activePlan?.pessoal || [];
+  const configSalas = activePlan?.configSalas || [];
+
+  const calcularCustoPessoal = (item: any) => {
+    const cargoConf = cargosRef.find((c: any) => c.descricao === item.funcao);
+    const patronal = cargoConf ? cargoConf.patronal : 0;
+    const custoMensal = (item.remuneracaoBase + item.auxilios + patronal) * item.quantidade;
+    const custoAnual = custoMensal * 13.3; // 13º salário + 1/3 Férias
+    return { patronal, custoMensal, custoAnual };
+  };
+
+  const totalContratacoes = pessoal.reduce((sum, p) => sum + p.quantidade, 0);
+  const custoMensalPessoal = pessoal.reduce((sum, p) => sum + calcularCustoPessoal(p).custoMensal, 0);
+  const custoAnualPessoal = pessoal.reduce((sum, p) => sum + calcularCustoPessoal(p).custoAnual, 0);
+  const totalTurmas = configSalas.reduce((sum, c) => sum + c.numeroTurmas, 0);
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -489,42 +502,91 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                   <Users className="w-6 h-6 text-amber-500" /> Dimensionamento de Equipe Escolar
                 </h4>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
-                  <p className="text-amber-800 mb-2">Com a criação de <strong>{novasSalasPrevistas} novas salas</strong>, o sistema estima a seguinte necessidade de contratação de profissionais da educação:</p>
+                  <p className="text-amber-800 mb-2">Este relatório apresenta o detalhamento do quadro de pessoal necessário para o plano, considerando a configuração de turmas e os custos parametrizados na Folha de Pagamento.</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-6 mb-8">
                   <div className="border border-slate-200 rounded-lg p-5 bg-white">
-                    <h5 className="font-bold text-slate-700 mb-4 border-b pb-2">Profissionais Necessários</h5>
+                    <h5 className="font-bold text-slate-700 mb-4 border-b pb-2">Contratações Previstas</h5>
                     <div className="flex justify-between mb-2">
-                      <span className="text-slate-600">Professores Regentes/Cobertura</span>
-                      <span className="font-bold">{totalProfessores}</span>
+                      <span className="text-slate-600">Total de Profissionais</span>
+                      <span className="font-bold">{totalContratacoes}</span>
                     </div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-slate-600">Auxiliares de Sala</span>
-                      <span className="font-bold">{totalAuxiliares}</span>
-                    </div>
-                    <div className="flex justify-between mt-4 pt-2 border-t font-bold text-lg">
-                      <span>Total de Contratações</span>
-                      <span className="text-amber-600">{totalProfessores + totalAuxiliares}</span>
+                      <span className="text-slate-600">Turmas a serem atendidas</span>
+                      <span className="font-bold">{totalTurmas}</span>
                     </div>
                   </div>
 
                   <div className="border border-slate-200 rounded-lg p-5 bg-white">
-                    <h5 className="font-bold text-slate-700 mb-4 border-b pb-2">Impacto Financeiro Previsto</h5>
+                    <h5 className="font-bold text-slate-700 mb-4 border-b pb-2">Impacto Financeiro Consolidado</h5>
                     <div className="flex justify-between mb-2">
-                      <span className="text-slate-600">Folha Base Mensal</span>
-                      <span className="font-medium">{BRL(custoMensalPessoal / encargos)}</span>
+                      <span className="text-slate-600">Custo Total Mensal</span>
+                      <span className="font-bold text-slate-800">{BRL(custoMensalPessoal)}</span>
                     </div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-slate-600">Encargos (+60%)</span>
-                      <span className="font-medium">{BRL((custoMensalPessoal / encargos) * 0.6)}</span>
-                    </div>
-                    <div className="flex justify-between mt-4 pt-2 border-t font-bold text-lg">
-                      <span>Custo Anual (c/ 13º e 1/3 Férias)</span>
-                      <span className="text-red-600">{BRL(custoAnualPessoal)}</span>
+                      <span className="text-slate-600">Custo Anual (c/ 13º e 1/3 Férias)</span>
+                      <span className="font-bold text-red-600">{BRL(custoAnualPessoal)}</span>
                     </div>
                   </div>
                 </div>
+
+                <h4 className="text-lg font-bold text-slate-800 mt-8 mb-4">Detalhamento por Função</h4>
+                <table className="w-full text-sm border-collapse mb-8">
+                  <thead className="bg-slate-100">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-700">Função</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-700">Categoria</th>
+                      <th className="px-4 py-2 text-center font-semibold text-slate-700">Qtd</th>
+                      <th className="px-4 py-2 text-right font-semibold text-slate-700">Base+Auxílios (Mês)</th>
+                      <th className="px-4 py-2 text-right font-semibold text-slate-700">Patronal (Mês)</th>
+                      <th className="px-4 py-2 text-right font-semibold text-slate-700">Total Mensal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {pessoal.map(p => {
+                      const { patronal, custoMensal } = calcularCustoPessoal(p);
+                      return (
+                      <tr key={p.id}>
+                        <td className="px-4 py-2 font-medium">{p.funcao || 'Não informada'}</td>
+                        <td className="px-4 py-2 capitalize">{p.categoria}</td>
+                        <td className="px-4 py-2 text-center font-bold text-blue-600">{p.quantidade}</td>
+                        <td className="px-4 py-2 text-right">{BRL((p.remuneracaoBase + p.auxilios) * p.quantidade)}</td>
+                        <td className="px-4 py-2 text-right text-slate-500">{BRL(patronal * p.quantidade)}</td>
+                        <td className="px-4 py-2 text-right font-semibold">{BRL(custoMensal)}</td>
+                      </tr>
+                    )})}
+                    {pessoal.length === 0 && (
+                      <tr><td colSpan={6} className="px-4 py-4 text-center text-slate-500">Nenhum profissional planejado.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {configSalas.length > 0 && (
+                  <>
+                    <h4 className="text-lg font-bold text-slate-800 mt-8 mb-4">Configuração de Turmas (Origem da Demanda)</h4>
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="bg-slate-100">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Origem</th>
+                          <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Nome da Sala</th>
+                          <th className="px-4 py-2 text-center font-semibold text-slate-700 border-b border-slate-300">Número de Turmas</th>
+                          <th className="px-4 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Etapas Atendidas</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {configSalas.map(c => (
+                          <tr key={c.id}>
+                            <td className="px-4 py-2 capitalize font-medium text-slate-700">{c.origem}</td>
+                            <td className="px-4 py-2 text-slate-800">{c.nome}</td>
+                            <td className="px-4 py-2 text-center font-bold text-blue-600">{c.numeroTurmas}</td>
+                            <td className="px-4 py-2 text-slate-600">{c.etapas.join(', ') || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
               </div>
             )}
 

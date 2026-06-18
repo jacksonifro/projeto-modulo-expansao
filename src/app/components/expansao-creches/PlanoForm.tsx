@@ -15,7 +15,7 @@ import {
 import { calcularCustoObraTotal, calcularCustoAcaoTotal, calcularAutoDistribuicao } from './utils/planLogic';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area, Legend,
+  AreaChart, Area, Legend, ComposedChart, Line
 } from 'recharts';
 
 interface PlanoFormProps {
@@ -415,9 +415,10 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   const removeItemPessoal = (id: string) => setPessoal(p => p.filter(x => x.id !== id));
 
   const calcularCustoPessoal = (item: ItemPessoal) => {
-    const patronal = (item.remuneracaoBase + item.auxilios) * 0.14;
+    const cargoConf = cargosRef.find(c => c.descricao === item.funcao);
+    const patronal = cargoConf ? cargoConf.patronal : 0;
     const custoMensal = (item.remuneracaoBase + item.auxilios + patronal) * item.quantidade;
-    const custoAnual = custoMensal * 13; // 13º salário
+    const custoAnual = custoMensal * 13.3; // 13º salário e 1/3 de férias
     return { patronal, custoMensal, custoAnual };
   };
 
@@ -646,9 +647,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
           .reduce((s, d) => s + d.valor, 0)
       }));
 
-      // Estimativa de vagas baseada na capacidade real do modelo selecionado
-      const modeloRelacionado = modelos.find(m => m.tipoBase === obra.tipoProjetoFNDE);
-      const vagasEstimadas = modeloRelacionado ? (modeloRelacionado.capacidadeAlunos || 120) : (obra.numeroDeSalas * 16 * 2);
+      const vagasEstimadas = obra.capacidadeAlunos || 0;
 
       const turmas = configSalas.find(c => c.id === obra.id)?.numeroTurmas || 0;
       const custoPessoalAnual = totalTurmasPlanejadas > 0 ? (turmas / totalTurmasPlanejadas) * totalCustoAnualPessoal : 0;
@@ -698,7 +697,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         nome: `${acao.tipo === 'adaptacao' ? 'Adaptação' : 'Ampliação'} — ${unidade?.nome || 'Unidade'}`,
         descricao: acao.descricao || '',
         salas: acao.tipo === 'ampliacao' ? 1 : 0,
-        vagas: Math.max(0, acao.novaCapacidade - acao.capacidadeAnterior),
+        vagas: acao.novaCapacidade || 0,
         desembolsoPorAno: desembolsoConsolidado,
         totalInvestimento: totalDesembolso,
         custoPessoalAnual,
@@ -745,7 +744,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     P1: 'bg-red-500 text-white', P2: 'bg-amber-400 text-white', P3: 'bg-slate-300 text-slate-700',
   };
 
-  const inputCls = "w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none";
+  const inputCls = "w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white";
 
   // Sidebar navigation groups
   const groups: TabGroup[] = ['planejamento', 'diagnostico', 'resultado'];
@@ -1489,8 +1488,9 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                   const selectedId = e.target.value;
                                   const ma = ambientesAmpliacao.find(a => a.id === selectedId);
                                   const custo = ma ? calcularCustoAmbiente(ma).total : 0;
+                                  const capNova = ma ? (ma.capacidadeAlunos || 20) : 20;
                                   const capAnterior = acao.tipo === 'adaptacao' ? (ambientesAdaptacao.find(a => a.salaId === selectedId)?.capacidadeAtual ?? 0) : 0;
-                                  setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, salaId: selectedId, capacidadeAnterior: capAnterior, custoPorSala: custo } : x));
+                                  setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, salaId: selectedId, capacidadeAnterior: capAnterior, custoPorSala: custo, novaCapacidade: capNova } : x));
                                 }}
                                 className={`w-full text-sm px-3 py-2 border-2 rounded-lg focus:ring-2 outline-none transition-colors ${!acao.modeloCrecheId ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' : acao.tipo === 'adaptacao' ? 'border-purple-300 bg-white focus:ring-purple-300 focus:border-purple-400' : 'border-blue-300 bg-white focus:ring-blue-300 focus:border-blue-400'}`}
                                 disabled={!acao.modeloCrecheId || ambientesAmpliacao.length === 0}
@@ -1533,14 +1533,39 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         )}
 
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Painel de Vagas */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Planejamento de Vagas da Sala</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Capacidade Padrão</label>
+                              <div className="text-sm font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg h-[38px] flex items-center">
+                                {ambienteSelecionado?.capacidadeAlunos || 0} vagas
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Novas Vagas *</label>
+                              <input type="number" value={acao.novaCapacidade} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, novaCapacidade: Number(e.target.value) } : x))} className={inputCls} />
+                            </div>
+                            <div className="flex flex-col justify-end">
+                              <div className="text-sm font-bold text-center px-3 py-1.5 rounded-lg h-[38px] flex flex-col justify-center bg-green-100 text-green-700">
+                                <span>+{acao.novaCapacidade || 0} novas vagas</span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {acao.custoPorSala === 0 && acao.salaId && (
+                            <div className="mt-3 text-xs text-amber-600 flex items-center gap-1">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              Selecione um modelo de creche para calcular o custo e preencher as vagas
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Etapa Destino</label>
                             <select value={acao.etapaDestino} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, etapaDestino: e.target.value as EtapaEI } : x))} className={inputCls}>{ETAPAS.map(e => <option key={e}>{e}</option>)}</select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Nova Capacidade</label>
-                            <input type="number" value={acao.novaCapacidade} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, novaCapacidade: Number(e.target.value) } : x))} className={inputCls} />
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1">Previsão de Conclusão</label>
@@ -1548,21 +1573,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                               onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, previsaoConclusao: e.target.value } : x))}
                               className={inputCls} />
                           </div>
-                        </div>
-
-                        {/* Badge de vagas */}
-                        <div className="flex items-center gap-3">
-                          <div className={`px-4 py-1.5 rounded-full text-sm font-semibold ${acao.novaCapacidade > acao.capacidadeAnterior ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                            {acao.novaCapacidade > acao.capacidadeAnterior
-                              ? `+${acao.novaCapacidade - acao.capacidadeAnterior} novas vagas`
-                              : `Reordenamento: ${acao.novaCapacidade} vagas`}
-                          </div>
-                          {acao.custoPorSala === 0 && acao.salaId && (
-                            <span className="text-xs text-amber-600 flex items-center gap-1">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                              Selecione um modelo de creche para calcular o custo
-                            </span>
-                          )}
                         </div>
                       </div>
                     );
@@ -1683,6 +1693,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                       const amb = ambientes.find(ma => ma.id === a.modeloAmbienteId);
                                       return amb?.categoria === 'sala-atividades';
                                     }).reduce((s, a) => s + a.quantidade, 0) || x.numeroDeSalas,
+                                    capacidadeAlunos: m.capacidadeAlunos || 0,
                                   } as ObraConstrucao;
                                   // if there is no desembolso yet, initialize a single-line total equal to investimento
                                   if (totalDesembolso === 0 && (!updated.desembolsoPorAno || updated.desembolsoPorAno.length === 0)) {
@@ -1727,11 +1738,17 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         })()}
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                           <label className="block text-xs font-semibold text-slate-600 mb-1">Nº de Salas</label>
                           <input type="number" value={obra.numeroDeSalas}
                             onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, numeroDeSalas: Number(e.target.value) } : x))}
+                            className={inputCls} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Vagas da Obra *</label>
+                          <input type="number" value={obra.capacidadeAlunos || 0}
+                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, capacidadeAlunos: Number(e.target.value) } : x))}
                             className={inputCls} />
                         </div>
                         <div>
@@ -2678,6 +2695,24 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         </div>
                       ) : (
                         <div className="text-center py-6 text-slate-500">Nenhuma meta com ano de conclusão cadastrada ou vagas geradas.</div>
+                      )}
+
+                      {evolucaoVagas.length > 0 && (
+                        <div className="mt-6 border-t border-slate-200 pt-6">
+                          <h4 className="text-sm font-bold text-slate-600 mb-4 text-center">Impacto Cumulativo vs. Taxa de Atendimento</h4>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <ComposedChart data={evolucaoVagas}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="ano" />
+                              <YAxis yAxisId="left" orientation="left" />
+                              <YAxis yAxisId="right" orientation="right" tickFormatter={v => `${v}%`} />
+                              <Tooltip formatter={(value, name) => [name === 'Taxa de Atendimento' ? `${value}%` : value, name]} />
+                              <Legend />
+                              <Bar yAxisId="left" dataKey="vagas" name="Novas Vagas (Ano)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                              <Line yAxisId="right" type="monotone" dataKey={row => parseFloat(row.taxa)} name="Taxa de Atendimento" stroke="#10b981" strokeWidth={3} />
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                        </div>
                       )}
                     </div>
 

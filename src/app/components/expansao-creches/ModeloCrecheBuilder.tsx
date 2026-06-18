@@ -43,6 +43,16 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
 }) {
   const [addingId, setAddingId] = useState('');
 
+  const calcCapacidade = (ambs: ModeloCrecheAmbiente[]) => {
+    return ambs.reduce((sum, ma) => {
+      const amb = ambientes.find(a => a.id === ma.modeloAmbienteId);
+      if (amb && (amb.categoria === 'sala-atividades' || amb.categoria === 'bercario')) {
+        return sum + (amb.capacidadeAlunos || 0) * ma.quantidade;
+      }
+      return sum;
+    }, 0);
+  };
+
   const addAmbiente = () => {
     if (!addingId) return;
     const novo: ModeloCrecheAmbiente = {
@@ -50,18 +60,24 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
       modeloAmbienteId: addingId,
       quantidade: 1,
     };
-    onUpdate({ ...modelo, ambientes: [...modelo.ambientes, novo] });
+    const newAmbs = [...modelo.ambientes, novo];
+    onUpdate({ ...modelo, ambientes: newAmbs, capacidadeAlunos: calcCapacidade(newAmbs) });
     setAddingId('');
   };
 
-  const removeAmbiente = (id: string) =>
-    onUpdate({ ...modelo, ambientes: modelo.ambientes.filter(a => a.id !== id) });
+  const removeAmbiente = (id: string) => {
+    const newAmbs = modelo.ambientes.filter(a => a.id !== id);
+    onUpdate({ ...modelo, ambientes: newAmbs, capacidadeAlunos: calcCapacidade(newAmbs) });
+  };
 
-  const updateAmbiente = (id: string, field: keyof ModeloCrecheAmbiente, value: any) =>
+  const updateAmbiente = (id: string, field: keyof ModeloCrecheAmbiente, value: any) => {
+    const newAmbs = modelo.ambientes.map(a => a.id === id ? { ...a, [field]: value } : a);
     onUpdate({
       ...modelo,
-      ambientes: modelo.ambientes.map(a => a.id === id ? { ...a, [field]: value } : a),
+      ambientes: newAmbs,
+      capacidadeAlunos: calcCapacidade(newAmbs),
     });
+  };
 
   return (
     <div className="space-y-3">
@@ -661,7 +677,7 @@ function ModeloCard({
         </div>
 
         {/* Cost summary */}
-        <div className="hidden lg:grid grid-cols-3 gap-4 shrink-0">
+        <div className="hidden lg:grid grid-cols-4 gap-4 shrink-0">
           <div className="text-center">
             <div className="text-xs text-slate-400">Investimento</div>
             <div className="font-bold text-slate-800">{BRL(custo.investimento)}</div>
@@ -673,6 +689,10 @@ function ModeloCard({
           <div className="text-center">
             <div className="text-xs text-slate-400">Ambientes</div>
             <div className="font-bold text-blue-700">{modelo.ambientes.length}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-slate-400">Capacidade</div>
+            <div className="font-bold text-green-700">{modelo.capacidadeAlunos} vagas</div>
           </div>
         </div>
 
@@ -879,14 +899,12 @@ export default function ModeloCrecheBuilder({
   const [formDescricao, setFormDescricao] = useState('');
   const [formTipoBase, setFormTipoBase] = useState<'tipo1' | 'tipo2' | 'proprio'>('proprio');
   const [formReservaPct, setFormReservaPct] = useState<number>(10);
-  const [formCapacidade, setFormCapacidade] = useState<number>(120);
 
   const openAddModal = () => {
     setFormNome('');
     setFormDescricao('');
     setFormTipoBase('proprio');
     setFormReservaPct(10);
-    setFormCapacidade(120);
     setIsOpen(true);
   };
 
@@ -901,7 +919,7 @@ export default function ModeloCrecheBuilder({
       tipoBase: formTipoBase,
       descricao: formDescricao.trim(),
       reservaPct: formReservaPct,
-      capacidadeAlunos: formCapacidade,
+      capacidadeAlunos: 0,
       ambientes: [],
       servicos: [],
       aquisicoes: [],
@@ -1027,8 +1045,6 @@ export default function ModeloCrecheBuilder({
                     onChange={(e) => {
                       const val = e.target.value as any;
                       setFormTipoBase(val);
-                      if (val === 'tipo1') setFormCapacidade(228);
-                      else if (val === 'tipo2') setFormCapacidade(120);
                     }}
                     className="w-full text-sm px-3 py-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-gray-800"
                   >
@@ -1047,21 +1063,6 @@ export default function ModeloCrecheBuilder({
                     max={100}
                     value={formReservaPct}
                     onChange={(e) => setFormReservaPct(Number(e.target.value))}
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Capacidade de Alunos (Crianças) *
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={formCapacidade}
-                    onChange={(e) => setFormCapacidade(Number(e.target.value))}
                     className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800"
                   />
                 </div>
