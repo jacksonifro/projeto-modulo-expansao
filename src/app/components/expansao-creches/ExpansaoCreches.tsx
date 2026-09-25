@@ -18,8 +18,9 @@ import QuadroKanbanGlobal from './QuadroKanbanGlobal';
 
 import MapasMenu from './MapasMenu';
 import MapaDemandasView from './MapaDemandasView';
+import DiagnosticoMunicipio from './DiagnosticoMunicipio';
 
-type View = 'dashboard' | 'schools' | 'kanban' | 'planos' | 'all-schools' | 'new-plano' | 'edit-plano' | 'view-plano' | 'new-school' | 'edit-school' | 'view-school' | 'reports' | 'report-filters' | 'report-view' | 'servidores' | 'configuracoes-custo' | 'unidades-escolares' | 'mapas' | 'mapa-demandas';
+type View = 'dashboard' | 'schools' | 'kanban' | 'planos' | 'all-schools' | 'new-plano' | 'edit-plano' | 'view-plano' | 'new-school' | 'edit-school' | 'view-school' | 'reports' | 'report-filters' | 'report-view' | 'servidores' | 'configuracoes-custo' | 'unidades-escolares' | 'mapas' | 'mapa-demandas' | 'diagnostico-municipio';
 
 interface NavigationState {
   view: View;
@@ -75,6 +76,8 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
       setNavigation({ view: 'mapas' });
     } else if (view === 'mapa-demandas') {
       setNavigation({ view: 'mapa-demandas' });
+    } else if (view === 'diagnostico-municipio') {
+      setNavigation({ view: 'diagnostico-municipio' });
     } else {
       setNavigation({ view: 'dashboard' });
     }
@@ -185,6 +188,9 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
       )}
       {navigation.view === 'mapa-demandas' && (
         <MapaDemandasView onBack={handleBack} />
+      )}
+      {navigation.view === 'diagnostico-municipio' && (
+        <DiagnosticoMunicipio onNavigate={handleNavigate} onBack={handleBack} />
       )}
     </>
   );

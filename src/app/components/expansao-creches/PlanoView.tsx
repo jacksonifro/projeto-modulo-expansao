@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { ChevronLeft, Building2, Users, Wrench, TrendingUp, DollarSign, Calendar, CheckCircle2, Target, AlertCircle, Kanban, Activity, Baby, Info } from 'lucide-react';
+import {
+  ChevronLeft, Building2, Users, Wrench, TrendingUp, DollarSign,
+  Calendar, CheckCircle2, Target, AlertCircle, Kanban, Activity,
+  Baby, Info, Play, CheckCircle, Pause, RotateCcw, Edit2
+} from 'lucide-react';
 import { mockPlans, mockServidores, mockUnidades, mockProjecaoVagas, mockDemandaBairro } from './mockData';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import KanbanBoard from './KanbanBoard';
-import { ObraConstrucao, AcaoUnidade, ExpansionPlan } from './types';
+import { ObraConstrucao, AcaoUnidade, ExpansionPlan, PlanStatus } from './types';
 import { calculateViewMetrics } from './utils/planoViewLogic';
 
 interface PlanoViewProps {
@@ -22,6 +26,7 @@ type KanbanState = {
 const BRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
 const statusColor: Record<string, string> = {
+  'Rascunho': 'bg-amber-100 text-amber-800 border-amber-300',
   'Planejamento': 'bg-blue-100 text-blue-700 border-blue-200',
   'Em execução': 'bg-green-100 text-green-700 border-green-200',
   'Paralisado': 'bg-red-100 text-red-700 border-red-200',
@@ -35,7 +40,7 @@ const prioridadeColor: Record<string, string> = {
 };
 
 export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
-  const [plans] = useState<ExpansionPlan[]>(() => {
+  const [plans, setPlans] = useState<ExpansionPlan[]>(() => {
     const cached = localStorage.getItem("exp_creches_plans");
     return cached ? JSON.parse(cached) : mockPlans;
   });
@@ -49,6 +54,21 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
     itemType: null,
     itemData: null,
   });
+
+  const handleUpdateStatus = (newStatus: PlanStatus) => {
+    const updatedPlans = plans.map(p => {
+      if (p.id === plan.id) {
+        return {
+          ...p,
+          status: newStatus,
+          dataAprovacao: newStatus === 'Concluído' ? new Date().toISOString().split('T')[0] : p.dataAprovacao,
+        };
+      }
+      return p;
+    });
+    setPlans(updatedPlans);
+    localStorage.setItem("exp_creches_plans", JSON.stringify(updatedPlans));
+  };
 
   const getServidor = (id: string) => mockServidores.find(s => s.id === id);
   const getUnidade = (id: string) => mockUnidades.find(u => u.id === id);
@@ -84,24 +104,148 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
             <ChevronLeft className="w-5 h-5" />
             Voltar aos Planos
           </button>
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-3 mb-2">
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${statusColor[plan.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                  {plan.status}
-                </span>
-                <span className="text-slate-400 text-sm">{plan.periodoInicio}–{plan.periodoFim}</span>
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                {/* Status Interativo com Seleção Direta */}
+                <select
+                  value={plan.status}
+                  onChange={(e) => {
+                    const newSt = e.target.value as PlanStatus;
+                    if (confirm(`Deseja alterar o status do plano para "${newSt}"?`)) {
+                      handleUpdateStatus(newSt);
+                    }
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm font-bold border cursor-pointer outline-none shadow-sm transition-colors ${statusColor[plan.status] ?? 'bg-slate-100 text-slate-600'}`}
+                  title="Clique para alternar status do plano"
+                >
+                  <option value="Rascunho">Rascunho</option>
+                  <option value="Planejamento">Planejamento</option>
+                  <option value="Em execução">Em execução</option>
+                  <option value="Paralisado">Paralisado</option>
+                  <option value="Concluído">Concluído</option>
+                </select>
+
+                <span className="text-slate-400 text-sm font-semibold">{plan.periodoInicio}–{plan.periodoFim}</span>
               </div>
               <h1 className="text-3xl font-bold text-slate-800 mb-1">{plan.nome}</h1>
               {plan.descricao && <p className="text-slate-600">{plan.descricao}</p>}
             </div>
+            
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Botão de Iniciar Execução */}
+              {plan.status === 'Planejamento' && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Deseja iniciar a execução do plano "${plan.nome}"? O status passará para "Em execução".`)) {
+                      handleUpdateStatus('Em execução');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors shadow-md hover:shadow-lg"
+                  title="Iniciar execução do plano"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  Iniciar Execução do Plano
+                </button>
+              )}
+
+              {/* Botões quando Em execução */}
+              {plan.status === 'Em execução' && (
+                <>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Deseja marcar o plano "${plan.nome}" como Concluído?`)) {
+                        handleUpdateStatus('Concluído');
+                      }
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors shadow-md hover:shadow-lg"
+                    title="Concluir plano de expansão"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Concluir Plano
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Deseja paralisar temporariamente a execução do plano "${plan.nome}"?`)) {
+                        handleUpdateStatus('Paralisado');
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 rounded-xl font-semibold transition-colors"
+                    title="Paralisar execução"
+                  >
+                    <Pause className="w-4 h-4" />
+                    Paralisar
+                  </button>
+                </>
+              )}
+
+              {/* Botão quando Paralisado */}
+              {plan.status === 'Paralisado' && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Deseja retomar a execução do plano "${plan.nome}"?`)) {
+                      handleUpdateStatus('Em execução');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors shadow-md hover:shadow-lg"
+                  title="Retomar execução do plano"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  Retomar Execução
+                </button>
+              )}
+
+              {/* Plano já Concluído */}
+              {plan.status === 'Concluído' && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-xl text-sm font-semibold">
+                    <CheckCircle className="w-4 h-4 text-purple-600" />
+                    Execução Concluída
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Deseja reabrir a execução do plano "${plan.nome}"?`)) {
+                        handleUpdateStatus('Em execução');
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-purple-700 hover:bg-purple-50 border border-slate-200 rounded-xl text-sm font-semibold transition-colors"
+                    title="Reabrir execução do plano"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Reabrir
+                  </button>
+                </div>
+              )}
+
+              {onEdit && (
+                <button onClick={onEdit} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow">
+                  Editar Plano
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Alerta caso seja Rascunho */}
+        {plan.status === 'Rascunho' && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-start sm:items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+              <div>
+                <h4 className="font-semibold text-amber-900">Plano em Rascunho</h4>
+                <p className="text-sm text-amber-700">Este plano foi salvo como rascunho com dados parciais. Para torná-lo um plano oficial e poder iniciar sua execução, complete todas as etapas e clique em "Salvar Plano" na última aba.</p>
+              </div>
+            </div>
             {onEdit && (
-              <button onClick={onEdit} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow">
-                Editar Plano
+              <button
+                onClick={onEdit}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl text-sm shrink-0 shadow transition-colors"
+              >
+                Continuar Preenchimento
               </button>
             )}
           </div>
-        </div>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

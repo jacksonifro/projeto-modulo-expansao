@@ -1,5 +1,5 @@
 // ─── Enums / union types ───────────────────────────────────────────────────
-export type PlanStatus = 'Planejamento' | 'Em execução' | 'Paralisado' | 'Concluído';
+export type PlanStatus = 'Rascunho' | 'Planejamento' | 'Em execução' | 'Paralisado' | 'Concluído';
 export type SchoolStatus = 'Planejamento' | 'Em andamento' | 'Atrasada' | 'Paralisada' | 'Concluída';
 export type ActivityStatus = 'A FAZER' | 'FAZENDO' | 'FEITO';
 export type Priority = 'Alta' | 'Média' | 'Baixa';

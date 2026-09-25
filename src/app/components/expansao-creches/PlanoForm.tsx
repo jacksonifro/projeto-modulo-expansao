@@ -24,11 +24,9 @@ interface PlanoFormProps {
   planId?: string;
 }
 
-type TabGroup = 'planejamento' | 'diagnostico' | 'resultado';
+type TabGroup = 'planejamento';
 type TabId =
-  | 'dados' | 'equipe' | 'estrategias' | 'acoes-unidades' | 'obras' | 'desembolso' | 'pessoal' | 'projecao-orcamentaria'
-  | 'vagas-turma' | 'demanda-etapa' | 'demanda-bairro' | 'demanda-unidade'
-  | 'resultado';
+  | 'dados' | 'equipe' | 'estrategias' | 'acoes-unidades' | 'obras' | 'desembolso' | 'pessoal' | 'projecao-orcamentaria';
 
 const BRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const PCT = (v: number) => `${v.toFixed(1)}%`;
@@ -53,18 +51,11 @@ const TABS: TabDef[] = [
   { id: 'obras', label: 'Obras', group: 'planejamento', icon: <Wrench className="w-4 h-4" />, desc: 'Novas e retomadas' },
   { id: 'desembolso', label: 'Desembolso', group: 'planejamento', icon: <DollarSign className="w-4 h-4" />, desc: 'Plano de desembolso anual' },
   { id: 'pessoal', label: 'Pessoal', group: 'planejamento', icon: <UserPlus className="w-4 h-4" />, desc: 'Contratações previstas' },
-  { id: 'projecao-orcamentaria', label: 'Projeção Orçamentária', group: 'planejamento', icon: <DollarSign className="w-4 h-4" />, desc: 'Distribuição de investimento' },
-  { id: 'vagas-turma', label: 'Vagas por Turma', group: 'diagnostico', icon: <BookOpen className="w-4 h-4" />, desc: 'Ocupação por unidade' },
-  { id: 'demanda-etapa', label: 'Demanda por Etapa', group: 'diagnostico', icon: <BarChart3 className="w-4 h-4" />, desc: 'Déficit por faixa etária' },
-  { id: 'demanda-bairro', label: 'Demanda por Bairro', group: 'diagnostico', icon: <MapPin className="w-4 h-4" />, desc: 'Demanda por região' },
-  { id: 'demanda-unidade', label: 'CadÚnico / Unidade', group: 'diagnostico', icon: <Users className="w-4 h-4" />, desc: 'Crianças por raio' },
-  { id: 'resultado', label: 'Resultado', group: 'resultado', icon: <CheckCircle2 className="w-4 h-4" />, desc: 'Consolidado e projeções' },
+  { id: 'projecao-orcamentaria', label: 'Projeção Orçamentária', group: 'planejamento', icon: <DollarSign className="w-4 h-4" />, desc: 'Distribuição e consolidação' },
 ];
 
 const GROUP_META: Record<TabGroup, { label: string; short: string; accent: string; bg: string; border: string; dot: string }> = {
-  planejamento: { label: 'A — Planejamento', short: 'A', accent: 'text-blue-700', bg: 'bg-blue-600', border: 'border-blue-200', dot: 'bg-blue-600' },
-  diagnostico: { label: 'B — Diagnóstico', short: 'B', accent: 'text-amber-700', bg: 'bg-amber-500', border: 'border-amber-200', dot: 'bg-amber-500' },
-  resultado: { label: 'C — Resultado', short: 'C', accent: 'text-green-700', bg: 'bg-green-600', border: 'border-green-200', dot: 'bg-green-600' },
+  planejamento: { label: 'Planejamento da Expansão', short: 'P', accent: 'text-blue-700', bg: 'bg-blue-600', border: 'border-blue-200', dot: 'bg-blue-600' },
 };
 
 // Currency input with R$ mask
@@ -567,9 +558,55 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   const totalDemanda = demandaPorAno.reduce((s, d) => s + d.valor, 0);
   const totalFonte = fontes.reduce((s, f) => s + f.valorPrevisto, 0);
 
-  const handleSalvarPlano = () => {
+  const checarValidacaoAbas = () => {
+    const etapasValidacao = [
+      {
+        id: 'dados' as TabId,
+        nome: 'Dados Gerais',
+        valido: nome.trim().length > 0 && fontes.length > 0,
+        detalhes: !nome.trim() ? 'Nome do plano obrigatório' : fontes.length === 0 ? 'Pelo menos 1 fonte de financiamento' : 'Preenchido',
+      },
+      {
+        id: 'equipe' as TabId,
+        nome: 'Equipe',
+        valido: equipe.length > 0,
+        detalhes: equipe.length === 0 ? 'Adicione ao menos 1 membro na equipe' : `${equipe.length} membro(s) cadastrado(s)`,
+      },
+      {
+        id: 'estrategias' as TabId,
+        nome: 'Estratégias',
+        valido: estrategias.length > 0 && estrategias.some(e => e.viabilidadeTecnica !== null),
+        detalhes: !estrategias.some(e => e.viabilidadeTecnica !== null) ? 'Defina a viabilidade de ao menos 1 estratégia' : 'Estratégias avaliadas',
+      },
+      {
+        id: 'acoes-unidades' as TabId,
+        nome: 'Ações ou Obras',
+        valido: obras.length > 0 || acoes.length > 0,
+        detalhes: (obras.length === 0 && acoes.length === 0) ? 'Cadastre ao menos 1 obra ou ação em unidade' : `${obras.length} obra(s) e ${acoes.length} ação(ões)`,
+      },
+      {
+        id: 'desembolso' as TabId,
+        nome: 'Desembolso Anual',
+        valido: totalDemanda > 0 || (obras.length === 0 && acoes.length === 0),
+        detalhes: totalDemanda === 0 && (obras.length > 0 || acoes.length > 0) ? 'Defina valores de desembolso para os anos' : 'Desembolso configurado',
+      },
+      {
+        id: 'pessoal' as TabId,
+        nome: 'Quadro de Pessoal',
+        valido: pessoal.length > 0,
+        detalhes: pessoal.length === 0 ? 'Configure o quadro de pessoal para o plano' : `${pessoal.length} função(ões) adicionada(s)`,
+      },
+    ];
+
+    const todasValidas = etapasValidacao.every(e => e.valido);
+    const pendencias = etapasValidacao.filter(e => !e.valido);
+
+    return { etapasValidacao, todasValidas, pendencias };
+  };
+
+  const handleSalvarRascunho = () => {
     if (!nome.trim()) {
-      alert("Por favor, preencha o nome do plano.");
+      alert("Por favor, preencha ao menos o Nome do Plano para salvá-lo como rascunho.");
       return;
     }
 
@@ -582,14 +619,14 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
       nome: nome.trim(),
       periodoInicio,
       periodoFim,
-      status: statusCalculado,
+      status: 'Rascunho',
       descricao: descricao.trim(),
       objetivoEstrategico: objetivo.trim(),
       fontesFinanciamento: fontes,
       responsavelId: equipe.find(e => e.papel === 'aprovador')?.servidorId || equipe[0]?.servidorId || '',
       dataElaboracao: planParaEditar?.dataElaboracao || new Date().toISOString().split('T')[0],
       dataRevisao: new Date().toISOString().split('T')[0],
-      dataAprovacao: statusCalculado === 'Concluído' ? new Date().toISOString().split('T')[0] : planParaEditar?.dataAprovacao,
+      dataAprovacao: undefined,
       equipe,
       estrategias,
       acoesUnidades: acoes,
@@ -614,7 +651,71 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     }
 
     localStorage.setItem("exp_creches_plans", JSON.stringify(updatedPlansList));
-    alert(isEdit ? "Plano atualizado com sucesso!" : "Plano criado com sucesso!");
+    alert("Plano salvo com sucesso como RASCUNHO! Você pode continuar o preenchimento a qualquer momento.");
+    onBack();
+  };
+
+  const handleSalvarPlano = () => {
+    if (!nome.trim()) {
+      alert("Por favor, preencha o nome do plano.");
+      return;
+    }
+
+    const { todasValidas, pendencias } = checarValidacaoAbas();
+    if (!todasValidas) {
+      alert(`Para criar o plano oficialmente, é necessário preencher todas as etapas obrigatórias:\n- ${pendencias.map(p => p.nome + ': ' + p.detalhes).join('\n- ')}\n\nVocê também pode optar por "Salvar como Rascunho" e finalizar depois.`);
+      return;
+    }
+
+    const responsavelServidor = mockServidores.find(s => s.id === (equipe.find(e => e.papel === 'aprovador')?.servidorId || equipe[0]?.servidorId));
+    const responsavelNome = responsavelServidor ? responsavelServidor.nome : 'Responsável não definido';
+    const fontePrincipal = fontes.length > 0 ? fontes[0].fonte : 'Recurso Próprio';
+
+    // Status final quando criado a partir do preenchimento completo
+    const statusFinal: ExpansionPlan['status'] = (isEdit && planParaEditar && planParaEditar.status !== 'Rascunho')
+      ? planParaEditar.status
+      : 'Planejamento';
+
+    const planData: ExpansionPlan = {
+      id: isEdit && planId ? planId : `p-${Date.now()}`,
+      nome: nome.trim(),
+      periodoInicio,
+      periodoFim,
+      status: statusFinal,
+      descricao: descricao.trim(),
+      objetivoEstrategico: objetivo.trim(),
+      fontesFinanciamento: fontes,
+      responsavelId: equipe.find(e => e.papel === 'aprovador')?.servidorId || equipe[0]?.servidorId || '',
+      dataElaboracao: planParaEditar?.dataElaboracao || new Date().toISOString().split('T')[0],
+      dataRevisao: new Date().toISOString().split('T')[0],
+      dataAprovacao: statusFinal === 'Concluído' ? new Date().toISOString().split('T')[0] : planParaEditar?.dataAprovacao,
+      equipe,
+      estrategias,
+      acoesUnidades: acoes,
+      obras,
+      pessoal,
+      configSalas,
+      name: nome.trim(),
+      year: periodoInicio,
+      description: descricao.trim(),
+      responsible: responsavelNome,
+      fundingSource: fontePrincipal,
+      estimatedValue: totalFontes,
+      startDate: `${periodoInicio}-01-01`,
+      expectedEndDate: `${periodoFim}-12-31`,
+    };
+
+    let updatedPlansList: ExpansionPlan[];
+    if (isEdit && planId) {
+      updatedPlansList = plans.map(p => p.id === planId ? planData : p);
+    } else {
+      updatedPlansList = [...plans, planData];
+    }
+
+    localStorage.setItem("exp_creches_plans", JSON.stringify(updatedPlansList));
+    alert(isEdit && planParaEditar?.status !== 'Rascunho' 
+      ? "Plano atualizado com sucesso!" 
+      : "Plano CRIADO com sucesso! O plano agora está em Planejamento e pronto para iniciar sua execução.");
     onBack();
   };
 
@@ -747,7 +848,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   const inputCls = "w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white";
 
   // Sidebar navigation groups
-  const groups: TabGroup[] = ['planejamento', 'diagnostico', 'resultado'];
+  const groups: TabGroup[] = ['planejamento'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -769,7 +870,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
           <aside className="w-56 shrink-0 bg-white rounded-2xl shadow-lg overflow-hidden sticky top-6">
             <div className="bg-gradient-to-br from-[#1a3a5c] to-[#2563eb] p-4">
               <p className="text-white font-bold text-sm">Seções do Plano</p>
-              <p className="text-blue-200 text-xs mt-0.5">11 etapas em 3 grupos</p>
+              <p className="text-blue-200 text-xs mt-0.5">8 etapas do planejamento</p>
             </div>
 
             <nav className="p-2">
@@ -788,7 +889,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                       {/* Apenas letra e nome da seção (sumário reduzido) */}
 
                       <span className={`text-xs font-bold uppercase tracking-wide ${isActiveGroup ? gm.accent : 'text-slate-400'}`}>
-                        {group === 'planejamento' ? 'Planejamento' : group === 'diagnostico' ? 'Diagnóstico' : 'Resultado'}
+                        {gm.label}
                       </span>
                     </div>
 
@@ -800,9 +901,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
                           className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all mb-0.5 group ${isActive
-                            ? group === 'planejamento' ? 'bg-blue-600 text-white shadow-md'
-                              : group === 'diagnostico' ? 'bg-amber-500 text-white shadow-md'
-                                : 'bg-green-600 text-white shadow-md'
+                            ? 'bg-blue-600 text-white shadow-md'
                             : 'text-slate-600 hover:bg-slate-100'
                             }`}
                         >
@@ -846,16 +945,10 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
           {/* ── MAIN CONTENT ── */}
           <div className="flex-1 min-w-0 bg-white rounded-2xl shadow-lg overflow-hidden">
             {/* Section banner */}
-            {activeGroup === 'diagnostico' && (
-              <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-2 text-amber-800 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span className='font-semibold'>Painel de Diagnóstico:</span> Dados extraídos do Central de Vagas em Creches e Base de Dados do cadÚnico.
-              </div>
-            )}
-            {activeGroup === 'resultado' && (
-              <div className="bg-green-50 border-b border-green-200 px-6 py-3 flex items-center gap-2 text-green-800 text-sm">
+            {activeTab === 'projecao-orcamentaria' && (
+              <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-3 flex items-center gap-2 text-emerald-800 text-sm">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                Painel de resultado — consolida demanda, planejamento e projeção orçamentária.
+                <span className='font-semibold'>Etapa Final:</span> Projeção orçamentária consolidada e validação para criação do plano.
               </div>
             )}
 
@@ -877,13 +970,22 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status do Plano</label>
                       <div className="flex items-center h-[46px]">
-                        <span className={`px-3 py-1.5 rounded-full text-sm font-bold border ${statusCalculado === 'Em execução' ? 'bg-green-100 text-green-700 border-green-200' :
-                          statusCalculado === 'Planejamento' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                            statusCalculado === 'Paralisado' ? 'bg-red-100 text-red-700 border-red-200' :
-                              'bg-purple-100 text-purple-700 border-purple-200'
-                          }`}>
-                          {statusCalculado}
-                        </span>
+                        {(() => {
+                          const statusExibido = (isEdit && planParaEditar && planParaEditar.status !== 'Rascunho')
+                            ? (planParaEditar.status || statusCalculado)
+                            : 'Rascunho';
+                          return (
+                            <span className={`px-3 py-1.5 rounded-full text-sm font-bold border ${
+                              statusExibido === 'Rascunho' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                              statusExibido === 'Em execução' ? 'bg-green-100 text-green-700 border-green-200' :
+                              statusExibido === 'Planejamento' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              statusExibido === 'Paralisado' ? 'bg-red-100 text-red-700 border-red-200' :
+                                'bg-purple-100 text-purple-700 border-purple-200'
+                            }`}>
+                              {statusExibido}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -2082,337 +2184,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                 </div>
               )}
 
-              {/* ═══ ABA 6 — VAGAS POR TURMA ═════════════════════════════ */}
-              {activeTab === 'vagas-turma' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-slate-800">Vagas por Turma e Unidade Escolar</h2>
-                  <p className="text-slate-500 text-sm">Dados de matrículas e ocupação por unidade — ano base 2026</p>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th colSpan={2} className="text-center px-4 py-2 border-b border-r border-slate-200 font-bold text-slate-700">Dados da Unidade</th>
-                          <th colSpan={6} className="text-center px-4 py-2 border-b border-r border-slate-200 font-bold text-slate-700 bg-blue-50/50">Vagas Ofertadas e Ocupação</th>
-                          <th colSpan={4} className="text-center px-4 py-2 border-b border-slate-200 font-bold text-slate-700 bg-orange-50/50">Fila de Espera</th>
-                        </tr>
-                        <tr>
-                          <th className="text-left px-4 py-3 font-semibold text-slate-700 border-r border-slate-200">Unidade</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 border-r border-slate-200">Turmas</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Maternal</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Jardim I</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Jardim II</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Vagas</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700 bg-blue-50/30">Matrículas</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 border-r border-slate-200 bg-blue-50/30">Ocupação</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Maternal</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Jardim I</th>
-                          <th className="text-center px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Jardim II</th>
-                          <th className="text-right px-4 py-3 font-semibold text-slate-700 bg-orange-50/30">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {mockUnidades.filter(u => u.totalVagas > 0).map(u => {
-                          const mats = matriculasPorUnidade[u.id] ?? u.totalMatriculas;
-                          const ocupacao = u.totalVagas > 0 ? Math.round((mats / u.totalVagas) * 100) : 0;
-                          const getVagas = (etapa: EtapaEI) => u.vagasPorEtapa.find(v => v.etapa === etapa)?.vagas ?? 0;
-                          const getEspera = (etapa: EtapaEI) => u.vagasPorEtapa.find(v => v.etapa === etapa)?.listaEspera ?? 0;
-                          return (
-                            <tr key={u.id} className="hover:bg-slate-50">
-                              <td className="px-4 py-3 font-semibold text-slate-800 max-w-xs border-r border-slate-100">
-                                <div className="truncate">{u.nome}</div>
-                                <div className="text-xs text-slate-400 font-normal">{u.bairro}</div>
-                              </td>
-                              <td className="px-4 py-3 text-center border-r border-slate-100">{u.salas.filter(s => s.etapaAtendida).length}</td>
-                              <td className="px-4 py-3 text-center">{getVagas('Maternal') > 0 ? getVagas('Maternal') : '—'}</td>
-                              <td className="px-4 py-3 text-center">{getVagas('Jardim I') > 0 ? getVagas('Jardim I') : '—'}</td>
-                              <td className="px-4 py-3 text-center">{getVagas('Jardim II') > 0 ? getVagas('Jardim II') : '—'}</td>
-                              <td className="px-4 py-3 text-right">{u.totalVagas}</td>
-                              <td className="px-4 py-3 text-right font-semibold">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={mats}
-                                  onChange={e => setMatriculasPorUnidade(prev => ({ ...prev, [u.id]: Number(e.target.value) }))}
-                                  className="w-20 px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
-                              </td>
-                              <td className="px-4 py-3 text-center border-r border-slate-100">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${ocupacao > 200 ? 'bg-red-100 text-red-700' : ocupacao > 100 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                                  {ocupacao}%
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-center text-orange-600 font-medium">{getEspera('Maternal') > 0 ? getEspera('Maternal') : '—'}</td>
-                              <td className="px-4 py-3 text-center text-orange-600 font-medium">{getEspera('Jardim I') > 0 ? getEspera('Jardim I') : '—'}</td>
-                              <td className="px-4 py-3 text-center text-orange-600 font-medium">{getEspera('Jardim II') > 0 ? getEspera('Jardim II') : '—'}</td>
-                              <td className="px-4 py-3 text-right font-bold text-orange-700">{u.totalListaEspera > 0 ? u.totalListaEspera : '—'}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-slate-100 border-t-2 border-slate-300">
-                        {(() => {
-                          const validUnidades = mockUnidades.filter(u => u.totalVagas > 0);
-                          const totalVagas = validUnidades.reduce((s, u) => s + u.totalVagas, 0);
-                          const totalMats = validUnidades.reduce((s, u) => s + (matriculasPorUnidade[u.id] ?? u.totalMatriculas), 0);
-                          const ocupacaoGeral = totalVagas > 0 ? Math.round((totalMats / totalVagas) * 100) : 0;
-
-                          const totalEsperaMaternal = validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Maternal')?.listaEspera ?? 0), 0);
-                          const totalEsperaJardimI = validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim I')?.listaEspera ?? 0), 0);
-                          const totalEsperaJardimII = validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim II')?.listaEspera ?? 0), 0);
-                          const totalEsperaGeral = validUnidades.reduce((s, u) => s + u.totalListaEspera, 0);
-
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 font-bold text-right border-r border-slate-300" colSpan={2}>Totais da Rede</td>
-                              <td className="px-4 py-3 text-center font-bold text-slate-700">{validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Maternal')?.vagas ?? 0), 0)}</td>
-                              <td className="px-4 py-3 text-center font-bold text-slate-700">{validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim I')?.vagas ?? 0), 0)}</td>
-                              <td className="px-4 py-3 text-center font-bold text-slate-700">{validUnidades.reduce((s, u) => s + (u.vagasPorEtapa.find(v => v.etapa === 'Jardim II')?.vagas ?? 0), 0)}</td>
-                              <td className="px-4 py-3 text-right font-bold text-slate-800">{totalVagas}</td>
-                              <td className="px-4 py-3 text-right font-bold text-slate-800">{totalMats}</td>
-                              <td className={`px-4 py-3 text-center font-bold border-r border-slate-300 ${ocupacaoGeral > 100 ? 'text-red-700' : 'text-green-700'}`}>{ocupacaoGeral}%</td>
-                              <td className="px-4 py-3 text-center font-bold text-orange-700">{totalEsperaMaternal}</td>
-                              <td className="px-4 py-3 text-center font-bold text-orange-700">{totalEsperaJardimI}</td>
-                              <td className="px-4 py-3 text-center font-bold text-orange-700">{totalEsperaJardimII}</td>
-                              <td className="px-4 py-3 text-right font-bold text-orange-700">{totalEsperaGeral}</td>
-                            </tr>
-                          );
-                        })()}
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* ═══ ABA 7 — DEMANDA POR ETAPA ═════════════════════════════ */}
-              {activeTab === 'demanda-etapa' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-slate-800">Demanda por Etapa da Educação Infantil</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {mockDemandaEtapa.map(d => {
-                      const pct = Math.round((d.vagasAtuais / d.criancasResidentes) * 100);
-                      return (
-                        <div key={d.etapa} className={`rounded-xl p-5 border ${pct < 5 ? 'border-red-300 bg-red-50' : pct < 20 ? 'border-amber-300 bg-amber-50' : 'border-green-300 bg-green-50'}`}>
-                          <div className="font-bold text-slate-800 text-lg mb-1">{d.etapa}</div>
-                          <div className="text-xs text-slate-500 mb-3">{d.faixaEtaria}</div>
-                          <div className={`text-3xl font-black mb-1 ${pct < 5 ? 'text-red-600' : pct < 20 ? 'text-amber-600' : 'text-green-600'}`}>{pct}%</div>
-                          <div className="text-xs text-slate-600 mb-2">taxa de atendimento atual</div>
-                          <div className="w-full bg-white rounded-full h-2 mb-3 overflow-hidden">
-                            <div className={`h-full rounded-full ${pct < 5 ? 'bg-red-500' : pct < 20 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div><span className="text-slate-500">Crianças cadÚnico:</span> <strong>{d.criancasResidentes.toLocaleString('pt-BR')}</strong></div>
-                            <div><span className="text-slate-500">Vagas disponíveis:</span> <strong>{d.vagasAtuais}</strong></div>
-                            <div><span className="text-slate-500">Déficit:</span> <strong className="text-red-600">{d.deficitAtual}</strong></div>
-                            <div><span className="text-slate-500">Novas vagas:</span> <strong className="text-blue-600">+{d.novasVagasPlanejadas}</strong></div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={mockDemandaEtapa.map(d => ({ etapa: d.etapa, 'Vagas Atuais': d.vagasAtuais, 'Novas Vagas': d.novasVagasPlanejadas, Déficit: d.deficitFinal }))}>
-                      <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis key="xaxis" dataKey="etapa" />
-                      <YAxis key="yaxis" />
-                      <Tooltip key="tooltip" />
-                      <Bar key="vagas-atuais" dataKey="Vagas Atuais" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                      <Bar key="novas-vagas" dataKey="Novas Vagas" fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Legend key="legend" />
-                    </BarChart>
-                  </ResponsiveContainer>
-
-                  <div className="mt-8">
-                    <h3 className="text-lg font-bold text-slate-700 mb-4">Detalhamento Numérico</h3>
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50">
-                          <tr>
-                            <th className="text-left px-4 py-3 font-semibold text-slate-700">Etapa</th>
-                            <th className="text-left px-4 py-3 font-semibold text-slate-700">Faixa Etária</th>
-                            <th className="text-right px-4 py-3 font-semibold text-slate-700">Crianças cadÚnico</th>
-                            <th className="text-right px-4 py-3 font-semibold text-slate-700">Vagas Atuais</th>
-                            <th className="text-right px-4 py-3 font-semibold text-slate-700">Taxa Atual</th>
-                            <th className="text-right px-4 py-3 font-semibold text-slate-700">Déficit Atual</th>
-                            <th className="text-right px-4 py-3 font-semibold text-slate-700">+ Novas Vagas</th>
-                            <th className="text-right px-4 py-3 font-semibold text-slate-700">Déficit Final</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {mockDemandaEtapa.map(d => (
-                            <tr key={d.etapa} className="hover:bg-slate-50">
-                              <td className="px-4 py-3 font-bold text-slate-800">{d.etapa}</td>
-                              <td className="px-4 py-3 text-slate-500">{d.faixaEtaria}</td>
-                              <td className="px-4 py-3 text-right">{d.criancasResidentes.toLocaleString('pt-BR')}</td>
-                              <td className="px-4 py-3 text-right">{d.vagasAtuais}</td>
-                              <td className="px-4 py-3 text-right">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${d.taxaAtual < 5 ? 'bg-red-100 text-red-700' : d.taxaAtual < 20 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                                  {PCT(d.taxaAtual)}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-right font-semibold text-red-600">{d.deficitAtual.toLocaleString('pt-BR')}</td>
-                              <td className="px-4 py-3 text-right font-semibold text-green-600">+{d.novasVagasPlanejadas}</td>
-                              <td className="px-4 py-3 text-right font-bold">
-                                <span className={d.deficitFinal <= 0 ? 'text-green-600' : 'text-red-600'}>{d.deficitFinal}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="bg-slate-100 border-t-2 border-slate-300">
-                          <tr>
-                            <td className="px-4 py-3 font-bold" colSpan={2}>Totais</td>
-                            <td className="px-4 py-3 text-right font-bold">{mockDemandaEtapa.reduce((s, d) => s + d.criancasResidentes, 0).toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-3 text-right font-bold">{mockDemandaEtapa.reduce((s, d) => s + d.vagasAtuais, 0)}</td>
-                            <td className="px-4 py-3 text-right font-bold">9,3%</td>
-                            <td className="px-4 py-3 text-right font-bold text-red-700">{mockDemandaEtapa.reduce((s, d) => s + d.deficitAtual, 0).toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-3 text-right font-bold text-green-700">+{mockDemandaEtapa.reduce((s, d) => s + d.novasVagasPlanejadas, 0)}</td>
-                            <td className="px-4 py-3 text-right font-bold">{mockDemandaEtapa.reduce((s, d) => s + d.deficitFinal, 0)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800 mt-4">
-                      <strong>Atenção — Maternal (1a a 1a11m):</strong> Taxa de atendimento de apenas 2%. Das 2.266 crianças nessa faixa em Cacoal, apenas 46 têm vaga. É a etapa mais crítica e prioritária para expansão.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ═══ ABA 8 — DEMANDA POR BAIRRO ═════════════════════════════ */}
-              {activeTab === 'demanda-bairro' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-slate-800">Demanda por Bairro</h2>
-                  <p className="text-slate-500 text-sm">Crianças 0–3 anos cadastradas no CadÚnico vs. matriculadas em creche</p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[
-                      { label: 'Total CadÚnico (0-3a)', value: mockDemandaBairro.reduce((s, d) => s + d.totalCadUnico, 0), color: 'text-slate-800' },
-                      { label: 'Frequentam creche', value: mockDemandaBairro.reduce((s, d) => s + d.frequentam, 0), color: 'text-green-700' },
-                      { label: 'Não frequentam', value: mockDemandaBairro.reduce((s, d) => s + d.naoFrequentam, 0), color: 'text-red-700' },
-                    ].map(c => (
-                      <div key={c.label} className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-                        <div className={`text-3xl font-bold ${c.color}`}>{c.value.toLocaleString('pt-BR')}</div>
-                        <div className="text-sm text-slate-500 mt-1">{c.label}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <ResponsiveContainer width="100%" height={320}>
-                    <BarChart data={mockDemandaBairro.filter(d => d.totalCadUnico >= 10).sort((a, b) => b.naoFrequentam - a.naoFrequentam)} layout="vertical">
-                      <CartesianGrid key="grid" strokeDasharray="3 3" horizontal={false} />
-                      <XAxis key="xaxis" type="number" />
-                      <YAxis key="yaxis" type="category" dataKey="bairro" width={160} tick={{ fontSize: 12 }} />
-                      <Tooltip key="tooltip" />
-                      <Bar key="naoFrequentam" dataKey="naoFrequentam" name="Não frequentam" fill="#ef4444" radius={[0, 4, 4, 0]} />
-                      <Bar key="frequentam" dataKey="frequentam" name="Frequentam" fill="#22c55e" radius={[0, 4, 4, 0]} />
-                      <Legend key="legend" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
-              {/* ═══ ABA 9 — DEMANDA POR UNIDADE (CADUNICO E RAIO) ═════════════════════════════ */}
-              {activeTab === 'demanda-unidade' && (
-                <div className="space-y-6">
-                  <h2 className="text-2xl font-bold text-slate-800">CadÚnico por Unidade e Raio</h2>
-                  <p className="text-slate-500 text-sm">Distribuição das crianças do CadÚnico por etapa e proximidade das escolas</p>
-
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6 flex flex-col md:flex-row md:items-center gap-6">
-                    <div className="flex-1">
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Raio de Distância (em metros)</label>
-                      <input
-                        type="range"
-                        min="500"
-                        max="3000"
-                        step="500"
-                        value={raioSelecionado}
-                        onChange={e => setRaioSelecionado(Number(e.target.value))}
-                        className="w-full accent-blue-600"
-                      />
-                      <div className="flex justify-between text-xs text-slate-500 mt-2 font-medium">
-                        <span>500m</span>
-                        <span>1000m</span>
-                        <span>1500m</span>
-                        <span>2000m</span>
-                        <span>2500m</span>
-                        <span>3000m</span>
-                      </div>
-                    </div>
-                    <div className="bg-blue-50 px-6 py-4 rounded-lg border border-blue-100 flex flex-col items-center justify-center min-w-[150px]">
-                      <span className="text-sm font-medium text-blue-700 mb-1">Raio Atual</span>
-                      <span className="text-2xl font-black text-blue-900">{raioSelecionado}m</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                        <tr>
-                          <th className="px-6 py-4 font-bold">Unidade Escolar</th>
-                          <th className="px-4 py-4 font-bold">Etapa</th>
-                          <th className="px-4 py-4 font-bold text-center">Demanda (Raio)</th>
-                          <th className="px-4 py-4 font-bold text-center">Vagas Atuais</th>
-                          <th className="px-4 py-4 font-bold text-center">Novas Vagas</th>
-                          <th className="px-4 py-4 font-bold text-center">Déficit</th>
-                          <th className="px-4 py-4 font-bold text-center">Atendimento</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {mockCadUnicoUnidade.map((d, unitIndex) => {
-                          const uni = mockUnidades.find(u => u.id === d.unidadeId);
-                          // Encontrar o menor raio >= raioSelecionado
-                          const distData = d.raios.find(r => r.raioMts >= raioSelecionado) || d.raios[d.raios.length - 1];
-                          const etapas: EtapaEI[] = ['Maternal', 'Jardim I', 'Jardim II'];
-
-                          return etapas.map((etapa, idx) => {
-                            const demanda = etapa === 'Maternal' ? distData.maternal : (etapa === 'Jardim I' ? distData.jardimI : distData.jardimII);
-                            const vagaAtualInfo = uni?.vagasPorEtapa.find(v => v.etapa === etapa);
-                            const vagasAtuais = vagaAtualInfo ? vagaAtualInfo.vagas : 0;
-
-                            // Busca na aba de Ações em Unidades se há expansão planejada para esta unidade e etapa
-                            const novasVagas = acoes.filter(a => a.unidadeId === d.unidadeId && a.etapaDestino === etapa).reduce((sum, a) => sum + (a.novaCapacidade - a.capacidadeAnterior), 0);
-
-                            const totalVagas = vagasAtuais + novasVagas;
-                            const deficit = demanda - totalVagas;
-                            const deficitPositivo = deficit > 0 ? deficit : 0;
-
-                            // Porcentagem
-                            const taxaAtendimento = demanda > 0 ? Math.min(100, (totalVagas / demanda) * 100) : 100;
-
-                            // Classes visuais
-                            const deficitClass = deficitPositivo > 0 ? 'text-red-600 font-bold' : 'text-green-600 font-medium';
-                            const taxaClass = taxaAtendimento >= 100 ? 'text-green-700 bg-green-100' : taxaAtendimento >= 50 ? 'text-amber-700 bg-amber-100' : 'text-red-700 bg-red-100';
-
-                            return (
-                              <tr key={`${d.unidadeId}-${etapa}`} className={`hover:bg-slate-50 transition-colors ${idx === 0 && unitIndex !== 0 ? 'border-t-2 border-slate-200' : ''}`}>
-                                {idx === 0 && (
-                                  <td className="px-6 py-3 font-semibold text-slate-800 border-r border-slate-100" rowSpan={3}>
-                                    {uni?.nome || 'Unidade Desconhecida'}
-                                  </td>
-                                )}
-                                <td className="px-4 py-3 text-slate-600 font-medium bg-slate-50/30">{etapa}</td>
-                                <td className="px-4 py-3 text-center font-bold text-slate-700 bg-blue-50/30">{demanda}</td>
-                                <td className="px-4 py-3 text-center text-slate-600">{vagasAtuais}</td>
-                                <td className="px-4 py-3 text-center text-green-600 font-bold">{novasVagas > 0 ? `+${novasVagas}` : '-'}</td>
-                                <td className={`px-4 py-3 text-center ${deficitClass}`}>
-                                  {deficitPositivo}
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${taxaClass}`}>
-                                    {taxaAtendimento.toFixed(1)}%
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          });
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* ═══ ABA 10 — PROJEÇÃO ORÇAMENTÁRIA ═════════════════════ */}
+              {/* ═══ ABA 7 — PROJEÇÃO ORÇAMENTÁRIA ═════════════════════ */}
               {activeTab === 'projecao-orcamentaria' && (
                 <div className="space-y-6">
                   <div>
@@ -2616,6 +2388,76 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                         </div>
                       </div>
 
+                      {/* Status de Prontidão e Preenchimento das Abas */}
+                      {(() => {
+                        const { etapasValidacao, todasValidas, pendencias } = checarValidacaoAbas();
+                        return (
+                          <div className={`rounded-2xl p-6 border shadow-sm mt-6 ${todasValidas ? 'bg-emerald-50/80 border-emerald-200' : 'bg-amber-50/80 border-amber-200'}`}>
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  {todasValidas ? (
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                                  ) : (
+                                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                                  )}
+                                  <h3 className={`text-lg font-bold ${todasValidas ? 'text-emerald-900' : 'text-amber-900'}`}>
+                                    {todasValidas ? 'Todas as Etapas Preenchidas — Pronto para Criação' : 'Etapas Pendentes para Criação Oficial do Plano'}
+                                  </h3>
+                                </div>
+                                <p className={`text-sm ${todasValidas ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                  {todasValidas 
+                                    ? 'Todas as seções do plano foram preenchidas! Clique no botão verde "Salvar Plano" no rodapé para criar oficialmente o plano com status de Planejamento.' 
+                                    : 'Para que o plano seja oficialmente CRIADO, todas as etapas de planejamento devem ser preenchidas. Você pode salvar como rascunho agora ou clicar nas etapas pendentes abaixo para completá-las.'}
+                                </p>
+                              </div>
+                              
+                              {!todasValidas && (
+                                <button
+                                  type="button"
+                                  onClick={handleSalvarRascunho}
+                                  className="self-start md:self-auto flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold shadow transition-colors shrink-0"
+                                >
+                                  <Save className="w-4 h-4" />
+                                  Salvar como Rascunho
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {etapasValidacao.map(item => (
+                                <div
+                                  key={item.id}
+                                  className={`flex items-start justify-between p-3.5 rounded-xl border transition-all ${
+                                    item.valido 
+                                      ? 'bg-white border-emerald-200 text-slate-700' 
+                                      : 'bg-white border-amber-300 text-slate-700 hover:border-amber-400 cursor-pointer shadow-sm'
+                                  }`}
+                                  onClick={() => { if (!item.valido) setActiveTab(item.id); }}
+                                >
+                                  <div className="min-w-0 pr-2">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                      <span className="font-bold text-sm text-slate-800">{item.nome}</span>
+                                      {item.valido ? (
+                                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">OK</span>
+                                      ) : (
+                                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Pendente</span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-slate-500 leading-tight truncate">{item.detalhes}</p>
+                                  </div>
+                                  {!item.valido && (
+                                    <span className="text-xs font-semibold text-blue-600 hover:underline shrink-0 self-center">
+                                      Ir →
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Alertas e observações */}
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
                         <strong>💡 Observação:</strong> Os valores de vagas e salas são exibidos no ano em que o investimento está previsto. O total considera a capacidade acumulada de todas as metas.
@@ -2624,195 +2466,48 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                   )}
                 </div>
               )}
-
-              {/* ═══ ABA 11 — RESULTADO ══════════════════════════════════ */}
-              {activeTab === 'resultado' && (() => {
-                const demandaGeral = mockDemandaEtapa.reduce((sum, d) => sum + d.criancasResidentes, 0);
-                const vagasAtuaisGeral = mockDemandaEtapa.reduce((sum, d) => sum + d.vagasAtuais, 0);
-                const vagasCriadas = totaisConsolidados.totalVagas;
-
-                const taxaAtual = demandaGeral > 0 ? (vagasAtuaisGeral / demandaGeral) * 100 : 100;
-                const taxaProjetada = demandaGeral > 0 ? ((vagasAtuaisGeral + vagasCriadas) / demandaGeral) * 100 : 100;
-                const deficitResidual = demandaGeral - (vagasAtuaisGeral + vagasCriadas);
-
-                const fontesDisponiveis = totalFontes;
-                const fontesComprometidas = totaisConsolidados.totalInvestimento;
-                const saldoFinalCaixa = fontesDisponiveis - fontesComprometidas;
-
-                let acumVagas = 0;
-                const evolucaoVagas = totaisConsolidados.vagasPorAno.filter(v => v.vagas > 0).map(v => {
-                  acumVagas += v.vagas;
-                  const taxaAno = demandaGeral > 0 ? ((vagasAtuaisGeral + acumVagas) / demandaGeral) * 100 : 100;
-                  return { ano: v.ano, vagas: v.vagas, acum: acumVagas, taxa: taxaAno.toFixed(2) + '%' };
-                });
-
-                return (
-                  <div className="space-y-8">
-                    <h2 className="text-2xl font-bold text-slate-800">Raio-X do Plano: Impacto e Projeções</h2>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {[
-                        { label: 'Taxa atual (Base)', value: `${taxaAtual.toFixed(2)}%`, sub: 'de atendimento global', color: 'bg-red-500', icon: '📉' },
-                        { label: 'Novas vagas do Plano', value: vagasCriadas, sub: 'impacto direto das metas', color: 'bg-blue-500', icon: '🏫' },
-                        { label: 'Taxa projetada', value: `${taxaProjetada.toFixed(2)}%`, sub: 'após conclusão do plano', color: 'bg-green-500', icon: '📈' },
-                        { label: 'Déficit residual', value: deficitResidual > 0 ? deficitResidual : 0, sub: 'vagas que ainda faltarão', color: 'bg-amber-500', icon: '⚠️' },
-                      ].map(kpi => (
-                        <div key={kpi.label} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                          <div className="text-2xl mb-2">{kpi.icon}</div>
-                          <div className={`text-3xl font-black text-white ${kpi.color} px-3 py-1 rounded-lg inline-block mb-2`}>{kpi.value}</div>
-                          <div className="font-semibold text-slate-700 text-sm">{kpi.label}</div>
-                          <div className="text-xs text-slate-500">{kpi.sub}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                      <h3 className="font-bold text-slate-700 mb-4">Evolução da Taxa de Atendimento (Por Ano de Conclusão)</h3>
-                      {evolucaoVagas.length > 0 ? (
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
-                          <table className="w-full text-sm">
-                            <thead className="bg-slate-50">
-                              <tr>
-                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Ano da Conclusão</th>
-                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Novas Vagas Entregues</th>
-                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Acumulado (Plano)</th>
-                                <th className="text-center px-4 py-3 font-semibold text-slate-700">Taxa de Atendimento Global</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {evolucaoVagas.map(row => (
-                                <tr key={row.ano} className="hover:bg-slate-50">
-                                  <td className="px-4 py-4 text-center font-bold text-slate-800">{row.ano}</td>
-                                  <td className="px-4 py-4 text-center font-semibold text-green-700">+{row.vagas}</td>
-                                  <td className="px-4 py-4 text-center font-bold text-blue-700">{row.acum}</td>
-                                  <td className="px-4 py-4 text-center">
-                                    <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-bold">{row.taxa}</span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-6 text-slate-500">Nenhuma meta com ano de conclusão cadastrada ou vagas geradas.</div>
-                      )}
-
-                      {evolucaoVagas.length > 0 && (
-                        <div className="mt-6 border-t border-slate-200 pt-6">
-                          <h4 className="text-sm font-bold text-slate-600 mb-4 text-center">Impacto Cumulativo vs. Taxa de Atendimento</h4>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <ComposedChart data={evolucaoVagas}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                              <XAxis dataKey="ano" />
-                              <YAxis yAxisId="left" orientation="left" />
-                              <YAxis yAxisId="right" orientation="right" tickFormatter={v => `${v}%`} />
-                              <Tooltip formatter={(value, name) => [name === 'Taxa de Atendimento' ? `${value}%` : value, name]} />
-                              <Legend />
-                              <Bar yAxisId="left" dataKey="vagas" name="Novas Vagas (Ano)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                              <Line yAxisId="right" type="monotone" dataKey={row => parseFloat(row.taxa)} name="Taxa de Atendimento" stroke="#10b981" strokeWidth={3} />
-                            </ComposedChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-xl p-6 text-white shadow-md">
-                        <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
-                          <DollarSign className="w-5 h-5 text-emerald-200" /> Balanço Financeiro (Caixa Único)
-                        </h3>
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-end border-b border-emerald-500 pb-3">
-                            <div>
-                              <div className="text-emerald-100 text-sm">Total de Fontes Disponíveis</div>
-                            </div>
-                            <div className="font-bold text-xl">{BRL(fontesDisponiveis)}</div>
-                          </div>
-                          <div className="flex justify-between items-end border-b border-emerald-500 pb-3">
-                            <div>
-                              <div className="text-emerald-100 text-sm">Investimento Comprometido (Metas)</div>
-                            </div>
-                            <div className="font-bold text-xl text-red-200">-{BRL(fontesComprometidas)}</div>
-                          </div>
-                          <div className="flex justify-between items-end pt-2">
-                            <div>
-                              <div className="font-bold text-lg">Saldo Restante</div>
-                            </div>
-                            <div className={`font-black text-3xl ${saldoFinalCaixa < 0 ? 'text-red-300' : 'text-emerald-100'}`}>
-                              {BRL(saldoFinalCaixa)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-gradient-to-r from-orange-600 to-amber-700 rounded-xl p-6 text-white shadow-md">
-                        <h3 className="font-bold text-xl mb-4">Custeio Operacional Pós-Plano</h3>
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-center border-b border-orange-500 pb-3">
-                            <span className="text-orange-100 text-sm">Custo com Pessoal / Ano</span>
-                            <span className="font-bold text-lg">{BRL(totalCustoAnualPessoal)}</span>
-                          </div>
-                          <div className="flex justify-between items-center border-b border-orange-500 pb-3">
-                            <span className="text-orange-100 text-sm">Custo Médio de Investimento / Vaga</span>
-                            <span className="font-bold text-lg">
-                              {vagasCriadas > 0 ? BRL(fontesComprometidas / vagasCriadas) : '—'}
-                            </span>
-                          </div>
-                          <div className="pt-2">
-                            <p className="text-orange-200 text-xs">
-                              O custeio operacional estima os salários e encargos dos novos profissionais que precisarão ser contratados para atender as {vagasCriadas} vagas criadas.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 shadow-sm">
-                      <h3 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
-                        <Users className="w-5 h-5 text-blue-700" /> CadÚnico Geral da Rede
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                        <div className="bg-white rounded-lg p-4 shadow-sm">
-                          <div className="text-2xl font-black text-slate-800">{demandaGeral}</div>
-                          <div className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wide">Crianças Cadastradas</div>
-                        </div>
-                        <div className="bg-white rounded-lg p-4 shadow-sm">
-                          <div className="text-2xl font-black text-red-600">{demandaGeral - vagasAtuaisGeral}</div>
-                          <div className="text-xs font-semibold text-red-500 mt-1 uppercase tracking-wide">Sem Vaga Atual</div>
-                        </div>
-                        <div className="bg-white rounded-lg p-4 shadow-sm">
-                          <div className="text-2xl font-black text-green-600">{deficitResidual > 0 ? deficitResidual : 0}</div>
-                          <div className="text-xs font-semibold text-green-600 mt-1 uppercase tracking-wide">Déficit com Plano</div>
-                        </div>
-                        <div className="bg-white rounded-lg p-4 shadow-sm">
-                          <div className="text-2xl font-black text-blue-600">{vagasCriadas}</div>
-                          <div className="text-xs font-semibold text-blue-600 mt-1 uppercase tracking-wide">Vagas do Plano</div>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-                );
-              })()}
             </div>
 
             {/* Footer */}
-            <div className="border-t border-slate-200 bg-slate-50 px-7 py-4 flex justify-between items-center">
-              <button onClick={onBack} className="flex items-center gap-2 px-5 py-2.5 text-slate-700 border border-slate-300 rounded-lg font-semibold hover:bg-slate-100 transition-colors">
+            <div className="border-t border-slate-200 bg-slate-50 px-7 py-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+              <button onClick={onBack} className="flex items-center gap-2 px-5 py-2.5 text-slate-700 border border-slate-300 rounded-lg font-semibold hover:bg-slate-100 transition-colors text-sm">
                 <X className="w-4 h-4" /> Cancelar
               </button>
-              <div className="flex items-center gap-3">
+              
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Salvar como Rascunho sempre disponível para salvar preenchimentos parciais */}
+                <button
+                  type="button"
+                  onClick={handleSalvarRascunho}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 transition-colors shadow text-sm"
+                  title="Salvar progresso atual como Rascunho"
+                >
+                  <Save className="w-4 h-4" />
+                  Salvar como Rascunho
+                </button>
+
                 {currentIdx > 0 && (
                   <button onClick={() => setActiveTab(TABS[currentIdx - 1].id)} className="flex items-center gap-2 px-4 py-2.5 text-slate-700 border border-slate-300 rounded-lg font-semibold hover:bg-slate-100 transition-colors text-sm">
                     ← Anterior
                   </button>
                 )}
-                <button onClick={handleSalvarPlano} className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow">
-                  <Save className="w-4 h-4" />
-                  {isEdit ? 'Salvar Alterações' : 'Salvar Plano'}
-                </button>
-                {currentIdx < TABS.length - 1 && (
-                  <button onClick={() => setActiveTab(TABS[currentIdx + 1].id)} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors text-sm">
+
+                {/* Na última aba (Projeção Orçamentária): Botão Salvar Plano (CRIAR) */}
+                {activeTab === 'projecao-orcamentaria' ? (
+                  <button
+                    type="button"
+                    onClick={handleSalvarPlano}
+                    className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow text-sm"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {isEdit && planParaEditar?.status !== 'Rascunho' ? 'Salvar Alterações' : 'Salvar Plano'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(TABS[currentIdx + 1].id)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors text-sm"
+                  >
                     Próxima →
                   </button>
                 )}
