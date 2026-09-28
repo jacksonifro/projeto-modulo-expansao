@@ -3,6 +3,7 @@ import {
   ChevronLeft, Save, X, Plus, Trash2, UserPlus,
   Building2, AlertCircle, CheckCircle2, BarChart3, Users,
   TrendingUp, MapPin, BookOpen, Wrench, ClipboardList, DollarSign,
+  Edit3, Copy, RotateCcw, Clock, Layers, Sparkles, PlusCircle, Check, ArrowRight, HardHat, Calendar, School, Filter, CheckCircle
 } from 'lucide-react';
 import { mockServidores, mockUnidades, mockDemandaBairro, mockDemandaEtapa, mockProjecaoVagas, mockPlans, mockActivities, mockCadUnicoUnidade } from './mockData';
 import { mockModelosCreche, mockModelosAmbiente, calcularCustoCreche, calcularCustoAmbiente, mockCargosReferencia } from './mockDataCusto';
@@ -90,6 +91,812 @@ function CurrencyInput({ value, onChange, className, placeholder }: {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// MODAL: Ação em Unidade (Adaptação ou Ampliação)
+// ═══════════════════════════════════════════════════════════════
+interface ModalAcaoProps {
+  isOpen: boolean;
+  acao: AcaoUnidade | null;
+  onClose: () => void;
+  onSave: (acao: AcaoUnidade) => void;
+  onDelete?: () => void;
+  modelos: ModeloCreche[];
+  ambientes: ModeloAmbiente[];
+}
+
+function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes }: ModalAcaoProps) {
+  const [draft, setDraft] = useState<AcaoUnidade | null>(acao);
+
+  useEffect(() => {
+    setDraft(acao ? { ...acao } : null);
+  }, [acao, isOpen]);
+
+  if (!isOpen || !draft) return null;
+
+  const isAdapt = draft.tipo === 'adaptacao';
+  const unidade = mockUnidades.find(u => u.id === draft.unidadeId);
+  const salas = unidade?.salas ?? [];
+  const temCreche = salas.some(s => s.tipoAtual === 'Creche');
+  const temEF = salas.some(s => s.tipoAtual === 'Ensino Fundamental');
+  const tipoUnidade = !unidade ? null
+    : unidade.totalVagas === 0 && !temCreche ? 'EMEF (sem EI)'
+      : temCreche && temEF ? 'EMEI/EMEF (mista)'
+        : temCreche ? 'Creche / EMEI'
+          : 'EMEF';
+
+  const modeloAmpliacao = modelos.find(m => m.id === draft.modeloCrecheId);
+  const ambientesAmpliacao: ModeloAmbiente[] = modeloAmpliacao
+    ? modeloAmpliacao.ambientes
+      .map(mca => ambientes.find(ma => ma.id === mca.modeloAmbienteId))
+      .filter((ma): ma is NonNullable<typeof ma> => !!ma)
+    : [];
+  const ambienteSelecionado = ambientesAmpliacao.find(ma => ma.id === draft.salaId);
+  const custoCalculado = ambienteSelecionado ? calcularCustoAmbiente(ambienteSelecionado) : null;
+  const salasDaUnidade = salas;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!draft.unidadeId) {
+      alert("Por favor, selecione a unidade escolar.");
+      return;
+    }
+    onSave(draft);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-100 my-auto">
+        {/* Header temático com gradiente */}
+        <div className={`p-5 text-white flex items-center justify-between ${
+          isAdapt
+            ? 'bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-700'
+            : 'bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-700'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
+              {isAdapt ? <Layers className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">
+                {isAdapt ? 'Ação de Adaptação (Reordenamento)' : 'Ação de Ampliação de Salas'}
+              </h3>
+              <p className="text-xs text-white/80">
+                {isAdapt
+                  ? 'Readequação de espaços existentes em unidade escolar para novas turmas de creche'
+                  : 'Construção de novas salas de atendimento em unidade escolar existente'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Formulário com Scroll */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* Seletor de Tipo (com destaque de cor imediato) */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'adaptacao', salaId: '', custoPorSala: 0 } : prev)}
+              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+                isAdapt
+                  ? 'border-purple-600 bg-purple-50/70 text-purple-950 shadow-xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                isAdapt ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-400'
+              }`}>
+                <Layers className="w-4 h-4" />
+              </div>
+              <div>
+                <div className={`text-sm font-bold ${isAdapt ? 'text-purple-900' : 'text-slate-800'}`}>
+                  Adaptação
+                </div>
+                <div className="text-[11px] text-slate-500 leading-tight">
+                  Reordenamento de espaço existente
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'ampliacao', salaId: '', custoPorSala: 0 } : prev)}
+              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+                !isAdapt
+                  ? 'border-blue-600 bg-blue-50/70 text-blue-950 shadow-xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                !isAdapt ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
+              }`}>
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <div className={`text-sm font-bold ${!isAdapt ? 'text-blue-900' : 'text-slate-800'}`}>
+                  Ampliação
+                </div>
+                <div className="text-[11px] text-slate-500 leading-tight">
+                  Construção de novas salas
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* Unidade Escolar */}
+          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+              Unidade Escolar *
+            </label>
+            <select
+              value={draft.unidadeId}
+              onChange={e => setDraft(prev => prev ? {
+                ...prev,
+                unidadeId: e.target.value,
+                salaId: '',
+                custoPorSala: 0
+              } : prev)}
+              className="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              required
+            >
+              <option value="">Selecione a unidade escolar...</option>
+              {mockUnidades.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.nome} ({u.bairro})
+                </option>
+              ))}
+            </select>
+
+            {tipoUnidade && (
+              <div className="flex items-center gap-2 pt-1 text-xs">
+                <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700 font-semibold shadow-2xs">
+                  {tipoUnidade}
+                </span>
+                {unidade && (
+                  <span className="text-slate-500">
+                    {unidade.totalVagas} vagas atuais · {unidade.totalListaEspera} em fila de espera
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Seleção de Ambiente e Custo (Com container destacado na cor do tipo) */}
+          <div className={`p-4 rounded-2xl border-2 space-y-3 ${
+            isAdapt ? 'border-purple-200 bg-purple-50/30' : 'border-blue-200 bg-blue-50/30'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-black uppercase tracking-wider ${
+                isAdapt ? 'text-purple-800' : 'text-blue-800'
+              }`}>
+                {isAdapt ? 'Seleção do Ambiente a Adaptar' : 'Seleção do Ambiente a Ampliar'}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Preenchimento e cálculo automático
+              </span>
+            </div>
+
+            {isAdapt && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Sala Existente a Ser Reordenada
+                </label>
+                <select
+                  value={draft.salaId}
+                  onChange={e => {
+                    const sala = salasDaUnidade.find(s => s.id === e.target.value);
+                    setDraft(prev => prev ? {
+                      ...prev,
+                      salaId: e.target.value,
+                      capacidadeAnterior: sala?.capacidadeAtual || 0
+                    } : prev);
+                  }}
+                  className="w-full text-sm px-3.5 py-2 border border-purple-200 rounded-xl bg-white focus:ring-2 focus:ring-purple-300 outline-none"
+                >
+                  <option value="">Selecione a sala da escola...</option>
+                  {salasDaUnidade.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome} ({s.tipoAtual} — {s.capacidadeAtual} vagas)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  1. Modelo de Creche (Referência)
+                </label>
+                <select
+                  value={draft.modeloCrecheId || ''}
+                  onChange={e => setDraft(prev => prev ? {
+                    ...prev,
+                    modeloCrecheId: e.target.value,
+                    salaId: isAdapt ? prev.salaId : '',
+                    custoPorSala: 0
+                  } : prev)}
+                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">Selecione o modelo...</option>
+                  {modelos.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {!isAdapt && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    2. Ambiente de Referência
+                  </label>
+                  <select
+                    value={draft.salaId}
+                    onChange={e => {
+                      const selId = e.target.value;
+                      const ma = ambientesAmpliacao.find(a => a.id === selId);
+                      const custo = ma ? calcularCustoAmbiente(ma).total : 0;
+                      const cap = ma?.capacidadeAlunos || 20;
+                      setDraft(prev => prev ? {
+                        ...prev,
+                        salaId: selId,
+                        custoPorSala: custo,
+                        novaCapacidade: cap
+                      } : prev);
+                    }}
+                    disabled={!draft.modeloCrecheId}
+                    className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="">
+                      {!draft.modeloCrecheId ? 'Selecione o modelo primeiro...' : 'Selecione o ambiente...'}
+                    </option>
+                    {ambientesAmpliacao.map(ma => (
+                      <option key={ma.id} value={ma.id}>
+                        {ma.nome} — {ma.areaMq} m² — {BRL(calcularCustoAmbiente(ma).total)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Caixa de Custo Dinâmico */}
+            {draft.custoPorSala > 0 && custoCalculado && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
+                <div className="space-x-3 text-emerald-800">
+                  <span><strong>Obras:</strong> {BRL(custoCalculado.obras)}</span>
+                  <span><strong>Mobiliário:</strong> {BRL(custoCalculado.mobiliario)}</span>
+                  <span><strong>Equipamentos:</strong> {BRL(custoCalculado.equipamentos)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[11px] text-emerald-600 font-bold block">CUSTO POR SALA</span>
+                  <span className="text-base font-black text-emerald-800">{BRL(draft.custoPorSala)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Descrição */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Descrição da Ação *
+            </label>
+            <input
+              type="text"
+              value={draft.descricao}
+              onChange={e => setDraft(prev => prev ? { ...prev, descricao: e.target.value } : prev)}
+              placeholder={isAdapt ? 'Ex: Transformar Sala Multiuso em sala de Jardim I' : 'Ex: Construção de 1 nova sala de Maternal'}
+              className="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              required
+            />
+          </div>
+
+          {/* Vagas e Capacidade */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
+              Planejamento de Vagas da Sala
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Capacidade Anterior
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.capacidadeAnterior}
+                  onChange={e => setDraft(prev => prev ? { ...prev, capacidadeAnterior: Number(e.target.value) } : prev)}
+                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Nova Capacidade da Sala *
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={draft.novaCapacidade}
+                  onChange={e => setDraft(prev => prev ? { ...prev, novaCapacidade: Number(e.target.value) } : prev)}
+                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-bold"
+                  required
+                />
+              </div>
+
+              <div className="h-[38px] px-3 py-2 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-black flex items-center justify-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                +{Math.max(0, draft.novaCapacidade - draft.capacidadeAnterior)} novas vagas
+              </div>
+            </div>
+          </div>
+
+          {/* Etapa e Prazo */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Etapa Destino
+              </label>
+              <select
+                value={draft.etapaDestino}
+                onChange={e => setDraft(prev => prev ? { ...prev, etapaDestino: e.target.value as EtapaEI } : prev)}
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                {ETAPAS.map(e => (
+                  <option key={e} value={e}>{e}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Previsão de Conclusão
+              </label>
+              <input
+                type="date"
+                value={draft.previsaoConclusao}
+                onChange={e => setDraft(prev => prev ? { ...prev, previsaoConclusao: e.target.value } : prev)}
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Footer do Modal */}
+          <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
+            {onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                Excluir Ação
+              </button>
+            )}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className={`px-5 py-2 text-sm font-bold text-white rounded-xl shadow-sm transition-all ${
+                  isAdapt
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                Salvar Ação
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL: Obra de Construção (Retomada ou Nova Construção)
+// ═══════════════════════════════════════════════════════════════
+interface ModalObraProps {
+  isOpen: boolean;
+  obra: ObraConstrucao | null;
+  onClose: () => void;
+  onSave: (obra: ObraConstrucao) => void;
+  onDelete?: () => void;
+  modelos: ModeloCreche[];
+  ambientes: ModeloAmbiente[];
+  fontes: FonteFinanciamento[];
+  periodoInicio: number;
+}
+
+function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes, fontes, periodoInicio }: ModalObraProps) {
+  const [draft, setDraft] = useState<ObraConstrucao | null>(obra);
+
+  useEffect(() => {
+    setDraft(obra ? { ...obra } : null);
+  }, [obra, isOpen]);
+
+  if (!isOpen || !draft) return null;
+
+  const isRetomada = draft.tipo === 'retomada';
+  const cc = calcularCustoObraTotal(draft, modelos, ambientes);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!draft.nome.trim()) {
+      alert("Por favor, informe o nome da obra.");
+      return;
+    }
+    onSave(draft);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-100 my-auto">
+        {/* Header temático com gradiente */}
+        <div className={`p-5 text-white flex items-center justify-between ${
+          isRetomada
+            ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700'
+            : 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-700'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
+              {isRetomada ? <RotateCcw className="w-5 h-5" /> : <HardHat className="w-5 h-5" />}
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">
+                {isRetomada ? 'Obra de Retomada' : 'Nova Construção de Creche'}
+              </h3>
+              <p className="text-xs text-white/80">
+                {isRetomada
+                  ? 'Continuidade e finalização de obra paralisada ou em andamento'
+                  : 'Implantação de nova edificação escolar do zero (FNDE ou Recurso Próprio)'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Formulário com Scroll */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* Seletor de Tipo com destaque */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'retomada', statusObra: 'em_execucao' } : prev)}
+              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+                isRetomada
+                  ? 'border-orange-500 bg-orange-50/70 text-orange-950 shadow-xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                isRetomada ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-400'
+              }`}>
+                <RotateCcw className="w-4 h-4" />
+              </div>
+              <div>
+                <div className={`text-sm font-bold ${isRetomada ? 'text-orange-900' : 'text-slate-800'}`}>
+                  Retomada de Obra
+                </div>
+                <div className="text-[11px] text-slate-500 leading-tight">
+                  Obra paralisada ou em andamento
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'nova', statusObra: 'planejada' } : prev)}
+              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+                !isRetomada
+                  ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 shadow-xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                !isRetomada ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'
+              }`}>
+                <HardHat className="w-4 h-4" />
+              </div>
+              <div>
+                <div className={`text-sm font-bold ${!isRetomada ? 'text-emerald-900' : 'text-slate-800'}`}>
+                  Nova Construção
+                </div>
+                <div className="text-[11px] text-slate-500 leading-tight">
+                  Construção nova do zero
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* Identificação e Localização */}
+          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block">
+              Identificação & Localização
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Nome da Obra *</label>
+                <input
+                  type="text"
+                  value={draft.nome}
+                  onChange={e => setDraft(prev => prev ? { ...prev, nome: e.target.value } : prev)}
+                  placeholder="Ex: Creche Municipal — Bairro Esperança"
+                  className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Bairro / Setor *</label>
+                <input
+                  type="text"
+                  value={draft.bairro}
+                  onChange={e => setDraft(prev => prev ? { ...prev, bairro: e.target.value, localizacao: e.target.value } : prev)}
+                  placeholder="Ex: Bairro Liberdade"
+                  className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Latitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={draft.coordenadas?.lat || ''}
+                  onChange={e => setDraft(prev => prev ? {
+                    ...prev,
+                    coordenadas: { ...prev.coordenadas!, lat: parseFloat(e.target.value) || 0 }
+                  } : prev)}
+                  placeholder="-11.4500"
+                  className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Longitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={draft.coordenadas?.lng || ''}
+                  onChange={e => setDraft(prev => prev ? {
+                    ...prev,
+                    coordenadas: { ...prev.coordenadas!, lng: parseFloat(e.target.value) || 0 }
+                  } : prev)}
+                  placeholder="-61.4500"
+                  className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Modelo de Custo (com destaque de cor no tema) */}
+          <div className={`p-4 rounded-2xl border-2 space-y-3 ${
+            isRetomada ? 'border-orange-200 bg-orange-50/30' : 'border-emerald-200 bg-emerald-50/30'
+          }`}>
+            <span className={`text-xs font-black uppercase tracking-wider block ${
+              isRetomada ? 'text-orange-900' : 'text-emerald-900'
+            }`}>
+              Modelo de Referência & Custo Estimado
+            </span>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Modelo de Creche (FNDE / Próprio)
+              </label>
+              <select
+                value={draft.modeloCrecheId || ''}
+                onChange={e => {
+                  const m = modelos.find(mc => mc.id === e.target.value);
+                  if (!m) return;
+                  const c = calcularCustoCreche(m, ambientes);
+                  const salasTotal = m.ambientes
+                    .filter(a => {
+                      const amb = ambientes.find(ma => ma.id === a.modeloAmbienteId);
+                      return amb?.categoria === 'sala-atividades';
+                    })
+                    .reduce((s, a) => s + a.quantidade, 0) || draft.numeroDeSalas || 4;
+
+                  setDraft(prev => prev ? {
+                    ...prev,
+                    modeloCrecheId: m.id,
+                    tipoProjetoFNDE: m.tipoBase as ObraConstrucao['tipoProjetoFNDE'],
+                    numeroDeSalas: salasTotal,
+                    capacidadeAlunos: m.capacidadeAlunos || 0,
+                    desembolsoPorAno: prev.desembolsoPorAno.length > 0 ? prev.desembolsoPorAno : [
+                      { ano: periodoInicio, valor: c.investimento, fonte: fontes[0]?.fonte || 'Recurso Próprio' }
+                    ]
+                  } : prev);
+                }}
+                className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">Selecione o modelo de referência...</option>
+                {modelos.map(m => {
+                  const c = calcularCustoCreche(m, ambientes);
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {m.nome} — Investimento Ref. {BRL(c.investimento)}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Resumo de Custo */}
+            <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+              <div>
+                <span className="text-slate-400 block text-[11px]">Custo Médio por Sala</span>
+                <span className="font-bold text-slate-800 text-sm">
+                  {cc.costPerSala > 0 ? BRL(Math.round(cc.costPerSala)) : '—'}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-400 block text-[11px]">Custo Total da Obra</span>
+                <span className="font-black text-blue-700 text-base">
+                  {cc.total > 0 ? BRL(Math.round(cc.total)) : '—'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Dimensionamento & Status */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Nº de Salas *</label>
+              <input
+                type="number"
+                min={1}
+                value={draft.numeroDeSalas}
+                onChange={e => setDraft(prev => prev ? { ...prev, numeroDeSalas: Number(e.target.value) } : prev)}
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-bold"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Vagas Previstas *</label>
+              <input
+                type="number"
+                min={1}
+                value={draft.capacidadeAlunos || 0}
+                onChange={e => setDraft(prev => prev ? { ...prev, capacidadeAlunos: Number(e.target.value) } : prev)}
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-bold text-emerald-700"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+              <select
+                value={draft.statusObra || 'planejada'}
+                onChange={e => setDraft(prev => prev ? { ...prev, statusObra: e.target.value as ObraConstrucao['statusObra'] } : prev)}
+                className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-xl bg-white outline-none"
+              >
+                <option value="planejada">Planejada</option>
+                <option value="licitacao">Em Licitação</option>
+                <option value="em_execucao">Em Execução</option>
+                <option value="concluida">Concluída</option>
+                <option value="paralisada">Paralisada</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Nº Convênio</label>
+              <input
+                type="text"
+                value={draft.numeroConvenio || ''}
+                onChange={e => setDraft(prev => prev ? { ...prev, numeroConvenio: e.target.value } : prev)}
+                placeholder="Ex: FNDE/2023"
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Campo de Conclusão para Retomada com Slider interativo */}
+          {isRetomada && (
+            <div className="p-4 rounded-2xl bg-orange-50/60 border border-orange-200/80 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-orange-950 flex items-center gap-1.5">
+                  <RotateCcw className="w-3.5 h-3.5 text-orange-600" />
+                  Percentual de Conclusão Atual
+                </span>
+                <span className="font-black text-orange-700 text-sm">
+                  {draft.percentualConclusaoAtual || 0}%
+                </span>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={draft.percentualConclusaoAtual || 0}
+                onChange={e => setDraft(prev => prev ? { ...prev, percentualConclusaoAtual: Number(e.target.value) } : prev)}
+                className="w-full accent-orange-500 cursor-pointer"
+              />
+
+              <div className="w-full bg-orange-200/60 rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full bg-orange-500 rounded-full transition-all"
+                  style={{ width: `${draft.percentualConclusaoAtual || 0}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Cronograma */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Previsão de Conclusão
+            </label>
+            <input
+              type="date"
+              value={draft.previsaoConclusao}
+              onChange={e => setDraft(prev => prev ? { ...prev, previsaoConclusao: e.target.value } : prev)}
+              className="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+
+          {/* Footer do Modal */}
+          <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
+            {onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                Excluir Obra
+              </button>
+            )}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className={`px-5 py-2 text-sm font-bold text-white rounded-xl shadow-sm transition-all ${
+                  isRetomada
+                    ? 'bg-orange-500 hover:bg-orange-600'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                Salvar Obra
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormProps) {
   const [activeTab, setActiveTab] = useState<TabId>('dados');
 
@@ -149,6 +956,13 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
   const [filtroTipoObra, setFiltroTipoObra] = useState<'todas' | 'nova' | 'retomada'>('todas');
   const [filtroTipoAcao, setFiltroTipoAcao] = useState<'todas' | 'ampliacao' | 'adaptacao'>('todas');
+
+  // Estados dos Modais de Ação e Obra
+  const [isAcaoModalOpen, setIsAcaoModalOpen] = useState(false);
+  const [editingAcao, setEditingAcao] = useState<AcaoUnidade | null>(null);
+
+  const [isObraModalOpen, setIsObraModalOpen] = useState(false);
+  const [editingObra, setEditingObra] = useState<ObraConstrucao | null>(null);
 
   // Aba 1 — Equipe
   const [equipe, setEquipe] = useState<MembroEquipe[]>(() => planParaEditar ? (planParaEditar.equipe || []) : [
@@ -266,22 +1080,124 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     }));
   };
 
-  const addAcao = () => setAcoes(a => [...a, {
-    id: `au${Date.now()}`, tipo: 'adaptacao', unidadeId: '', salaId: '',
-    modeloCrecheId: '',
-    descricao: '', etapaDestino: 'Jardim I', capacidadeAnterior: 0, novaCapacidade: 16,
-    fonteFinanciamento: 'Recurso Próprio', custoPorSala: 0,
-    previsaoConclusao: '2026-12-31', desembolsoPorAno: [],
-  }]);
-  const removeAcao = (id: string) => setAcoes(a => a.filter(x => x.id !== id));
+  // ─── Handlers de Modal: Ações em Unidades ─────────────────────
+  const openNewAcaoModal = (tipo: 'adaptacao' | 'ampliacao' = 'adaptacao') => {
+    const firstUnit = mockUnidades[0];
+    const initialSala = tipo === 'adaptacao' && firstUnit?.salas?.[0] ? firstUnit.salas[0].id : '';
+    setEditingAcao({
+      id: `au${Date.now()}`,
+      tipo,
+      unidadeId: firstUnit?.id || '',
+      salaId: initialSala,
+      modeloCrecheId: modelos[0]?.id || '',
+      descricao: tipo === 'adaptacao' ? 'Reordenamento de espaço para creche' : 'Construção de nova sala de atendimento',
+      etapaDestino: 'Jardim I',
+      capacidadeAnterior: 0,
+      novaCapacidade: 16,
+      fonteFinanciamento: 'Recurso Próprio',
+      custoPorSala: 0,
+      previsaoConclusao: '2026-12-31',
+      desembolsoPorAno: [{ ano: periodoInicio, valor: 0, fonte: 'Recurso Próprio' }],
+    });
+    setIsAcaoModalOpen(true);
+  };
 
-  const addObra = () => setObras(o => [...o, {
-    id: `ob${Date.now()}`, tipo: 'nova', nome: '', localizacao: '', bairro: '', setor: '',
-    modeloCrecheId: '', numeroDeSalas: 0, etapasAtendidas: [], desembolsoPorAno: [],
-    previsaoConclusao: '2029-12-31', statusObra: 'planejada',
-    coordenadas: { lat: -11.4343, lng: -61.4484 }
-  }]);
+  const openEditAcaoModal = (acao: AcaoUnidade) => {
+    setEditingAcao({ ...acao });
+    setIsAcaoModalOpen(true);
+  };
+
+  const duplicateAcao = (acao: AcaoUnidade) => {
+    const nova: AcaoUnidade = {
+      ...acao,
+      id: `au${Date.now()}`,
+      descricao: acao.descricao ? `${acao.descricao} (Cópia)` : '',
+    };
+    setAcoes(prev => [...prev, nova]);
+  };
+
+  const removeAcao = (id: string) => setAcoes(a => a.filter(x => x.id !== id));
+  const addAcao = () => openNewAcaoModal('adaptacao');
+
+  const saveAcaoModal = (saved?: AcaoUnidade) => {
+    const item = saved || editingAcao;
+    if (!item) return;
+    if (!item.unidadeId) {
+      alert("Por favor, selecione a unidade escolar.");
+      return;
+    }
+    setAcoes(prev => {
+      const exists = prev.some(a => a.id === item.id);
+      if (exists) {
+        return prev.map(a => a.id === item.id ? item : a);
+      }
+      return [...prev, item];
+    });
+    setIsAcaoModalOpen(false);
+    setEditingAcao(null);
+  };
+
+  // ─── Handlers de Modal: Obras de Construção ────────────────────
+  const openNewObraModal = (tipo: 'retomada' | 'nova' = 'retomada') => {
+    const defaultModel = modelos[0];
+    const custoObj = defaultModel ? calcularCustoCreche(defaultModel, ambientes) : null;
+    const inv = custoObj?.investimento || 0;
+    setEditingObra({
+      id: `ob${Date.now()}`,
+      tipo,
+      nome: '',
+      localizacao: '',
+      bairro: '',
+      setor: 'Região Central',
+      modeloCrecheId: defaultModel?.id || '',
+      tipoProjetoFNDE: defaultModel ? (defaultModel.tipoBase as ObraConstrucao['tipoProjetoFNDE']) : 'tipo1',
+      numeroDeSalas: 4,
+      capacidadeAlunos: 80,
+      etapasAtendidas: ['Jardim I', 'Jardim II'],
+      desembolsoPorAno: [{ ano: periodoInicio, valor: inv, fonte: fontes[0]?.fonte || 'Recurso Próprio' }],
+      previsaoConclusao: '2027-12-31',
+      statusObra: tipo === 'retomada' ? 'em_execucao' : 'planejada',
+      percentualConclusaoAtual: tipo === 'retomada' ? 50 : 0,
+      numeroConvenio: tipo === 'retomada' ? 'MD Calha Norte/2023' : '',
+      coordenadas: { lat: -11.4343, lng: -61.4484 }
+    });
+    setIsObraModalOpen(true);
+  };
+
+  const openEditObraModal = (obra: ObraConstrucao) => {
+    setEditingObra({ ...obra });
+    setIsObraModalOpen(true);
+  };
+
+  const duplicateObra = (obra: ObraConstrucao) => {
+    const nova: ObraConstrucao = {
+      ...obra,
+      id: `ob${Date.now()}`,
+      nome: obra.nome ? `${obra.nome} (Cópia)` : '',
+    };
+    setObras(prev => [...prev, nova]);
+  };
+
   const removeObra = (id: string) => setObras(o => o.filter(x => x.id !== id));
+  const addObra = () => openNewObraModal('retomada');
+
+  const saveObraModal = (saved?: ObraConstrucao) => {
+    const item = saved || editingObra;
+    if (!item) return;
+    if (!item.nome.trim()) {
+      alert("Por favor, preencha o nome da obra.");
+      return;
+    }
+    setObras(prev => {
+      const exists = prev.some(o => o.id === item.id);
+      if (exists) {
+        return prev.map(o => o.id === item.id ? item : o);
+      }
+      return [...prev, item];
+    });
+    setIsObraModalOpen(false);
+    setEditingObra(null);
+  };
 
 
 
@@ -923,7 +1839,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                       );
                     })}
 
-                    {group !== 'resultado' && <div className="border-b border-slate-100 mt-2 mb-1" />}
+                    {(group as string) !== 'resultado' && <div className="border-b border-slate-100 mt-2 mb-1" />}
                   </div>
                 );
               })}
@@ -1450,461 +2366,682 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
               {/* ═══ ABA 3 — AÇÕES EM UNIDADES ══════════════════════════ */}
               {activeTab === 'acoes-unidades' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
+                  {/* Cabeçalho */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
                     <div>
-                      <h2 className="text-2xl font-bold text-slate-800">Ações em Unidades Existentes</h2>
-                      <p className="text-slate-500 text-sm mt-1">Adaptação (reordenamento) e Ampliação de salas em unidades já existentes</p>
-                    </div>
-                    <button onClick={addAcao}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors">
-                      <Plus className="w-4 h-4" /> Adicionar Ação
-                    </button>
-                  </div>
-
-                  <div className="flex bg-slate-100 p-1 rounded-lg w-fit">
-                    {(['todas', 'adaptacao', 'ampliacao'] as const).map(tipo => (
-                      <button key={tipo}
-                        onClick={() => setFiltroTipoAcao(tipo)}
-                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${filtroTipoAcao === tipo ? (tipo === 'adaptacao' ? 'bg-purple-600 text-white shadow-sm' : tipo === 'ampliacao' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-600 hover:text-slate-900'}`}>
-                        {tipo === 'todas' ? 'Todas as Ações' : tipo === 'adaptacao' ? 'Apenas Adaptações' : 'Apenas Ampliações'}
-                      </button>
-                    ))}
-                  </div>
-
-                  {acoes.filter(a => filtroTipoAcao === 'todas' || a.tipo === filtroTipoAcao).map(acao => {
-                    const unidade = mockUnidades.find(u => u.id === acao.unidadeId);
-
-                    // Derivar tipo da unidade a partir das salas cadastradas
-                    const salas = unidade?.salas ?? [];
-                    const temCreche = salas.some(s => s.tipoAtual === 'Creche');
-                    const temEF = salas.some(s => s.tipoAtual === 'Ensino Fundamental');
-                    const tipoUnidade = !unidade ? null
-                      : unidade.totalVagas === 0 && !temCreche ? 'EMEF (sem EI)'
-                        : temCreche && temEF ? 'EMEI/EMEF (mista)'
-                          : temCreche ? 'Creche / EMEI'
-                            : 'EMEF';
-                    const tipoCor = !tipoUnidade ? ''
-                      : tipoUnidade.includes('mista') ? 'bg-amber-50 border-amber-200 text-amber-700'
-                        : tipoUnidade.startsWith('Creche') ? 'bg-green-50 border-green-200 text-green-700'
-                          : 'bg-blue-50 border-blue-200 text-blue-700';
-
-                    // Para adaptação: ambientes mapeados às salas reais da unidade (ref. Tipo 1)
-                    const modeloTipo1 = modelos.find(m => m.tipoBase === 'tipo1');
-                    const ambientesModeloTipo1 = (modeloTipo1?.ambientes ?? [])
-                      .map(mca => ambientes.find(ma => ma.id === mca.modeloAmbienteId))
-                      .filter((ma): ma is NonNullable<typeof ma> => !!ma);
-                    const ambientesAdaptacao = salas.map(s => ({
-                      salaId: s.id,
-                      label: s.nome,
-                      modeloAmbiente: ambientesModeloTipo1.find(ma =>
-                        ma.nome.toLowerCase().includes(s.nome.toLowerCase().split(' ')[0]) ||
-                        s.nome.toLowerCase().includes(ma.nome.toLowerCase().split(' ')[0])
-                      ) ?? null,
-                      capacidadeAtual: s.capacidadeAtual,
-                      tipoAtual: s.tipoAtual,
-                    }));
-
-                    const modeloAmpliacao = modelos.find(m => m.id === acao.modeloCrecheId);
-                    const ambientesAmpliacao: ModeloAmbiente[] = modeloAmpliacao
-                      ? modeloAmpliacao.ambientes
-                        .map(mca => ambientes.find(ma => ma.id === mca.modeloAmbienteId))
-                        .filter((ma): ma is NonNullable<typeof ma> => !!ma)
-                      : [];
-                    const ambienteSelecionado = ambientesAmpliacao.find(ma => ma.id === acao.salaId);
-                    const custoCalculado = ambienteSelecionado ? calcularCustoAmbiente(ambienteSelecionado) : null;
-                    return (
-                      <div key={acao.id} className="border border-slate-200 rounded-xl p-5 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex gap-2">
-                            {(['adaptacao', 'ampliacao'] as const).map(tipo => (
-                              <button key={tipo}
-                                onClick={() => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, tipo, salaId: '', modeloCrecheId: '', custoPorSala: 0 } : x))}
-                                className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-all ${acao.tipo === tipo ? tipo === 'adaptacao' ? 'bg-purple-600 text-white border-purple-600' : 'bg-blue-600 text-white border-blue-600' : 'border-slate-300 text-slate-600 hover:border-slate-400'}`}>
-                                {tipo === 'adaptacao' ? 'Adaptação' : 'Ampliação'}
-                              </button>
-                            ))}
-                          </div>
-                          <button onClick={() => removeAcao(acao.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold text-slate-600">Unidade Escolar *</label>
-                          <select value={acao.unidadeId}
-                            onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, unidadeId: e.target.value, salaId: '', modeloCrecheId: '', custoPorSala: 0 } : x))}
-                            className={inputCls}>
-                            <option value="">Selecione a unidade...</option>
-                            {mockUnidades.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
-                          </select>
-                          {tipoUnidade && (
-                            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium ${tipoCor}`}>
-                              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
-                              {tipoUnidade}
-                              {unidade && unidade.totalVagas > 0 && (
-                                <span className="opacity-60 font-normal">· {unidade.totalVagas} vagas · {unidade.totalListaEspera} lista espera</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className={`rounded-xl border-2 p-4 space-y-3 ${acao.tipo === 'adaptacao' ? 'border-purple-200 bg-purple-50/40' : 'border-blue-200 bg-blue-50/40'}`}>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${acao.tipo === 'adaptacao' ? 'bg-purple-500' : 'bg-blue-500'}`} />
-                            <span className={`text-xs font-bold uppercase tracking-wide ${acao.tipo === 'adaptacao' ? 'text-purple-700' : 'text-blue-700'}`}>
-                              {acao.tipo === 'adaptacao' ? 'Seleção do Ambiente a Adaptar' : 'Seleção do Ambiente a Ampliar'}
-                            </span>
-                          </div>
-
-                          <div className="flex gap-3 items-end">
-                            <div className="flex-1">
-                              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 mb-1">
-                                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-xs font-black ${acao.tipo === 'adaptacao' ? 'bg-purple-500' : 'bg-blue-500'}`}>1</span>
-                                Modelo de Creche
-                              </label>
-                              <select
-                                value={acao.modeloCrecheId || ''}
-                                onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, modeloCrecheId: e.target.value, salaId: '', custoPorSala: 0 } : x))}
-                                className={`w-full text-sm px-3 py-2 border-2 rounded-lg focus:ring-2 outline-none transition-colors ${acao.tipo === 'adaptacao' ? 'border-purple-300 bg-white focus:ring-purple-300 focus:border-purple-400' : 'border-blue-300 bg-white focus:ring-blue-300 focus:border-blue-400'}`}
-                                disabled={!acao.unidadeId}
-                              >
-                                <option value="">Selecione o modelo...</option>
-                                {modelos.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-                              </select>
-                            </div>
-
-                            <div className={`flex-none mb-2 flex items-center justify-center w-7 h-7 rounded-full ${acao.modeloCrecheId ? (acao.tipo === 'adaptacao' ? 'bg-purple-500' : 'bg-blue-500') : 'bg-slate-300'} transition-colors`}>
-                              <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                              </svg>
-                            </div>
-
-                            <div className="flex-1">
-                              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 mb-1">
-                                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-xs font-black transition-colors ${acao.modeloCrecheId ? (acao.tipo === 'adaptacao' ? 'bg-purple-500' : 'bg-blue-500') : 'bg-slate-400'}`}>2</span>
-                                Ambiente de Referência
-                              </label>
-                              <select
-                                value={acao.salaId}
-                                onChange={e => {
-                                  const selectedId = e.target.value;
-                                  const ma = ambientesAmpliacao.find(a => a.id === selectedId);
-                                  const custo = ma ? calcularCustoAmbiente(ma).total : 0;
-                                  const capNova = ma ? (ma.capacidadeAlunos || 20) : 20;
-                                  const capAnterior = acao.tipo === 'adaptacao' ? (ambientesAdaptacao.find(a => a.salaId === selectedId)?.capacidadeAtual ?? 0) : 0;
-                                  setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, salaId: selectedId, capacidadeAnterior: capAnterior, custoPorSala: custo, novaCapacidade: capNova } : x));
-                                }}
-                                className={`w-full text-sm px-3 py-2 border-2 rounded-lg focus:ring-2 outline-none transition-colors ${!acao.modeloCrecheId ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' : acao.tipo === 'adaptacao' ? 'border-purple-300 bg-white focus:ring-purple-300 focus:border-purple-400' : 'border-blue-300 bg-white focus:ring-blue-300 focus:border-blue-400'}`}
-                                disabled={!acao.modeloCrecheId || ambientesAmpliacao.length === 0}
-                              >
-                                <option value="">{!acao.modeloCrecheId ? 'Selecione o modelo primeiro...' : 'Selecione o ambiente...'}</option>
-                                {ambientesAmpliacao.map(ma => (
-                                  <option key={ma.id} value={ma.id}>
-                                    {ma.nome} &mdash; {ma.areaMq} m&sup2; &mdash; {BRL(calcularCustoAmbiente(ma).total)}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-
-                          {acao.salaId && acao.custoPorSala >= 0 && (
-                            <div className={`flex items-center gap-3 rounded-lg px-4 py-2.5 border ${acao.custoPorSala > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                              <div className="flex-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-emerald-800">
-                                {custoCalculado && acao.custoPorSala > 0 && (
-                                  <>
-                                    <span><strong>Obras:</strong> {BRL(custoCalculado.obras)}</span>
-                                    <span><strong>Mobiliário:</strong> {BRL(custoCalculado.mobiliario)}</span>
-                                    <span><strong>Equipamentos:</strong> {BRL(custoCalculado.equipamentos)}</span>
-                                  </>
-                                )}
-                                {acao.custoPorSala === 0 && <span className="text-amber-600">Selecione o modelo para calcular o custo automaticamente</span>}
-                              </div>
-                              <div className="shrink-0 flex flex-col items-end">
-                                <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Custo por Sala</span>
-                                <span className={`text-xl font-black ${acao.custoPorSala > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>{acao.custoPorSala > 0 ? BRL(acao.custoPorSala) : '—'}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {acao.tipo === 'adaptacao' && (
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Descrição da Adaptação *</label>
-                            <input type="text" value={acao.descricao} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, descricao: e.target.value } : x))} className={inputCls} placeholder="Ex: Transformar sala de EF em sala de Jardim I para creche" />
-                          </div>
-                        )}
-
-
-                        {/* Painel de Vagas */}
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Planejamento de Vagas da Sala</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Capacidade Padrão</label>
-                              <div className="text-sm font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg h-[38px] flex items-center">
-                                {ambienteSelecionado?.capacidadeAlunos || 0} vagas
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Novas Vagas *</label>
-                              <input type="number" value={acao.novaCapacidade} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, novaCapacidade: Number(e.target.value) } : x))} className={inputCls} />
-                            </div>
-                            <div className="flex flex-col justify-end">
-                              <div className="text-sm font-bold text-center px-3 py-1.5 rounded-lg h-[38px] flex flex-col justify-center bg-green-100 text-green-700">
-                                <span>+{acao.novaCapacidade || 0} novas vagas</span>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {acao.custoPorSala === 0 && acao.salaId && (
-                            <div className="mt-3 text-xs text-amber-600 flex items-center gap-1">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                              Selecione um modelo de creche para calcular o custo e preencher as vagas
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Etapa Destino</label>
-                            <select value={acao.etapaDestino} onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, etapaDestino: e.target.value as EtapaEI } : x))} className={inputCls}>{ETAPAS.map(e => <option key={e}>{e}</option>)}</select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Previsão de Conclusão</label>
-                            <input type="date" value={acao.previsaoConclusao}
-                              onChange={e => setAcoes(prev => prev.map(x => x.id === acao.id ? { ...x, previsaoConclusao: e.target.value } : x))}
-                              className={inputCls} />
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="p-2 rounded-xl bg-purple-100 text-purple-700">
+                          <Layers className="w-5 h-5" />
+                        </span>
+                        <h2 className="text-2xl font-bold text-slate-800">Ações em Unidades Existentes</h2>
                       </div>
-                    );
-                  })}
-
-                  <div className="bg-blue-50 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <div className="text-2xl font-bold text-blue-700">{acoes.filter(a => a.tipo === 'adaptacao').length}</div>
-                      <div className="text-sm text-blue-600">Adaptações</div>
+                      <p className="text-slate-500 text-sm">
+                        Adaptação (reordenamento de espaços existentes) e Ampliação (novas salas em unidades existentes)
+                      </p>
                     </div>
-                    <div>
-                      <div className="text-2xl font-bold text-blue-700">{acoes.filter(a => a.tipo === 'ampliacao').length}</div>
-                      <div className="text-sm text-blue-600">Ampliações</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-green-700">{acoes.reduce((s, a) => s + Math.max(0, a.novaCapacidade - a.capacidadeAnterior), 0)}</div>
-                      <div className="text-sm text-green-600">Novas Vagas (est.)</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openNewAcaoModal('adaptacao')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow"
+                      >
+                        <Plus className="w-4 h-4" />
+                        + Nova Adaptação
+                      </button>
+                      <button
+                        onClick={() => openNewAcaoModal('ampliacao')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl text-sm font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all shadow-sm hover:shadow"
+                      >
+                        <Plus className="w-4 h-4" />
+                        + Nova Ampliação
+                      </button>
                     </div>
                   </div>
+
+                  {/* Ribbon de Métricas / KPIs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-purple-50 to-indigo-50/40 border border-purple-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-purple-200">
+                        <Layers className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-purple-700 uppercase tracking-wider">Adaptações</div>
+                        <div className="text-2xl font-black text-purple-900">
+                          {acoes.filter(a => a.tipo === 'adaptacao').length}
+                        </div>
+                        <div className="text-[11px] text-purple-600 font-medium">Reordenamento de salas</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-blue-50 to-cyan-50/40 border border-blue-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-200">
+                        <Building2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-blue-700 uppercase tracking-wider">Ampliações</div>
+                        <div className="text-2xl font-black text-blue-900">
+                          {acoes.filter(a => a.tipo === 'ampliacao').length}
+                        </div>
+                        <div className="text-[11px] text-blue-600 font-medium">Novas salas construídas</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-emerald-50 to-green-50/40 border border-emerald-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-200">
+                        <Sparkles className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Novas Vagas</div>
+                        <div className="text-2xl font-black text-emerald-900">
+                          +{acoes.reduce((s, a) => s + Math.max(0, a.novaCapacidade - a.capacidadeAnterior), 0)}
+                        </div>
+                        <div className="text-[11px] text-emerald-600 font-medium">Capacidade adicional</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-slate-700 text-white flex items-center justify-center shrink-0 shadow-sm shadow-slate-300">
+                        <DollarSign className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-600 uppercase tracking-wider">Investimento Previsto</div>
+                        <div className="text-xl font-black text-slate-800">
+                          {BRL(acoes.reduce((s, a) => s + (a.custoPorSala || 0), 0))}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-medium">Custo total das ações</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Barra de Filtros */}
+                  <div className="flex items-center justify-between gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex gap-1.5 p-1 bg-slate-100 rounded-lg">
+                      <button
+                        onClick={() => setFiltroTipoAcao('todas')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                          filtroTipoAcao === 'todas'
+                            ? 'bg-white text-slate-800 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Todas as Ações ({acoes.length})
+                      </button>
+                      <button
+                        onClick={() => setFiltroTipoAcao('adaptacao')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          filtroTipoAcao === 'adaptacao'
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-purple-700 hover:bg-purple-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-current opacity-80" />
+                        Apenas Adaptações ({acoes.filter(a => a.tipo === 'adaptacao').length})
+                      </button>
+                      <button
+                        onClick={() => setFiltroTipoAcao('ampliacao')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          filtroTipoAcao === 'ampliacao'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-blue-700 hover:bg-blue-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-current opacity-80" />
+                        Apenas Ampliações ({acoes.filter(a => a.tipo === 'ampliacao').length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Listagem de Cards das Ações */}
+                  {acoes.filter(a => filtroTipoAcao === 'todas' || a.tipo === filtroTipoAcao).length === 0 ? (
+                    <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center">
+                      <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+                        <Layers className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-800 mb-1">Nenhuma ação cadastrada</h3>
+                      <p className="text-slate-500 text-sm max-w-md mx-auto mb-6">
+                        Adicione ações de adaptação de espaços ou construção de novas salas para expandir as vagas das unidades.
+                      </p>
+                      <div className="flex justify-center gap-3">
+                        <button
+                          onClick={() => openNewAcaoModal('adaptacao')}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors shadow-sm"
+                        >
+                          + Criar Adaptação
+                        </button>
+                        <button
+                          onClick={() => openNewAcaoModal('ampliacao')}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+                        >
+                          + Criar Ampliação
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4">
+                      {acoes
+                        .filter(a => filtroTipoAcao === 'todas' || a.tipo === filtroTipoAcao)
+                        .map(acao => {
+                          const unidade = mockUnidades.find(u => u.id === acao.unidadeId);
+                          const isAdapt = acao.tipo === 'adaptacao';
+                          const salas = unidade?.salas ?? [];
+                          const temCreche = salas.some(s => s.tipoAtual === 'Creche');
+                          const temEF = salas.some(s => s.tipoAtual === 'Ensino Fundamental');
+                          const tipoUnidade = !unidade ? null
+                            : unidade.totalVagas === 0 && !temCreche ? 'EMEF (sem EI)'
+                              : temCreche && temEF ? 'EMEI/EMEF (mista)'
+                                : temCreche ? 'Creche / EMEI'
+                                  : 'EMEF';
+
+                          // Modelo e ambiente
+                          const modeloAmpliacao = modelos.find(m => m.id === acao.modeloCrecheId);
+                          const ambientesAmpliacao: ModeloAmbiente[] = modeloAmpliacao
+                            ? modeloAmpliacao.ambientes
+                              .map(mca => ambientes.find(ma => ma.id === mca.modeloAmbienteId))
+                              .filter((ma): ma is NonNullable<typeof ma> => !!ma)
+                            : [];
+                          const ambienteSelecionado = ambientesAmpliacao.find(ma => ma.id === acao.salaId);
+                          const novasVagasLiquidas = Math.max(0, acao.novaCapacidade - (acao.capacidadeAnterior || 0));
+
+                          return (
+                            <div
+                              key={acao.id}
+                              className={`bg-white rounded-2xl border-2 transition-all shadow-sm hover:shadow-md overflow-hidden ${
+                                isAdapt
+                                  ? 'border-purple-200/90 hover:border-purple-300'
+                                  : 'border-blue-200/90 hover:border-blue-300'
+                              }`}
+                            >
+                              {/* Barra de Topo do Card */}
+                              <div
+                                className={`px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b ${
+                                  isAdapt
+                                    ? 'bg-purple-50/70 border-purple-100'
+                                    : 'bg-blue-50/70 border-blue-100'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-xs ${
+                                      isAdapt
+                                        ? 'bg-purple-600 text-white border-purple-600'
+                                        : 'bg-blue-600 text-white border-blue-600'
+                                    }`}
+                                  >
+                                    {isAdapt ? (
+                                      <>
+                                        <Layers className="w-3.5 h-3.5" />
+                                        Adaptação (Reordenamento)
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Building2 className="w-3.5 h-3.5" />
+                                        Ampliação de Salas
+                                      </>
+                                    )}
+                                  </span>
+
+                                  {tipoUnidade && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white border border-slate-200 text-slate-600 shadow-xs">
+                                      {tipoUnidade}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => openEditAcaoModal(acao)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                                      isAdapt
+                                        ? 'bg-white text-purple-700 border-purple-200 hover:bg-purple-600 hover:text-white'
+                                        : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-600 hover:text-white'
+                                    }`}
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    Editar
+                                  </button>
+                                  <button
+                                    onClick={() => duplicateAcao(acao)}
+                                    title="Duplicar Ação"
+                                    className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => removeAcao(acao.id)}
+                                    title="Excluir Ação"
+                                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Corpo do Card */}
+                              <div className="p-5 space-y-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <School className="w-4 h-4 text-slate-400" />
+                                      <h4 className="text-base font-bold text-slate-900">
+                                        {unidade?.nome || 'Unidade não selecionada'}
+                                      </h4>
+                                    </div>
+                                    <p className="text-slate-500 text-xs mt-0.5">
+                                      {unidade?.bairro ? `${unidade.bairro} — ${unidade.setor || ''}` : 'Localização a definir'}
+                                      {unidade?.totalVagas ? ` · Capacidade atual: ${unidade.totalVagas} vagas` : ''}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black flex items-center gap-1.5">
+                                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                                      +{novasVagasLiquidas} novas vagas
+                                    </span>
+                                    <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+                                      {acao.etapaDestino}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Descrição da Ação */}
+                                <div
+                                  className={`p-3.5 rounded-xl border text-sm ${
+                                    isAdapt
+                                      ? 'bg-purple-50/40 border-purple-200/80 text-purple-950'
+                                      : 'bg-blue-50/40 border-blue-200/80 text-blue-950'
+                                  }`}
+                                >
+                                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                    {isAdapt ? 'Descrição do Reordenamento' : 'Especificação da Ampliação'}
+                                  </div>
+                                  <div className="font-medium">
+                                    {acao.descricao || (isAdapt ? 'Reordenamento de espaço existente' : 'Construção de nova sala')}
+                                  </div>
+                                </div>
+
+                                {/* Metadados em Grade */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Modelo de Creche</span>
+                                    <span className="font-bold text-slate-700 truncate block">
+                                      {modelos.find(m => m.id === acao.modeloCrecheId)?.nome || 'Padrão / Não definido'}
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Ambiente de Referência</span>
+                                    <span className="font-bold text-slate-700 truncate block">
+                                      {ambienteSelecionado?.nome || (isAdapt && acao.salaId ? `Sala ${acao.salaId}` : 'Geral')}
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Custo Estimado</span>
+                                    <span className="font-black text-emerald-700 block">
+                                      {acao.custoPorSala > 0 ? BRL(acao.custoPorSala) : 'Sem custo direto'}
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Previsão Conclusão</span>
+                                    <span className="font-bold text-slate-700 flex items-center gap-1 block">
+                                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                      {acao.previsaoConclusao
+                                        ? new Date(acao.previsaoConclusao + 'T00:00:00').toLocaleDateString('pt-BR')
+                                        : 'A definir'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* ═══ ABA 4 — OBRAS ═══════════════════════════════════════ */}
               {activeTab === 'obras' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
+                  {/* Cabeçalho */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
                     <div>
-                      <h2 className="text-2xl font-bold text-slate-800">Obras de Construção</h2>
-                      <p className="text-slate-500 text-sm mt-1">Retomada de obras em andamento e novas construções de creches</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="p-2 rounded-xl bg-orange-100 text-orange-600">
+                          <RotateCcw className="w-5 h-5" />
+                        </span>
+                        <h2 className="text-2xl font-bold text-slate-800">Obras de Construção</h2>
+                      </div>
+                      <p className="text-slate-500 text-sm">
+                        Retomada de obras em andamento/paralisadas e novas construções de creches municipais
+                      </p>
                     </div>
-                    <button onClick={addObra}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors">
-                      <Plus className="w-4 h-4" /> Adicionar Obra
-                    </button>
-                  </div>
-
-                  <div className="flex bg-slate-100 p-1 rounded-lg w-fit">
-                    {(['todas', 'nova', 'retomada'] as const).map(tipo => (
-                      <button key={tipo}
-                        onClick={() => setFiltroTipoObra(tipo)}
-                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${filtroTipoObra === tipo ? (tipo === 'nova' ? 'bg-green-600 text-white shadow-sm' : tipo === 'retomada' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-600 hover:text-slate-900'}`}>
-                        {tipo === 'todas' ? 'Todas as Obras' : tipo === 'nova' ? 'Apenas Novas' : 'Apenas Retomadas'}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openNewObraModal('retomada')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl text-sm font-semibold hover:from-amber-600 hover:to-orange-600 transition-all shadow-sm hover:shadow"
+                      >
+                        <Plus className="w-4 h-4" />
+                        + Nova Retomada
                       </button>
-                    ))}
+                      <button
+                        onClick={() => openNewObraModal('nova')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl text-sm font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-sm hover:shadow"
+                      >
+                        <Plus className="w-4 h-4" />
+                        + Nova Obra
+                      </button>
+                    </div>
                   </div>
 
-                  {obras.filter(o => filtroTipoObra === 'todas' || o.tipo === filtroTipoObra).map(obra => (
-                    <div key={obra.id} className="border border-slate-200 rounded-xl p-5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex gap-2">
-                          {(['retomada', 'nova'] as const).map(tipo => (
-                            <button key={tipo}
-                              onClick={() => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, tipo } : x))}
-                              className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-all ${obra.tipo === tipo ? tipo === 'retomada' ? 'bg-orange-500 text-white border-orange-500' : 'bg-green-600 text-white border-green-600' : 'border-slate-300 text-slate-600'}`}>
-                              {tipo === 'retomada' ? 'Retomada de Obra' : 'Nova Obra'}
-                            </button>
-                          ))}
+                  {/* Ribbon de Métricas / KPIs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-orange-50 to-amber-50/40 border border-orange-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 shadow-sm shadow-orange-200">
+                        <RotateCcw className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-orange-700 uppercase tracking-wider">Retomadas</div>
+                        <div className="text-2xl font-black text-orange-900">
+                          {obras.filter(o => o.tipo === 'retomada').length}
                         </div>
-                        <button onClick={() => removeObra(obra.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg">
-                          <Trash2 className="w-4 h-4" />
+                        <div className="text-[11px] text-orange-600 font-medium">Obras em andamento</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50/40 border border-emerald-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-200">
+                        <HardHat className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Novas Obras</div>
+                        <div className="text-2xl font-black text-emerald-900">
+                          {obras.filter(o => o.tipo === 'nova').length}
+                        </div>
+                        <div className="text-[11px] text-emerald-600 font-medium">Novas creches projetadas</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50/40 border border-blue-200/80 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-200">
+                        <Building2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-blue-700 uppercase tracking-wider">Total de Salas</div>
+                        <div className="text-2xl font-black text-blue-900">
+                          {obras.reduce((s, o) => s + (o.numeroDeSalas || 0), 0)} salas
+                        </div>
+                        <div className="text-[11px] text-blue-600 font-medium">
+                          {obras.reduce((s, o) => s + (o.capacidadeAlunos || 0), 0)} vagas estimadas
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-slate-700 text-white flex items-center justify-center shrink-0 shadow-sm shadow-slate-300">
+                        <DollarSign className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-600 uppercase tracking-wider">Investimento Obras</div>
+                        <div className="text-xl font-black text-slate-800">
+                          {BRL(obras.reduce((s, o) => s + calcularCustoObraTotal(o, modelos, ambientes).total, 0))}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-medium">Orçamento estimado</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Barra de Filtros */}
+                  <div className="flex items-center justify-between gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex gap-1.5 p-1 bg-slate-100 rounded-lg">
+                      <button
+                        onClick={() => setFiltroTipoObra('todas')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all ${
+                          filtroTipoObra === 'todas'
+                            ? 'bg-white text-slate-800 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Todas as Obras ({obras.length})
+                      </button>
+                      <button
+                        onClick={() => setFiltroTipoObra('retomada')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          filtroTipoObra === 'retomada'
+                            ? 'bg-orange-500 text-white shadow-sm'
+                            : 'text-orange-700 hover:bg-orange-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-current opacity-80" />
+                        Apenas Retomadas ({obras.filter(o => o.tipo === 'retomada').length})
+                      </button>
+                      <button
+                        onClick={() => setFiltroTipoObra('nova')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          filtroTipoObra === 'nova'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-emerald-700 hover:bg-emerald-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-current opacity-80" />
+                        Apenas Novas Obras ({obras.filter(o => o.tipo === 'nova').length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Listagem de Cards das Obras */}
+                  {obras.filter(o => filtroTipoObra === 'todas' || o.tipo === filtroTipoObra).length === 0 ? (
+                    <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center">
+                      <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+                        <HardHat className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-800 mb-1">Nenhuma obra cadastrada</h3>
+                      <p className="text-slate-500 text-sm max-w-md mx-auto mb-6">
+                        Cadastre obras a serem retomadas ou novas construções de creches para o plano municipal.
+                      </p>
+                      <div className="flex justify-center gap-3">
+                        <button
+                          onClick={() => openNewObraModal('retomada')}
+                          className="px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 transition-colors shadow-sm"
+                        >
+                          + Criar Retomada
+                        </button>
+                        <button
+                          onClick={() => openNewObraModal('nova')}
+                          className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+                        >
+                          + Criar Nova Obra
                         </button>
                       </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Nome da Obra</label>
-                          <input value={obra.nome}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, nome: e.target.value } : x))}
-                            className={inputCls}
-                            placeholder="Ex: Creche Tipo 1 — Bairro..." />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Bairro / Localização</label>
-                          <input value={obra.bairro}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, bairro: e.target.value, localizacao: e.target.value } : x))}
-                            className={inputCls}
-                            placeholder="Bairro/setor de destino" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Latitude</label>
-                          <input type="number" step="any" value={obra.coordenadas?.lat || ''}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, coordenadas: { ...x.coordenadas!, lat: parseFloat(e.target.value) } } : x))}
-                            className={inputCls}
-                            placeholder="-11.4343" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Longitude</label>
-                          <input type="number" step="any" value={obra.coordenadas?.lng || ''}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, coordenadas: { ...x.coordenadas!, lng: parseFloat(e.target.value) } } : x))}
-                            className={inputCls}
-                            placeholder="-61.4484" />
-                        </div>
-                      </div>
-
-                      {/* Modelo de custo */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                        <label className="block text-xs font-semibold text-blue-700 mb-2">Modelo de Custo (auto-preenchimento)</label>
-                        <div className="flex gap-3 items-end flex-wrap">
-                          <div className="flex-1 min-w-[200px]">
-                            <select
-                              value={obra.modeloCrecheId || ''}
-                              onChange={e => {
-                                const m = modelos.find(mc => mc.id === e.target.value);
-                                if (!m) return;
-                                const c = calcularCustoCreche(m, ambientes);
-                                const totalDesembolso = obra.desembolsoPorAno.reduce((s, d) => s + d.valor, 0);
-                                const investimento = c.investimento;
-                                setObras(prev => prev.map(x => {
-                                  if (x.id !== obra.id) return x;
-                                  const updated = {
-                                    ...x,
-                                    modeloCrecheId: m.id,
-                                    tipoProjetoFNDE: m.tipoBase as ObraConstrucao['tipoProjetoFNDE'],
-                                    numeroDeSalas: m.ambientes.filter(a => {
-                                      const amb = ambientes.find(ma => ma.id === a.modeloAmbienteId);
-                                      return amb?.categoria === 'sala-atividades';
-                                    }).reduce((s, a) => s + a.quantidade, 0) || x.numeroDeSalas,
-                                    capacidadeAlunos: m.capacidadeAlunos || 0,
-                                  } as ObraConstrucao;
-                                  // if there is no desembolso yet, initialize a single-line total equal to investimento
-                                  if (totalDesembolso === 0 && (!updated.desembolsoPorAno || updated.desembolsoPorAno.length === 0)) {
-                                    updated.desembolsoPorAno = [{ ano: periodoInicio, valor: investimento, fonte: fontes[0]?.fonte || 'Recurso Próprio' }];
-                                  }
-                                  return updated;
-                                }));
-                              }}
-                              className="w-full text-sm px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none bg-white"
-                            >
-                              <option value="">Selecionar modelo...</option>
-                              {modelos.map(m => {
-                                const c = calcularCustoCreche(m, ambientes);
-                                return (
-                                  <option key={m.id} value={m.id}>
-                                    {m.nome} — Invest. {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.investimento)}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
-                          <p className="text-xs text-blue-500 pb-2">Preenche tipo, salas e referência de custo automaticamente.</p>
-                        </div>
-                      </div>
-
-                      {/* Resumo de custo estimado para a obra (por sala e total) */}
-                      <div className="mt-3">
-                        {(() => {
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4">
+                      {obras
+                        .filter(o => filtroTipoObra === 'todas' || o.tipo === filtroTipoObra)
+                        .map(obra => {
+                          const isRetomada = obra.tipo === 'retomada';
                           const cc = calcularCustoObraTotal(obra, modelos, ambientes);
+                          const pct = obra.percentualConclusaoAtual || 0;
+
+                          const statusColors: Record<string, string> = {
+                            planejada: 'bg-slate-100 text-slate-700 border-slate-200',
+                            licitacao: 'bg-blue-50 text-blue-700 border-blue-200',
+                            em_execucao: 'bg-amber-50 text-amber-700 border-amber-200',
+                            concluida: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            paralisada: 'bg-red-50 text-red-700 border-red-200',
+                          };
+                          const statusLabels: Record<string, string> = {
+                            planejada: 'Planejada',
+                            licitacao: 'Em Licitação',
+                            em_execucao: 'Em Execução',
+                            concluida: 'Concluída',
+                            paralisada: 'Paralisada',
+                          };
+
                           return (
-                            <div className="rounded-lg p-3 border border-slate-200 bg-slate-50 flex items-center justify-between">
-                              <div>
-                                <div className="text-xs text-slate-600">Custo por Sala (estimado)</div>
-                                <div className="font-bold text-lg text-slate-800">{cc.costPerSala > 0 ? BRL(Math.round(cc.costPerSala)) : '—'}</div>
+                            <div
+                              key={obra.id}
+                              className={`bg-white rounded-2xl border-2 transition-all shadow-sm hover:shadow-md overflow-hidden ${
+                                isRetomada
+                                  ? 'border-orange-200/90 hover:border-orange-300'
+                                  : 'border-emerald-200/90 hover:border-emerald-300'
+                              }`}
+                            >
+                              {/* Topo do Card */}
+                              <div
+                                className={`px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b ${
+                                  isRetomada
+                                    ? 'bg-orange-50/70 border-orange-100'
+                                    : 'bg-emerald-50/70 border-emerald-100'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-xs ${
+                                      isRetomada
+                                        ? 'bg-orange-500 text-white border-orange-500'
+                                        : 'bg-emerald-600 text-white border-emerald-600'
+                                    }`}
+                                  >
+                                    {isRetomada ? (
+                                      <>
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                        Retomada de Obra
+                                      </>
+                                    ) : (
+                                      <>
+                                        <HardHat className="w-3.5 h-3.5" />
+                                        Nova Construção
+                                      </>
+                                    )}
+                                  </span>
+
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-xs ${
+                                      statusColors[obra.statusObra || 'planejada'] || statusColors.planejada
+                                    }`}
+                                  >
+                                    {statusLabels[obra.statusObra || 'planejada'] || 'Planejada'}
+                                  </span>
+
+                                  {obra.numeroConvenio && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-white text-slate-600 border border-slate-200 shadow-xs">
+                                      Convênio: {obra.numeroConvenio}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => openEditObraModal(obra)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                                      isRetomada
+                                        ? 'bg-white text-orange-600 border-orange-200 hover:bg-orange-500 hover:text-white'
+                                        : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-600 hover:text-white'
+                                    }`}
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                    Editar
+                                  </button>
+                                  <button
+                                    onClick={() => duplicateObra(obra)}
+                                    title="Duplicar Obra"
+                                    className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => removeObra(obra.id)}
+                                    title="Excluir Obra"
+                                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
-                              <div className="text-right">
-                                <div className="text-xs text-slate-600">Custo Total (estimado)</div>
-                                <div className="font-black text-lg text-blue-700">{cc.total > 0 ? BRL(Math.round(cc.total)) : '—'}</div>
+
+                              {/* Corpo do Card */}
+                              <div className="p-5 space-y-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                  <div>
+                                    <h4 className="text-base font-bold text-slate-900">
+                                      {obra.nome || 'Obra sem nome'}
+                                    </h4>
+                                    <div className="flex items-center gap-2 text-slate-500 text-xs mt-1">
+                                      <span className="flex items-center gap-1">
+                                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                                        {obra.bairro || obra.localizacao || 'Localização a definir'}
+                                      </span>
+                                      {obra.coordenadas?.lat && obra.coordenadas?.lng && (
+                                        <span className="text-slate-400 font-mono text-[11px]">
+                                          ({obra.coordenadas.lat.toFixed(4)}, {obra.coordenadas.lng.toFixed(4)})
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-right">
+                                    <span className="text-xs text-slate-400 block">Custo Total Estimado</span>
+                                    <span className="text-lg font-black text-blue-700 block">
+                                      {cc.total > 0 ? BRL(Math.round(cc.total)) : '—'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Barra de Progresso Especial para Retomada */}
+                                {isRetomada && (
+                                  <div className="bg-orange-50/60 border border-orange-200/80 rounded-xl p-3.5 space-y-1.5">
+                                    <div className="flex justify-between items-center text-xs">
+                                      <span className="font-bold text-orange-900 flex items-center gap-1.5">
+                                        <RotateCcw className="w-3.5 h-3.5 text-orange-600" />
+                                        Progresso Físico da Obra
+                                      </span>
+                                      <span className="font-black text-orange-700 bg-white px-2 py-0.5 rounded-full border border-orange-200">
+                                        {pct}% concluída
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-orange-200/60 rounded-full h-2.5 overflow-hidden">
+                                      <div
+                                        className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-500"
+                                        style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Informações em Grade */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Modelo de Referência</span>
+                                    <span className="font-bold text-slate-700 truncate block">
+                                      {modelos.find(m => m.id === obra.modeloCrecheId)?.nome || 'Padrão / Próprio'}
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Dimensionamento</span>
+                                    <span className="font-bold text-slate-700 block">
+                                      {obra.numeroDeSalas || 0} salas · {obra.capacidadeAlunos || 0} vagas
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Custo por Sala</span>
+                                    <span className="font-bold text-slate-700 block">
+                                      {cc.costPerSala > 0 ? BRL(Math.round(cc.costPerSala)) : '—'}
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span className="text-slate-400 block text-[11px]">Previsão Conclusão</span>
+                                    <span className="font-bold text-slate-700 flex items-center gap-1 block">
+                                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                      {obra.previsaoConclusao
+                                        ? new Date(obra.previsaoConclusao + 'T00:00:00').toLocaleDateString('pt-BR')
+                                        : 'A definir'}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           );
-                        })()}
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Nº de Salas</label>
-                          <input type="number" value={obra.numeroDeSalas}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, numeroDeSalas: Number(e.target.value) } : x))}
-                            className={inputCls} />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Vagas da Obra *</label>
-                          <input type="number" value={obra.capacidadeAlunos || 0}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, capacidadeAlunos: Number(e.target.value) } : x))}
-                            className={inputCls} />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
-                          <select value={obra.statusObra ?? 'planejada'}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, statusObra: e.target.value as ObraConstrucao['statusObra'] } : x))}
-                            className={inputCls}>
-                            <option value="planejada">Planejada</option>
-                            <option value="licitacao">Em Licitação</option>
-                            <option value="em_execucao">Em Execução</option>
-                            <option value="concluida">Concluída</option>
-                            <option value="paralisada">Paralisada</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Nº Convênio</label>
-                          <input value={obra.numeroConvenio ?? ''}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, numeroConvenio: e.target.value } : x))}
-                            className={inputCls} />
-                        </div>
-                      </div>
-
-                      {obra.tipo === 'retomada' && (
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">% Conclusão Atual</label>
-                          <input type="number" min={0} max={100} value={obra.percentualConclusaoAtual ?? 0}
-                            onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, percentualConclusaoAtual: Number(e.target.value) } : x))}
-                            className="w-32 text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">Previsão Conclusão</label>
-                        <input type="date" value={obra.previsaoConclusao}
-                          onChange={e => setObras(prev => prev.map(x => x.id === obra.id ? { ...x, previsaoConclusao: e.target.value } : x))}
-                          className="w-48 text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-                      </div>
+                        })}
                     </div>
-                  ))}
-
-                  <div className="bg-green-50 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <div className="text-2xl font-bold text-orange-600">{obras.filter(o => o.tipo === 'retomada').length}</div>
-                      <div className="text-sm text-orange-600">Retomadas</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-green-700">{obras.filter(o => o.tipo === 'nova').length}</div>
-                      <div className="text-sm text-green-600">Novas Obras</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-blue-700">{obras.reduce((s, o) => s + o.numeroDeSalas, 0)}</div>
-                      <div className="text-sm text-blue-600">Novas Salas</div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -2516,6 +3653,48 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
           </div>
         </div>
       </div>
+
+      {/* ─── MODAL DE AÇÕES (Adaptação / Ampliação) ─── */}
+      <ModalAcao
+        isOpen={isAcaoModalOpen}
+        acao={editingAcao}
+        onClose={() => {
+          setIsAcaoModalOpen(false);
+          setEditingAcao(null);
+        }}
+        onSave={saveAcaoModal}
+        onDelete={editingAcao && acoes.some(a => a.id === editingAcao.id) ? () => {
+          if (confirm("Deseja realmente excluir esta ação?")) {
+            removeAcao(editingAcao.id);
+            setIsAcaoModalOpen(false);
+            setEditingAcao(null);
+          }
+        } : undefined}
+        modelos={modelos}
+        ambientes={ambientes}
+      />
+
+      {/* ─── MODAL DE OBRAS (Retomada / Nova Obra) ─── */}
+      <ModalObra
+        isOpen={isObraModalOpen}
+        obra={editingObra}
+        onClose={() => {
+          setIsObraModalOpen(false);
+          setEditingObra(null);
+        }}
+        onSave={saveObraModal}
+        onDelete={editingObra && obras.some(o => o.id === editingObra.id) ? () => {
+          if (confirm("Deseja realmente excluir esta obra?")) {
+            removeObra(editingObra.id);
+            setIsObraModalOpen(false);
+            setEditingObra(null);
+          }
+        } : undefined}
+        modelos={modelos}
+        ambientes={ambientes}
+        fontes={fontes}
+        periodoInicio={periodoInicio}
+      />
     </div>
   );
 }
