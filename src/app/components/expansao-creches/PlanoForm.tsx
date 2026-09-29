@@ -956,6 +956,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
   const [filtroTipoObra, setFiltroTipoObra] = useState<'todas' | 'nova' | 'retomada'>('todas');
   const [filtroTipoAcao, setFiltroTipoAcao] = useState<'todas' | 'ampliacao' | 'adaptacao'>('todas');
+  const [filtroTipoDesembolso, setFiltroTipoDesembolso] = useState<'todos' | 'obras' | 'acoes'>('todos');
 
   // Estados dos Modais de Ação e Obra
   const [isAcaoModalOpen, setIsAcaoModalOpen] = useState(false);
@@ -1203,22 +1204,24 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
   // ═══ ABA 5 — PESSOAL: Estados e Funções ═══════════════════════════════════════
 
-  const [configSalas, setConfigSalas] = useState<ConfiguracaoSala[]>(() => planParaEditar ? (planParaEditar.configSalas || []) : []);
-  const [pessoal, setPessoal] = useState<ItemPessoal[]>(() => planParaEditar && planParaEditar.pessoal ? planParaEditar.pessoal : []);
-
-  // Extrair salas de obras e ações
-  const extrairSalasPlanejadas = (): ConfiguracaoSala[] => {
+  // Extrair salas de obras e ações com padrão de 1 turma
+  const extrairSalasPlanejadas = (salasAtuais: ConfiguracaoSala[] = []): ConfiguracaoSala[] => {
     const salas: ConfiguracaoSala[] = [];
+    const mapExistentes = new Map(salasAtuais.map(s => [s.id, s]));
 
     // Das obras
     obras.forEach(obra => {
-      for (let i = 1; i <= obra.numeroDeSalas; i++) {
+      const isRetomada = obra.tipo === 'retomada';
+      const salasCount = obra.numeroDeSalas || 0;
+      for (let i = 1; i <= salasCount; i++) {
+        const id = `obra-${obra.id}-sala-${i}`;
+        const existente = mapExistentes.get(id);
         salas.push({
-          id: `obra-${obra.id}-sala-${i}`,
+          id,
           origem: 'obra',
           origemId: obra.id,
-          nome: `${obra.nome || 'Obra sem nome'} — Sala ${i}`,
-          numeroTurmas: 2,
+          nome: `${obra.nome || (isRetomada ? 'Obra de Retomada' : 'Nova Creche')} — Sala ${i}`,
+          numeroTurmas: existente ? existente.numeroTurmas : 1, // Padrão 1 turma
           etapas: obra.etapasAtendidas ?? [],
         });
       }
@@ -1226,13 +1229,15 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
     // Das ações (ampliações)
     acoes.filter(a => a.tipo === 'ampliacao').forEach(acao => {
+      const id = `acao-${acao.id}`;
+      const existente = mapExistentes.get(id);
       const unidade = mockUnidades.find(u => u.id === acao.unidadeId);
       salas.push({
-        id: `acao-${acao.id}`,
+        id,
         origem: 'acao',
         origemId: acao.id,
-        nome: `Ampliação ${unidade?.nome || 'Unidade'} — ${acao.descricao || 'Nova sala'}`,
-        numeroTurmas: 1,
+        nome: `Ampliação ${unidade?.nome || 'Unidade Escolar'} — ${acao.descricao || 'Nova Sala'}`,
+        numeroTurmas: existente ? existente.numeroTurmas : 1, // Padrão 1 turma
         etapas: [acao.etapaDestino],
       });
     });
@@ -1240,71 +1245,116 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     return salas;
   };
 
-  // Inicializar configuração de salas se não existir
-  const inicializarConfigSalas = () => {
-    const salasExtraidas = extrairSalasPlanejadas();
-    // Manter as configurações existentes e adicionar apenas novas
-    const idsExistentes = new Set(configSalas.map(s => s.id));
-    const novasSalas = salasExtraidas.filter(s => !idsExistentes.has(s.id));
-    if (novasSalas.length > 0) {
-      setConfigSalas([...configSalas, ...novasSalas]);
-    }
-  };
+  // Gerar necessidade automática de pessoal baseado nas turmas
+  const gerarItensPessoalAuto = (salas: ConfiguracaoSala[]): ItemPessoal[] => {
+    const totalTurmas = salas.reduce((s, sala) => s + (sala.numeroTurmas || 1), 0);
+    if (totalTurmas === 0) return [];
 
-  // Calcular necessidade automática de pessoal
-  const calcularNecessidadePessoal = () => {
-    const salasAtualizadas = configSalas.length === 0 ? extrairSalasPlanejadas() : configSalas;
-    const totalTurmas = salasAtualizadas.reduce((s, sala) => s + sala.numeroTurmas, 0);
+    const turmasDeAcoes = salas.filter(s => s.origem === 'acao').reduce((s, sala) => s + (sala.numeroTurmas || 1), 0);
 
-    const cargoMap = new Map<string, number>();
+    // 1. Professores regentes: 1 por turma em funcionamento
+    const qtdProfessores = totalTurmas;
 
-    // Encontrar os IDs dinamicamente pelo catálogo (fallback para os mocks conhecidos)
-    const idProfessor = cargosRef.find(c => c.descricao.toLowerCase().includes('professor'))?.id || 'cg03';
-    const idMonitor = cargosRef.find(c => c.descricao.toLowerCase().includes('monitor') || c.descricao.toLowerCase().includes('auxiliar de creche'))?.id || 'cg04';
+    // 2. Monitores / Auxiliares de Creche: 1 por turma em funcionamento
+    const qtdMonitores = totalTurmas;
 
-    // 1. Pessoal dos Modelos Base das Obras (Pacote Fechado)
-    obras.forEach(obra => {
-      const model = modelos.find(m => m.tipoBase === obra.tipoProjetoFNDE);
-      if (model && model.pessoal) {
-        model.pessoal.forEach(mp => {
-          cargoMap.set(mp.cargoId, (cargoMap.get(mp.cargoId) || 0) + mp.quantidade);
-        });
+    // 3. Direção escolar: 1 por obra de creche (ampliações aproveitam direção existente)
+    const qtdDiretores = obras.length;
+
+    // 4. Coordenação pedagógica: 1 por obra de creche (creches com 8+ turmas têm 2 coordenadores)
+    const qtdCoordenadores = obras.reduce((acc, o) => {
+      const turmasObra = salas.filter(s => s.origem === 'obra' && s.origemId === o.id).reduce((sum, s) => sum + (s.numeroTurmas || 1), 0);
+      return acc + (turmasObra >= 8 ? 2 : 1);
+    }, 0);
+
+    // 5. Merendeiras / Cozinheiras:
+    let qtdMerendeiras = 0;
+    obras.forEach(o => {
+      const turmasObra = salas.filter(s => s.origem === 'obra' && s.origemId === o.id).reduce((sum, s) => sum + (s.numeroTurmas || 1), 0);
+      if (turmasObra > 0) {
+        qtdMerendeiras += turmasObra <= 4 ? 1 : turmasObra <= 8 ? 2 : turmasObra <= 12 ? 3 : 4;
       }
     });
-
-    // 2. Pessoal das Ações (Adaptação/Ampliação - Cálculo Dinâmico por Turma)
-    const turmasDeAcoes = salasAtualizadas.filter(s => s.origem === 'acao').reduce((s, sala) => s + sala.numeroTurmas, 0);
-    if (turmasDeAcoes > 0) {
-      cargoMap.set(idProfessor, (cargoMap.get(idProfessor) || 0) + turmasDeAcoes); // 1 prof por turma nova
-      cargoMap.set(idMonitor, (cargoMap.get(idMonitor) || 0) + turmasDeAcoes); // 1 monitor por turma nova
+    if (turmasDeAcoes >= 4) {
+      qtdMerendeiras += Math.floor(turmasDeAcoes / 4);
     }
+
+    // 6. Auxiliares de Limpeza / Serviços Gerais:
+    let qtdLimpeza = 0;
+    obras.forEach(o => {
+      const turmasObra = salas.filter(s => s.origem === 'obra' && s.origemId === o.id).reduce((sum, s) => sum + (s.numeroTurmas || 1), 0);
+      if (turmasObra > 0) {
+        qtdLimpeza += turmasObra <= 4 ? 1 : turmasObra <= 8 ? 2 : turmasObra <= 12 ? 3 : 4;
+      }
+    });
+    if (turmasDeAcoes >= 4) {
+      qtdLimpeza += Math.floor(turmasDeAcoes / 4);
+    }
+
+    const cargosCalculados = [
+      { idRef: 'cg03', fallbackNome: 'Professor de Educação Infantil', categoria: 'pedagogico' as const, quantidade: qtdProfessores },
+      { idRef: 'cg04', fallbackNome: 'Monitor/Auxiliar de Creche', categoria: 'pedagogico' as const, quantidade: qtdMonitores },
+      { idRef: 'cg02', fallbackNome: 'Coordenador Pedagógico', categoria: 'pedagogico' as const, quantidade: qtdCoordenadores },
+      { idRef: 'cg01', fallbackNome: 'Diretor de Creche', categoria: 'administrativo' as const, quantidade: qtdDiretores },
+      { idRef: 'cg05', fallbackNome: 'Merendeira/Cozinheira', categoria: 'apoio' as const, quantidade: qtdMerendeiras },
+      { idRef: 'cg06', fallbackNome: 'Auxiliar de Limpeza', categoria: 'apoio' as const, quantidade: qtdLimpeza },
+    ];
 
     const novosItens: ItemPessoal[] = [];
-    cargoMap.forEach((quantidade, cargoId) => {
-      const cg = cargosRef.find(c => c.id === cargoId);
-      if (cg) {
-        const desc = cg.descricao.toLowerCase();
-        const isApoio = desc.includes('limpeza') || desc.includes('merendeira') || desc.includes('cozinheira') || desc.includes('vigil');
-        const isAdmin = desc.includes('diretor') || desc.includes('coordenador') || desc.includes('secret');
-        const categoria = isAdmin ? 'administrativo' : isApoio ? 'apoio' : 'pedagogico';
 
-        novosItens.push({
-          id: `auto-${cargoId}-${Date.now()}`,
-          funcao: cg.descricao,
-          categoria,
-          quantidade,
-          remuneracaoBase: cg.remuneracaoBase,
-          auxilios: cg.auxilios,
-          autoCalculado: true,
-        });
-      }
+    cargosCalculados.forEach(c => {
+      if (c.quantidade <= 0) return;
+      const cg = cargosRef.find(cr => cr.id === c.idRef || cr.descricao.toLowerCase().includes(c.fallbackNome.toLowerCase().split(' ')[0]));
+      novosItens.push({
+        id: `auto-${c.idRef}`,
+        funcao: cg ? cg.descricao : c.fallbackNome,
+        categoria: c.categoria,
+        quantidade: c.quantidade,
+        remuneracaoBase: cg ? cg.remuneracaoBase : 2500,
+        auxilios: cg ? cg.auxilios : 350,
+        autoCalculado: true,
+      });
     });
 
-    const pessoalManual = pessoal.filter(p => !p.autoCalculado);
-    setPessoal([...novosItens, ...pessoalManual]);
-    if (configSalas.length === 0) {
-      setConfigSalas(salasAtualizadas);
+    return novosItens;
+  };
+
+  const [configSalas, setConfigSalas] = useState<ConfiguracaoSala[]>(() => {
+    if (planParaEditar?.configSalas && planParaEditar.configSalas.length > 0) {
+      return planParaEditar.configSalas;
     }
+    return extrairSalasPlanejadas();
+  });
+
+  const [pessoal, setPessoal] = useState<ItemPessoal[]>(() => {
+    if (planParaEditar?.pessoal && planParaEditar.pessoal.length > 0) {
+      return planParaEditar.pessoal;
+    }
+    const initialSalas = planParaEditar?.configSalas?.length ? planParaEditar.configSalas : extrairSalasPlanejadas();
+    return gerarItensPessoalAuto(initialSalas);
+  });
+
+  // Sincronização automática das salas planejadas quando obras ou ações mudam
+  useEffect(() => {
+    setConfigSalas(prev => extrairSalasPlanejadas(prev));
+  }, [obras, acoes]);
+
+  // Recálculo automático do pessoal em tempo real conforme as salas e turmas mudam
+  useEffect(() => {
+    if (configSalas.length === 0) return;
+    const autoItens = gerarItensPessoalAuto(configSalas);
+    setPessoal(prev => {
+      const manuais = prev.filter(p => !p.autoCalculado);
+      return [...autoItens, ...manuais];
+    });
+  }, [configSalas, obras.length]);
+
+  const handleUpdateTurmasSala = (salaId: string, novoValor: number) => {
+    setConfigSalas(prev => prev.map(s => s.id === salaId ? { ...s, numeroTurmas: Math.max(1, Math.min(4, novoValor)) } : s));
+  };
+
+  const handleDefinirTodasTurmas = (numero: number) => {
+    setConfigSalas(prev => prev.map(s => ({ ...s, numeroTurmas: numero })));
   };
 
   const addItemPessoal = (categoria: ItemPessoal['categoria']) => {
@@ -1417,6 +1467,37 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
   const fontesDisponiveis = Array.from(new Set([...fontes.map(f => f.fonte), ...FONTES_OPCOES]));
 
+  // Helpers para cálculo de execução orçamentária por fonte/rubrica
+  const getTotalAlocadoFonte = (nomeFonte: string) => {
+    let total = 0;
+    obras.forEach(o => {
+      (o.desembolsoPorAno || []).forEach(d => {
+        if (d.fonte === nomeFonte) total += d.valor || 0;
+      });
+    });
+    acoes.forEach(a => {
+      (a.desembolsoPorAno || []).forEach(d => {
+        if (d.fonte === nomeFonte) total += d.valor || 0;
+      });
+    });
+    return total;
+  };
+
+  const getTotalAlocadoFonteAno = (nomeFonte: string, ano: number) => {
+    let total = 0;
+    obras.forEach(o => {
+      (o.desembolsoPorAno || []).forEach(d => {
+        if (d.fonte === nomeFonte && d.ano === ano) total += d.valor || 0;
+      });
+    });
+    acoes.forEach(a => {
+      (a.desembolsoPorAno || []).forEach(d => {
+        if (d.fonte === nomeFonte && d.ano === ano) total += d.valor || 0;
+      });
+    });
+    return total;
+  };
+
   const anosPlano = Array.from({ length: periodoFim - periodoInicio + 1 }, (_, i) => periodoInicio + i);
 
 
@@ -1425,9 +1506,10 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     ...obras.map(o => ({
       id: o.id,
       tipoKey: 'obra' as const,
-      tipo: 'Obra',
-      nome: o.nome || 'Obra sem nome',
-      descricao: o.bairro || o.localizacao || 'Sem local',
+      subtipo: o.tipo,
+      tipo: o.tipo === 'retomada' ? 'Obra de Retomada' : 'Nova Construção de Creche',
+      nome: o.nome || (o.tipo === 'retomada' ? 'Obra de Retomada sem nome' : 'Nova Creche sem nome'),
+      descricao: o.bairro ? `${o.bairro}${o.localizacao ? ` — ${o.localizacao}` : ''}` : (o.localizacao || 'Localização a definir'),
       totalInvestimento: calcularCustoObraTotal(o, modelos, ambientes).total,
       desembolsoByAno: anosPlano.map(ano => {
         const entries = (o.desembolsoPorAno || []).map((entry, index) => ({ entry, index })).filter(item => item.entry.ano === ano);
@@ -1438,22 +1520,26 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         };
       }),
     })),
-    ...acoes.map(a => ({
-      id: a.id,
-      tipoKey: 'acao' as const,
-      tipo: a.tipo === 'ampliacao' ? 'Ação - Ampliação' : 'Ação - Adaptação',
-      nome: a.tipo === 'ampliacao' ? `Ampliação — ${a.descricao || 'Sala extra'}` : `Adaptação — ${a.descricao || 'Ajuste de sala'}`,
-      descricao: a.fonteFinanciamento || '',
-      totalInvestimento: calcularCustoAcaoTotal(a).total,
-      desembolsoByAno: anosPlano.map(ano => {
-        const entries = (a.desembolsoPorAno || []).map((entry, index) => ({ entry, index })).filter(item => item.entry.ano === ano);
-        return {
-          ano,
-          valor: entries.reduce((s, item) => s + item.entry.valor, 0),
-          entries,
-        };
-      }),
-    })),
+    ...acoes.map(a => {
+      const unidade = mockUnidades.find(u => u.id === a.unidadeId);
+      return {
+        id: a.id,
+        tipoKey: 'acao' as const,
+        subtipo: a.tipo,
+        tipo: a.tipo === 'ampliacao' ? 'Ação — Ampliação de Salas' : 'Ação — Adaptação (Reordenamento)',
+        nome: a.descricao || (a.tipo === 'ampliacao' ? 'Ampliação de salas' : 'Adaptação de espaço'),
+        descricao: [unidade?.nome, a.fonteFinanciamento ? `Fonte: ${a.fonteFinanciamento}` : ''].filter(Boolean).join(' · ') || 'Unidade escolar a definir',
+        totalInvestimento: calcularCustoAcaoTotal(a).total,
+        desembolsoByAno: anosPlano.map(ano => {
+          const entries = (a.desembolsoPorAno || []).map((entry, index) => ({ entry, index })).filter(item => item.entry.ano === ano);
+          return {
+            ano,
+            valor: entries.reduce((s, item) => s + item.entry.valor, 0),
+            entries,
+          };
+        }),
+      };
+    }),
   ];
 
   const demandaPorAno = anosPlano.map(ano => ({
@@ -1666,7 +1752,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
       const vagasEstimadas = obra.capacidadeAlunos || 0;
 
-      const turmas = configSalas.find(c => c.id === obra.id)?.numeroTurmas || 0;
+      const turmas = configSalas.filter(c => c.origemId === obra.id).reduce((s, c) => s + c.numeroTurmas, 0) || (obra.numeroDeSalas * 1);
       const custoPessoalAnual = totalTurmasPlanejadas > 0 ? (turmas / totalTurmasPlanejadas) * totalCustoAnualPessoal : 0;
       const anoConclusao = obra.previsaoConclusao ? new Date(obra.previsaoConclusao).getFullYear() : null;
 
@@ -1704,7 +1790,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         }
       }
 
-      const turmas = configSalas.find(c => c.id === acao.id)?.numeroTurmas || 0;
+      const turmas = configSalas.filter(c => c.origemId === acao.id).reduce((s, c) => s + c.numeroTurmas, 0) || (acao.tipo === 'ampliacao' ? 1 : 0);
       const custoPessoalAnual = totalTurmasPlanejadas > 0 ? (turmas / totalTurmasPlanejadas) * totalCustoAnualPessoal : 0;
       const anoConclusao = acao.previsaoConclusao ? new Date(acao.previsaoConclusao).getFullYear() : null;
 
@@ -2013,29 +2099,66 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                     </div>
                   </div>
 
-                  <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                    <div className="bg-white rounded-xl border border-slate-200 p-4">
-                      <div className="mb-3 text-slate-700 font-semibold">Fontes de financiamento disponíveis</div>
+                  <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="text-slate-800 font-bold text-sm">Quadro de Rubricas / Fontes</div>
+                          <p className="text-[11px] text-slate-500">Teto previsto, valor programado e saldo restante por fonte</p>
+                        </div>
+                      </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-slate-50">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
-                              <th className="text-left px-4 py-2 font-semibold text-slate-700">Fonte</th>
-                              <th className="text-right px-4 py-2 font-semibold text-slate-700">Valor previsto</th>
+                              <th className="text-left px-3 py-2 font-semibold text-slate-700">Rubrica / Fonte</th>
+                              <th className="text-right px-3 py-2 font-semibold text-slate-700">Teto Previsto</th>
+                              <th className="text-right px-3 py-2 font-semibold text-slate-700">Programado</th>
+                              <th className="text-right px-3 py-2 font-semibold text-slate-700">Saldo Restante</th>
+                              <th className="text-center px-3 py-2 font-semibold text-slate-700 w-24">Execução</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {fontes.slice().sort((a, b) => a.fonte.localeCompare(b.fonte)).map(fonte => (
-                              <tr key={fonte.id}>
-                                <td className="px-4 py-2 text-slate-700">{fonte.fonte || 'Fonte não definida'}</td>
-                                <td className="px-4 py-2 text-right text-slate-800 font-semibold">{BRL(fonte.valorPrevisto)}</td>
-                              </tr>
-                            ))}
+                            {fontes.slice().sort((a, b) => a.fonte.localeCompare(b.fonte)).map(fonte => {
+                              const totalAlocado = getTotalAlocadoFonte(fonte.fonte);
+                              const saldo = fonte.valorPrevisto - totalAlocado;
+                              const pct = fonte.valorPrevisto > 0 ? (totalAlocado / fonte.valorPrevisto) * 100 : 0;
+                              return (
+                                <tr key={fonte.id} className="hover:bg-slate-50/70 transition-colors">
+                                  <td className="px-3 py-2 text-slate-800 font-medium">{fonte.fonte || 'Fonte não definida'}</td>
+                                  <td className="px-3 py-2 text-right text-slate-600 font-semibold">{BRL(fonte.valorPrevisto)}</td>
+                                  <td className="px-3 py-2 text-right text-blue-700 font-bold">{BRL(totalAlocado)}</td>
+                                  <td className={`px-3 py-2 text-right font-black ${saldo < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                                    {BRL(saldo)}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <div className="flex items-center gap-1 justify-center">
+                                      <div className="w-10 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${pct > 100 ? 'bg-red-500' : pct >= 90 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                                        />
+                                      </div>
+                                      <span className={`text-[10px] font-bold ${pct > 100 ? 'text-red-600' : 'text-slate-600'}`}>
+                                        {pct.toFixed(0)}%
+                                      </span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
-                          <tfoot className="bg-slate-50 font-bold text-slate-800">
+                          <tfoot className="bg-slate-50 font-bold text-slate-800 border-t border-slate-200">
                             <tr>
-                              <td className="px-4 py-2">Total disponível</td>
-                              <td className="px-4 py-2 text-right">{BRL(totalFonte)}</td>
+                              <td className="px-3 py-2">Total Geral</td>
+                              <td className="px-3 py-2 text-right">{BRL(totalFonte)}</td>
+                              <td className="px-3 py-2 text-right text-blue-700">{BRL(totalDemanda)}</td>
+                              <td className={`px-3 py-2 text-right ${totalFonte - totalDemanda < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                                {BRL(totalFonte - totalDemanda)}
+                              </td>
+                              <td className="px-3 py-2 text-center text-[10px] font-black text-slate-700">
+                                {totalFonte > 0 ? `${((totalDemanda / totalFonte) * 100).toFixed(0)}%` : '0%'}
+                              </td>
                             </tr>
                           </tfoot>
                         </table>
@@ -2077,74 +2200,383 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                     </div>
                   </div>
 
+                  {/* Listagem de Cards de Desembolso com Cores Temáticas */}
                   <div className="space-y-4">
-                    {itensDesembolso.map(item => (
-                      <div key={item.id} className="bg-white rounded-xl border border-slate-200 p-5">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div>
-                            <div className="text-sm text-slate-500">{item.tipo}</div>
-                            <h3 className="text-lg font-bold text-slate-900">{item.nome}</h3>
-                            {item.descricao && <p className="text-sm text-slate-500 mt-1">{item.descricao}</p>}
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xs text-slate-500">Total previsto</div>
-                            <div className="font-black text-xl text-slate-900">{BRL(item.totalInvestimento)}</div>
-                          </div>
+                    {/* Barra de título e filtros rápidos */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">
+                          Detalhamento de Desembolso por Ação e Obra
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Defina a distribuição de recursos por fonte e ano para cada intervenção do plano.
+                        </p>
+                      </div>
+
+                      {itensDesembolso.length > 0 && (
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl self-start sm:self-auto border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setFiltroTipoDesembolso('todos')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                              filtroTipoDesembolso === 'todos'
+                                ? 'bg-white text-slate-900 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Todos ({itensDesembolso.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFiltroTipoDesembolso('obras')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                              filtroTipoDesembolso === 'obras'
+                                ? 'bg-white text-emerald-800 shadow-xs'
+                                : 'text-slate-600 hover:text-emerald-700'
+                            }`}
+                          >
+                            <HardHat className="w-3.5 h-3.5 text-emerald-600" />
+                            Obras ({obras.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFiltroTipoDesembolso('acoes')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                              filtroTipoDesembolso === 'acoes'
+                                ? 'bg-white text-purple-800 shadow-xs'
+                                : 'text-slate-600 hover:text-purple-700'
+                            }`}
+                          >
+                            <Layers className="w-3.5 h-3.5 text-purple-600" />
+                            Ações ({acoes.length})
+                          </button>
                         </div>
+                      )}
+                    </div>
 
-                        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                          {item.desembolsoByAno.map(yearBlock => (
-                            <div key={`${item.id}-${yearBlock.ano}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                              <div className="flex items-center justify-between gap-3 mb-3">
-                                <div>
-                                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Ano {yearBlock.ano}</div>
-                                  <div className="text-sm font-semibold text-slate-700">Total {BRL(yearBlock.valor)}</div>
-                                </div>
-                                <button onClick={() => addDesembolsoFonte(item.tipoKey, item.id, yearBlock.ano)} className="text-xs font-semibold text-blue-600 hover:text-blue-800">
-                                  + adicionar fonte
-                                </button>
-                              </div>
-
-                              <div className="space-y-3">
-                                {yearBlock.entries.length === 0 ? (
-                                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-3 text-sm text-slate-500">
-                                    Nenhuma fonte cadastrada para este ano.
-                                  </div>
-                                ) : yearBlock.entries.map(({ entry, index }) => (
-                                  <div key={`${item.id}-${yearBlock.ano}-${index}`} className="grid grid-cols-12 gap-2 items-center rounded-2xl border border-slate-200 bg-white p-2.5">
-                                    <div className="col-span-5">
-                                      <select
-                                        value={entry.fonte}
-                                        onChange={e => updateDesembolsoFonte(item.tipoKey, item.id, index, { fonte: e.target.value })}
-                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                                      >
-                                        {fontesDisponiveis.map(fonte => (
-                                          <option key={`${item.id}-${yearBlock.ano}-${index}-${fonte}`} value={fonte}>{fonte}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div className="col-span-5">
-                                      <CurrencyInput
-                                        value={entry.valor}
-                                        onChange={value => updateDesembolsoFonte(item.tipoKey, item.id, index, { valor: value })}
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-right outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="R$ 0,00"
-                                      />
-                                    </div>
-                                    <button
-                                      onClick={() => removeDesembolsoFonte(item.tipoKey, item.id, index)}
-                                      className="col-span-2 rounded-lg border border-slate-200 bg-slate-100 px-2 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                                    >
-                                      Remover
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
+                    {itensDesembolso.length === 0 ? (
+                      <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center">
+                        <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+                          <DollarSign className="w-8 h-8" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-800 mb-1">Nenhuma obra ou ação cadastrada</h3>
+                        <p className="text-slate-500 text-sm max-w-md mx-auto mb-6">
+                          Cadastre ações em unidades existentes ou obras de construção nas etapas anteriores para programar o desembolso anual.
+                        </p>
+                        <div className="flex justify-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('acoes-unidades')}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 transition-colors flex items-center gap-1.5 shadow-sm"
+                          >
+                            <Layers className="w-4 h-4" />
+                            Ir para Ações em Unidades
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('obras')}
+                            className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1.5 shadow-sm"
+                          >
+                            <HardHat className="w-4 h-4" />
+                            Ir para Obras
+                          </button>
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      itensDesembolso
+                        .filter(item => {
+                          if (filtroTipoDesembolso === 'obras') return item.tipoKey === 'obra';
+                          if (filtroTipoDesembolso === 'acoes') return item.tipoKey === 'acao';
+                          return true;
+                        })
+                        .map(item => {
+                          const isObra = item.tipoKey === 'obra';
+                          const isRetomada = isObra && item.subtipo === 'retomada';
+                          const isNova = isObra && item.subtipo !== 'retomada';
+                          const isAdapt = !isObra && item.subtipo === 'adaptacao';
+
+                          // Configuração temática correspondente às abas de Ações e Obras
+                          const theme = isRetomada
+                            ? {
+                                borderCard: 'border-orange-200/90 hover:border-orange-300',
+                                headerBg: 'bg-orange-50/70 border-orange-100',
+                                badge: 'bg-orange-500 text-white border-orange-500',
+                                badgeLabel: 'Retomada de Obra',
+                                icon: <RotateCcw className="w-3.5 h-3.5" />,
+                                addBtn: 'text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 border-orange-200',
+                                focusRing: 'focus:ring-orange-500',
+                              }
+                            : isNova
+                            ? {
+                                borderCard: 'border-emerald-200/90 hover:border-emerald-300',
+                                headerBg: 'bg-emerald-50/70 border-emerald-100',
+                                badge: 'bg-emerald-600 text-white border-emerald-600',
+                                badgeLabel: 'Nova Construção de Creche',
+                                icon: <HardHat className="w-3.5 h-3.5" />,
+                                addBtn: 'text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-200',
+                                focusRing: 'focus:ring-emerald-500',
+                              }
+                            : isAdapt
+                            ? {
+                                borderCard: 'border-purple-200/90 hover:border-purple-300',
+                                headerBg: 'bg-purple-50/70 border-purple-100',
+                                badge: 'bg-purple-600 text-white border-purple-600',
+                                badgeLabel: 'Adaptação (Reordenamento)',
+                                icon: <Layers className="w-3.5 h-3.5" />,
+                                addBtn: 'text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 border-purple-200',
+                                focusRing: 'focus:ring-purple-500',
+                              }
+                            : {
+                                borderCard: 'border-blue-200/90 hover:border-blue-300',
+                                headerBg: 'bg-blue-50/70 border-blue-100',
+                                badge: 'bg-blue-600 text-white border-blue-600',
+                                badgeLabel: 'Ampliação de Salas',
+                                icon: <Building2 className="w-3.5 h-3.5" />,
+                                addBtn: 'text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border-blue-200',
+                                focusRing: 'focus:ring-blue-500',
+                              };
+
+                          const totalProgramado = item.desembolsoByAno.reduce((s, y) => s + y.valor, 0);
+                          const diffPrevisto = totalProgramado - item.totalInvestimento;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className={`bg-white rounded-2xl border-2 transition-all shadow-sm hover:shadow-md overflow-hidden ${theme.borderCard}`}
+                            >
+                              {/* Barra de Topo do Card com Tema */}
+                              <div className={`px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b ${theme.headerBg}`}>
+                                <div className="flex items-center gap-2.5">
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-xs ${theme.badge}`}>
+                                    {theme.icon}
+                                    {theme.badgeLabel}
+                                  </span>
+                                  {item.descricao && (
+                                    <span className="text-xs text-slate-600 font-medium truncate max-w-sm sm:max-w-md">
+                                      {item.descricao}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <div className="text-right">
+                                    <span className="text-[11px] font-semibold text-slate-500 block leading-tight">Total previsto</span>
+                                    <span className="font-black text-lg text-slate-900">{BRL(item.totalInvestimento)}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Corpo do Card */}
+                              <div className="p-5 space-y-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                  <div>
+                                    <h4 className="text-base md:text-lg font-bold text-slate-900 leading-snug">
+                                      {item.nome}
+                                    </h4>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs text-slate-500 font-medium">Programado no Desembolso:</span>
+                                    <span className={`px-3 py-1 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${
+                                      item.totalInvestimento > 0 && Math.abs(diffPrevisto) < 1
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : totalProgramado === 0
+                                        ? 'bg-slate-50 text-slate-600 border-slate-200'
+                                        : diffPrevisto < 0
+                                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                        : 'bg-purple-50 text-purple-800 border-purple-200'
+                                    }`}>
+                                      <span className="font-extrabold">{BRL(totalProgramado)}</span>
+                                      {item.totalInvestimento > 0 && (
+                                        <span className="text-[10px] font-semibold opacity-90">
+                                          {Math.abs(diffPrevisto) < 1
+                                            ? '(100% Coberto)'
+                                            : diffPrevisto < 0
+                                            ? `(Faltam ${BRL(Math.abs(diffPrevisto))})`
+                                            : `(+${BRL(diffPrevisto)})`}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Blocos de Desembolso Anual */}
+                                <div className="grid gap-4 xl:grid-cols-2 pt-1">
+                                  {item.desembolsoByAno.map(yearBlock => (
+                                    <div
+                                      key={`${item.id}-${yearBlock.ano}`}
+                                      className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition-all hover:bg-slate-50 hover:border-slate-300"
+                                    >
+                                      <div className="flex items-center justify-between gap-3 mb-3">
+                                        <div className="flex items-center gap-2">
+                                          <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-800 tracking-wider shadow-2xs">
+                                            ANO {yearBlock.ano}
+                                          </span>
+                                          <span className="text-xs text-slate-500 font-medium">Total:</span>
+                                          <span className="text-sm font-extrabold text-slate-900">{BRL(yearBlock.valor)}</span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => addDesembolsoFonte(item.tipoKey, item.id, yearBlock.ano)}
+                                          className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${theme.addBtn}`}
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                          Adicionar fonte
+                                        </button>
+                                      </div>
+
+                                      <div className="space-y-2.5">
+                                        {yearBlock.entries.length === 0 ? (
+                                          <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-500 text-center">
+                                            Nenhuma fonte cadastrada para este ano.
+                                          </div>
+                                        ) : (
+                                          yearBlock.entries.map(({ entry, index }) => {
+                                            const fonteObj = fontes.find(f => f.fonte === entry.fonte);
+                                            const tetoRubrica = fonteObj ? fonteObj.valorPrevisto : 0;
+
+                                            // Total alocado por outras entradas (excluindo este campo) nesta fonte no plano
+                                            let consumoOutros = 0;
+                                            obras.forEach(o => {
+                                              (o.desembolsoPorAno || []).forEach((d, dIdx) => {
+                                                const isEstaLinha = item.tipoKey === 'obra' && o.id === item.id && d.ano === yearBlock.ano && dIdx === index;
+                                                if (d.fonte === entry.fonte && !isEstaLinha) {
+                                                  consumoOutros += d.valor || 0;
+                                                }
+                                              });
+                                            });
+                                            acoes.forEach(a => {
+                                              (a.desembolsoPorAno || []).forEach((d, dIdx) => {
+                                                const isEstaLinha = item.tipoKey === 'acao' && a.id === item.id && d.ano === yearBlock.ano && dIdx === index;
+                                                if (d.fonte === entry.fonte && !isEstaLinha) {
+                                                  consumoOutros += d.valor || 0;
+                                                }
+                                              });
+                                            });
+
+                                            const limiteDisponivelParaEstaLinha = Math.max(0, tetoRubrica - consumoOutros);
+                                            const totalAlocadoNaFonte = consumoOutros + (entry.valor || 0);
+                                            const saldoRestanteNaRubrica = tetoRubrica - totalAlocadoNaFonte;
+                                            const estourou = saldoRestanteNaRubrica < 0;
+                                            const gastoNaFonteAno = getTotalAlocadoFonteAno(entry.fonte, yearBlock.ano);
+
+                                            return (
+                                              <div
+                                                key={`${item.id}-${yearBlock.ano}-${index}`}
+                                                className={`rounded-xl border p-3 shadow-2xs transition-all ${
+                                                  estourou
+                                                    ? 'border-red-300 bg-red-50/20'
+                                                    : 'border-slate-200 bg-white hover:border-slate-300'
+                                                }`}
+                                              >
+                                                <div className="grid grid-cols-12 gap-2.5 items-end">
+                                                  <div className="col-span-12 sm:col-span-5">
+                                                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                      Rubrica / Fonte de Financiamento
+                                                    </label>
+                                                    <select
+                                                      value={entry.fonte}
+                                                      onChange={e => updateDesembolsoFonte(item.tipoKey, item.id, index, { fonte: e.target.value })}
+                                                      className={`w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-2 ${theme.focusRing}`}
+                                                    >
+                                                      {fontesDisponiveis.map(fonte => {
+                                                        const fObj = fontes.find(f => f.fonte === fonte);
+                                                        const teto = fObj ? fObj.valorPrevisto : 0;
+                                                        return (
+                                                          <option key={`${item.id}-${yearBlock.ano}-${index}-${fonte}`} value={fonte}>
+                                                            {fonte} {teto > 0 ? `(Teto: ${BRL(teto)})` : ''}
+                                                          </option>
+                                                        );
+                                                      })}
+                                                    </select>
+                                                  </div>
+
+                                                  <div className="col-span-9 sm:col-span-5">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                        Valor a Desembolsar
+                                                      </label>
+                                                      <span className="text-[10px] font-semibold text-slate-500">
+                                                        Disponível: <strong className={limiteDisponivelParaEstaLinha > 0 ? "text-emerald-700" : "text-slate-700"}>{BRL(limiteDisponivelParaEstaLinha)}</strong>
+                                                      </span>
+                                                    </div>
+                                                    <CurrencyInput
+                                                      value={entry.valor}
+                                                      onChange={value => updateDesembolsoFonte(item.tipoKey, item.id, index, { valor: value })}
+                                                      className={`w-full rounded-lg border px-3 py-2 text-xs text-right outline-none focus:ring-2 font-bold transition-all ${
+                                                        estourou
+                                                          ? 'border-red-400 bg-red-50/50 text-red-900 focus:ring-red-400'
+                                                          : `border-slate-300 bg-white text-slate-900 ${theme.focusRing}`
+                                                      }`}
+                                                      placeholder="R$ 0,00"
+                                                    />
+                                                  </div>
+
+                                                  <div className="col-span-3 sm:col-span-2 flex items-center justify-end">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => removeDesembolsoFonte(item.tipoKey, item.id, index)}
+                                                      className="w-full rounded-lg border border-slate-200 bg-slate-100 hover:bg-red-50 hover:text-red-700 hover:border-red-200 px-2 py-2 text-xs font-bold text-slate-600 transition-colors"
+                                                    >
+                                                      Remover
+                                                    </button>
+                                                  </div>
+                                                </div>
+
+                                                {/* Linha Informativa: Teto, Disponível e Saldo da Rubrica */}
+                                                <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                                                  <div className="flex flex-wrap items-center gap-1.5 text-slate-600">
+                                                    <span>
+                                                      Teto da rubrica: <strong className="text-slate-800">{BRL(tetoRubrica)}</strong>
+                                                    </span>
+                                                    <span>•</span>
+                                                    <span>
+                                                      Gasto no Ano {yearBlock.ano}: <strong className="text-slate-800">{BRL(gastoNaFonteAno)}</strong>
+                                                    </span>
+                                                    <span>•</span>
+                                                    <span>
+                                                      Total alocado: <strong className="text-slate-800">{BRL(totalAlocadoNaFonte)}</strong>
+                                                    </span>
+                                                  </div>
+
+                                                  <div className="flex items-center gap-1.5">
+                                                    {estourou ? (
+                                                      <span className="text-red-700 bg-red-100/90 border border-red-200 font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                                        <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                                        Excede rubrica em {BRL(Math.abs(saldoRestanteNaRubrica))}
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                                        Saldo restante: <strong className="font-bold">{BRL(saldoRestanteNaRubrica)}</strong>
+                                                      </span>
+                                                    )}
+
+                                                    {limiteDisponivelParaEstaLinha > 0 && entry.valor !== limiteDisponivelParaEstaLinha && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => updateDesembolsoFonte(item.tipoKey, item.id, index, { valor: limiteDisponivelParaEstaLinha })}
+                                                        className="text-[10px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition-colors"
+                                                        title="Preencher com o saldo máximo disponível desta rubrica"
+                                                      >
+                                                        Alocar máx ({BRL(limiteDisponivelParaEstaLinha)})
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
                   </div>
                 </div>
               )}
@@ -3087,92 +3519,161 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                   {totalSalasPlanejadas > 0 && (
                     <>
                       {/* Configuração de Turmas por Sala */}
-                      <div className="bg-white rounded-xl border border-slate-200">
-                        <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-                          <h3 className="font-bold text-slate-700">Configuração de Turmas por Sala</h3>
-                          <button
-                            onClick={inicializarConfigSalas}
-                            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold">
-                            {configSalas.length === 0 ? 'Carregar Salas' : 'Atualizar Salas'}
-                          </button>
+                      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                        <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-slate-800 text-base">Configuração de Turmas por Sala</h3>
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-800">
+                                {configSalas.length} salas planejadas
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Salas carregadas automaticamente com o padrão de <strong>1 turma</strong> (Turno Único ou Integral). Altere para 2 turmas para atendimento em dois turnos (manhã e tarde).
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleDefinirTodasTurmas(1)}
+                              className="text-xs px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors font-bold shadow-2xs"
+                              title="Configura todas as salas com 1 turma por padrão"
+                            >
+                              Todas 1 Turma
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDefinirTodasTurmas(2)}
+                              className="text-xs px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors font-bold shadow-2xs"
+                              title="Configura todas as salas com 2 turmas (dois turnos)"
+                            >
+                              Todas 2 Turmas
+                            </button>
+                          </div>
                         </div>
 
                         {configSalas.length > 0 && (
-                          <div className="p-5 max-h-96 overflow-y-auto">
-                            <div className="space-y-2">
-                              {configSalas.map(sala => (
-                                <div key={sala.id} className="grid grid-cols-12 gap-3 items-center p-3 bg-slate-50 rounded-lg">
-                                  <div className="col-span-1 text-center">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${sala.origem === 'obra' ? 'bg-orange-500' : 'bg-purple-500'}`}>
-                                      {sala.origem === 'obra' ? '🏗️' : '📐'}
+                          <div className="p-4 max-h-[400px] overflow-y-auto divide-y divide-slate-100">
+                            {configSalas.map(sala => {
+                              const isObra = sala.origem === 'obra';
+                              const numTurmas = sala.numeroTurmas || 1;
+                              return (
+                                <div
+                                  key={sala.id}
+                                  className="py-3 px-3 rounded-xl hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div
+                                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 ${
+                                        isObra ? 'bg-orange-500 shadow-xs' : 'bg-purple-600 shadow-xs'
+                                      }`}
+                                    >
+                                      {isObra ? <HardHat className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-slate-800 truncate">
+                                          {sala.nome}
+                                        </span>
+                                        <span
+                                          className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full border ${
+                                            isObra
+                                              ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                              : 'bg-purple-50 text-purple-700 border-purple-200'
+                                          }`}
+                                        >
+                                          {isObra ? 'Obra' : 'Ampliação'}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-slate-500 truncate mt-0.5">
+                                        {sala.etapas.length > 0 ? `Etapas: ${sala.etapas.join(', ')}` : 'Etapa de Educação Infantil'}
+                                      </div>
                                     </div>
                                   </div>
-                                  <div className="col-span-6">
-                                    <div className="flex items-center gap-2">
-                                      <div className="text-sm font-semibold text-slate-800 truncate">{sala.nome}</div>
-                                      <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-md ${sala.origem === 'obra' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
-                                        {sala.origem === 'obra' ? 'Obra Nova' : 'Ampliação'}
+
+                                  <div className="flex items-center gap-4 shrink-0 self-end sm:self-center">
+                                    {/* Stepper de turmas */}
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-semibold text-slate-500 mr-1">Turmas:</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateTurmasSala(sala.id, numTurmas - 1)}
+                                        disabled={numTurmas <= 1}
+                                        className="w-7 h-7 rounded-lg border border-slate-300 bg-white text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-sm"
+                                        title="Diminuir turmas"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="w-8 text-center font-black text-sm text-slate-900 bg-slate-100 py-1 rounded-md">
+                                        {numTurmas}
                                       </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateTurmasSala(sala.id, numTurmas + 1)}
+                                        disabled={numTurmas >= 4}
+                                        className="w-7 h-7 rounded-lg border border-slate-300 bg-white text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-sm"
+                                        title="Aumentar turmas"
+                                      >
+                                        +
+                                      </button>
                                     </div>
-                                    <div className="text-xs text-slate-500">
-                                      {sala.etapas.length > 0 ? sala.etapas.join(', ') : 'Etapas não definidas'}
+
+                                    {/* Estimativa de crianças e pessoal */}
+                                    <div className="text-right min-w-[130px]">
+                                      <div className="text-xs font-bold text-blue-700">
+                                        ~{numTurmas * 16} crianças
+                                      </div>
+                                      <div className="text-[10px] text-slate-500 font-semibold">
+                                        {numTurmas} prof · {numTurmas} aux
+                                      </div>
                                     </div>
-                                  </div>
-                                  <div className="col-span-3">
-                                    <label className="block text-xs text-slate-500 mb-1">Nº de Turmas</label>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      max={4}
-                                      value={sala.numeroTurmas}
-                                      onChange={e => setConfigSalas(prev => prev.map(s => s.id === sala.id ? { ...s, numeroTurmas: Math.max(1, Number(e.target.value)) } : s))}
-                                      className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    />
-                                  </div>
-                                  <div className="col-span-2 text-center">
-                                    <div className="text-xs text-slate-500">Estimativa</div>
-                                    <div className="text-sm font-bold text-blue-700">{sala.numeroTurmas * 16} crianças</div>
                                   </div>
                                 </div>
-                              ))}
-                            </div>
+                              );
+                            })}
                           </div>
                         )}
 
-                        <div className="bg-slate-50 px-5 py-3 border-t border-slate-200">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm">
-                              <span className="text-slate-600">Total de turmas planejadas:</span>
-                              <span className="font-bold text-slate-800 ml-2">{totalTurmasPlanejadas} turmas</span>
-                              <span className="text-slate-400 ml-2">
-                                (estimativa: {totalTurmasPlanejadas * 16} crianças)
-                              </span>
-                            </div>
-                            <button
-                              onClick={calcularNecessidadePessoal}
-                              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold text-sm">
-                              ✨ Calcular Necessidade de Pessoal
-                            </button>
+                        {/* Barra Inferior com Totais Reativos */}
+                        <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
+                            <span className="text-slate-600">Total de turmas planejadas:</span>
+                            <span className="font-black text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                              {totalTurmasPlanejadas} turmas
+                            </span>
+                            <span className="text-slate-500">
+                              (estimativa: <strong className="text-blue-700 font-bold">{totalTurmasPlanejadas * 16} crianças</strong> atendidas)
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+                            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Dimensionamento de pessoal sincronizado em tempo real</span>
                           </div>
                         </div>
                       </div>
 
-                      {pessoal.filter(p => p.autoCalculado).length > 0 && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 flex gap-3">
-                          <div className="mt-0.5"><AlertCircle className="w-5 h-5 text-blue-600" /></div>
-                          <div>
-                            <h4 className="font-bold text-blue-800 text-sm">Resumo do Cálculo Automático</h4>
-                            <p className="text-sm text-blue-700 mt-1">
-                              <strong>Para Novas Obras:</strong> A equipe foi pré-carregada integralmente com base no padrão definido no Modelo de Creche.
-                              <br />
-                              <strong>Para Ampliações:</strong> Foi calculada a proporção de 1 Professor e 1 Monitor/Auxiliar para cada turma extra criada.
-                            </p>
-                            <p className="text-xs text-blue-600 mt-2 italic">
-                              Você pode editar as quantidades abaixo ou incluir novos cargos se houver necessidade específica.
-                            </p>
-                          </div>
+                      {/* Resumo do Cálculo Automático Reativo */}
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 flex gap-3.5 items-start shadow-2xs">
+                        <div className="p-2 rounded-xl bg-blue-600 text-white shrink-0 mt-0.5">
+                          <Sparkles className="w-4 h-4" />
                         </div>
-                      )}
+                        <div className="flex-1 text-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
+                            <h4 className="font-bold text-blue-900 text-sm">
+                              Dimensionamento Automático de Pessoal ({totalTurmasPlanejadas} Turmas)
+                            </h4>
+                            <span className="text-[11px] font-bold text-blue-700 bg-white px-2.5 py-0.5 rounded-full border border-blue-200 self-start sm:self-auto">
+                              1 Professor e 1 Monitor por Turma
+                            </span>
+                          </div>
+                          <p className="text-slate-600 leading-relaxed">
+                            O quadro de servidores abaixo foi calculado automaticamente considerando as <strong>{totalTurmasPlanejadas} turmas</strong> planejadas.
+                            Para novas obras, inclui direção escolar, coordenação pedagógica e equipe de merendeiras e limpeza dimensionadas por porte. Qualquer alteração no número de turmas acima atualiza a folha de pessoal instantaneamente.
+                          </p>
+                        </div>
+                      </div>
 
                       {/* Grid de Pessoal por Categoria */}
                       {['pedagogico', 'administrativo', 'apoio'].map(cat => {
