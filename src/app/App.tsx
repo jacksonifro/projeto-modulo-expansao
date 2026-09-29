@@ -2,6 +2,7 @@ import { useState } from 'react';
 import ExpansaoCreches from './components/expansao-creches/ExpansaoCreches';
 import CadastroServidores from './components/cadastro-servidores/CadastroServidores';
 import logoBranca from '../imports/logo-central-de-vagas-branca.png';
+import { Toaster } from 'sonner';
 import {
   Home as HomeIcon,
   Building2,
@@ -145,6 +146,7 @@ export default function App() {
           />
         )}
       </main>
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }

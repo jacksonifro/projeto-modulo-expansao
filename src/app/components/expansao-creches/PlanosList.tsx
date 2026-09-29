@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { mockPlans, mockSchools, mockActivities } from './mockData';
 import { ExpansionPlan, PlanStatus } from './types';
+import PlanStatusConfirmModal, { PlanModalConfig, PlanActionType } from './PlanStatusConfirmModal';
+import { toast } from 'sonner';
 
 interface PlanosListProps {
   onNavigate: (view: string, planId?: string) => void;
@@ -15,6 +17,7 @@ interface PlanosListProps {
 export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<PlanStatus | 'Todos'>('Todos');
+  const [modalConfig, setModalConfig] = useState<PlanModalConfig | null>(null);
 
   const [plans, setPlans] = useState<ExpansionPlan[]>(() => {
     const cached = localStorage.getItem("exp_creches_plans");
@@ -34,6 +37,41 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
     });
     setPlans(updated);
     localStorage.setItem("exp_creches_plans", JSON.stringify(updated));
+    toast.success(`Status do plano atualizado para "${newStatus}"!`);
+  };
+
+  const requestStatusChange = (
+    plan: ExpansionPlan,
+    targetStatus: PlanStatus,
+    actionType: PlanActionType = 'alterar'
+  ) => {
+    setModalConfig({
+      isOpen: true,
+      planId: plan.id,
+      planName: plan.name || plan.nome,
+      actionType,
+      currentStatus: plan.status,
+      targetStatus,
+      onConfirm: () => {
+        handleUpdatePlanStatus(plan.id, targetStatus);
+      },
+    });
+  };
+
+  const handleDeletePlan = (plan: ExpansionPlan) => {
+    setModalConfig({
+      isOpen: true,
+      planId: plan.id,
+      planName: plan.name || plan.nome,
+      actionType: 'excluir',
+      currentStatus: plan.status,
+      onConfirm: () => {
+        const updated = plans.filter(p => p.id !== plan.id);
+        setPlans(updated);
+        localStorage.setItem("exp_creches_plans", JSON.stringify(updated));
+        toast.success(`Plano "${plan.name || plan.nome}" excluído com sucesso.`);
+      },
+    });
   };
 
   const filteredPlans = plans.filter(plan => {
@@ -158,8 +196,8 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                             value={plan.status}
                             onChange={(e) => {
                               const newSt = e.target.value as PlanStatus;
-                              if (confirm(`Deseja alterar o status do plano "${plan.name || plan.nome}" para "${newSt}"?`)) {
-                                handleUpdatePlanStatus(plan.id, newSt);
+                              if (newSt !== plan.status) {
+                                requestStatusChange(plan, newSt, 'alterar');
                               }
                             }}
                             className={`px-3 py-1 rounded-full text-xs font-bold border cursor-pointer outline-none transition-colors shadow-sm ${getStatusColor(plan.status)}`}
@@ -181,11 +219,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                       {/* Botão INICIAR EXECUÇÃO quando em Planejamento */}
                       {plan.status === 'Planejamento' && (
                         <button
-                          onClick={() => {
-                            if (confirm(`Deseja iniciar a execução do plano "${plan.name || plan.nome}"? O status passará para "Em execução".`)) {
-                              handleUpdatePlanStatus(plan.id, 'Em execução');
-                            }
-                          }}
+                          onClick={() => requestStatusChange(plan, 'Em execução', 'iniciar')}
                           className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition-all"
                           title="Iniciar execução do plano"
                         >
@@ -198,11 +232,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                       {plan.status === 'Em execução' && (
                         <>
                           <button
-                            onClick={() => {
-                              if (confirm(`Deseja marcar o plano "${plan.name || plan.nome}" como Concluído?`)) {
-                                handleUpdatePlanStatus(plan.id, 'Concluído');
-                              }
-                            }}
+                            onClick={() => requestStatusChange(plan, 'Concluído', 'concluir')}
                             className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition-all"
                             title="Concluir plano de expansão"
                           >
@@ -210,11 +240,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                             Concluir Plano
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`Deseja paralisar temporariamente a execução do plano "${plan.name || plan.nome}"?`)) {
-                                handleUpdatePlanStatus(plan.id, 'Paralisado');
-                              }
-                            }}
+                            onClick={() => requestStatusChange(plan, 'Paralisado', 'paralisar')}
                             className="flex items-center gap-1 px-2.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-xs font-semibold border border-amber-300 transition-all"
                             title="Paralisar execução"
                           >
@@ -227,11 +253,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                       {/* Botão quando Paralisado */}
                       {plan.status === 'Paralisado' && (
                         <button
-                          onClick={() => {
-                            if (confirm(`Deseja retomar a execução do plano "${plan.name || plan.nome}"?`)) {
-                              handleUpdatePlanStatus(plan.id, 'Em execução');
-                            }
-                          }}
+                          onClick={() => requestStatusChange(plan, 'Em execução', 'retomar')}
                           className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition-all"
                           title="Retomar execução do plano"
                         >
@@ -255,12 +277,8 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                       {/* Botão quando Concluído */}
                       {plan.status === 'Concluído' && (
                         <button
-                          onClick={() => {
-                            if (confirm(`Deseja reabrir a execução do plano "${plan.name || plan.nome}"?`)) {
-                              handleUpdatePlanStatus(plan.id, 'Em execução');
-                            }
-                          }}
-                          className="flex items-center gap-1 px-2.5 py-2 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-semibold border border-purple-200 transition-colors"
+                          onClick={() => requestStatusChange(plan, 'Em execução', 'reabrir')}
+                          className="flex items-center gap-1.5 px-2.5 py-2 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg text-xs font-semibold border border-purple-200 transition-colors shadow-xs"
                           title="Reabrir execução"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
@@ -285,13 +303,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                         <Edit2 className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Tem certeza que deseja excluir o plano "${plan.name || plan.nome}"?`)) {
-                            const updated = plans.filter(p => p.id !== plan.id);
-                            setPlans(updated);
-                            localStorage.setItem("exp_creches_plans", JSON.stringify(updated));
-                          }
-                        }}
+                        onClick={() => handleDeletePlan(plan)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Excluir Plano"
                       >
@@ -396,11 +408,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                     {/* Botão de Ação de Execução Principal no Rodapé */}
                     {plan.status === 'Planejamento' && (
                       <button
-                        onClick={() => {
-                          if (confirm(`Deseja iniciar a execução do plano "${plan.name || plan.nome}"? O status passará para "Em execução".`)) {
-                            handleUpdatePlanStatus(plan.id, 'Em execução');
-                          }
-                        }}
+                        onClick={() => requestStatusChange(plan, 'Em execução', 'iniciar')}
                         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-colors shadow-sm hover:shadow-md text-sm"
                         title="Iniciar execução do plano"
                       >
@@ -411,11 +419,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
 
                     {plan.status === 'Em execução' && (
                       <button
-                        onClick={() => {
-                          if (confirm(`Deseja marcar o plano "${plan.name || plan.nome}" como Concluído?`)) {
-                            handleUpdatePlanStatus(plan.id, 'Concluído');
-                          }
-                        }}
+                        onClick={() => requestStatusChange(plan, 'Concluído', 'concluir')}
                         className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors shadow-sm hover:shadow-md text-sm"
                         title="Concluir plano de expansão"
                       >
@@ -426,16 +430,23 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
 
                     {plan.status === 'Paralisado' && (
                       <button
-                        onClick={() => {
-                          if (confirm(`Deseja retomar a execução do plano "${plan.name || plan.nome}"?`)) {
-                            handleUpdatePlanStatus(plan.id, 'Em execução');
-                          }
-                        }}
+                        onClick={() => requestStatusChange(plan, 'Em execução', 'retomar')}
                         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-colors shadow-sm hover:shadow-md text-sm"
                         title="Retomar execução do plano"
                       >
                         <Play className="w-4 h-4 fill-white" />
                         Retomar Execução
+                      </button>
+                    )}
+
+                    {plan.status === 'Concluído' && (
+                      <button
+                        onClick={() => requestStatusChange(plan, 'Em execução', 'reabrir')}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg font-semibold transition-colors shadow-xs text-sm"
+                        title="Reabrir execução"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Reabrir Execução
                       </button>
                     )}
 
@@ -474,6 +485,12 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
             <p className="text-slate-500">Tente ajustar os filtros ou criar um novo plano</p>
           </div>
         )}
+
+        {/* Modal Moderno de Confirmação e Alerta de Status */}
+        <PlanStatusConfirmModal
+          config={modalConfig}
+          onClose={() => setModalConfig(null)}
+        />
       </div>
     </div>
   );

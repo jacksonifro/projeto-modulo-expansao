@@ -9,6 +9,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import KanbanBoard from './KanbanBoard';
 import { ObraConstrucao, AcaoUnidade, ExpansionPlan, PlanStatus } from './types';
 import { calculateViewMetrics } from './utils/planoViewLogic';
+import PlanStatusConfirmModal, { PlanModalConfig, PlanActionType } from './PlanStatusConfirmModal';
+import { toast } from 'sonner';
 
 interface PlanoViewProps {
   planId?: string;
@@ -48,6 +50,8 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
   const plan = plans.find(p => p.id === planId) ?? plans[0] ?? mockPlans[0];
   const metrics = calculateViewMetrics(plan as any);
 
+  const [modalConfig, setModalConfig] = useState<PlanModalConfig | null>(null);
+
   const [kanbanState, setKanbanState] = useState<KanbanState>({
     open: false,
     itemId: null,
@@ -68,6 +72,24 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
     });
     setPlans(updatedPlans);
     localStorage.setItem("exp_creches_plans", JSON.stringify(updatedPlans));
+    toast.success(`Status do plano atualizado para "${newStatus}"!`);
+  };
+
+  const requestStatusChange = (
+    targetStatus: PlanStatus,
+    actionType: PlanActionType = 'alterar'
+  ) => {
+    setModalConfig({
+      isOpen: true,
+      planId: plan.id,
+      planName: plan.nome || plan.name || '',
+      actionType,
+      currentStatus: plan.status,
+      targetStatus,
+      onConfirm: () => {
+        handleUpdateStatus(targetStatus);
+      },
+    });
   };
 
   const getServidor = (id: string) => mockServidores.find(s => s.id === id);
@@ -112,8 +134,8 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                   value={plan.status}
                   onChange={(e) => {
                     const newSt = e.target.value as PlanStatus;
-                    if (confirm(`Deseja alterar o status do plano para "${newSt}"?`)) {
-                      handleUpdateStatus(newSt);
+                    if (newSt !== plan.status) {
+                      requestStatusChange(newSt, 'alterar');
                     }
                   }}
                   className={`px-3 py-1 rounded-full text-sm font-bold border cursor-pointer outline-none shadow-sm transition-colors ${statusColor[plan.status] ?? 'bg-slate-100 text-slate-600'}`}
@@ -136,11 +158,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
               {/* Botão de Iniciar Execução */}
               {plan.status === 'Planejamento' && (
                 <button
-                  onClick={() => {
-                    if (confirm(`Deseja iniciar a execução do plano "${plan.nome}"? O status passará para "Em execução".`)) {
-                      handleUpdateStatus('Em execução');
-                    }
-                  }}
+                  onClick={() => requestStatusChange('Em execução', 'iniciar')}
                   className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors shadow-md hover:shadow-lg"
                   title="Iniciar execução do plano"
                 >
@@ -153,11 +171,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
               {plan.status === 'Em execução' && (
                 <>
                   <button
-                    onClick={() => {
-                      if (confirm(`Deseja marcar o plano "${plan.nome}" como Concluído?`)) {
-                        handleUpdateStatus('Concluído');
-                      }
-                    }}
+                    onClick={() => requestStatusChange('Concluído', 'concluir')}
                     className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors shadow-md hover:shadow-lg"
                     title="Concluir plano de expansão"
                   >
@@ -165,11 +179,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                     Concluir Plano
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm(`Deseja paralisar temporariamente a execução do plano "${plan.nome}"?`)) {
-                        handleUpdateStatus('Paralisado');
-                      }
-                    }}
+                    onClick={() => requestStatusChange('Paralisado', 'paralisar')}
                     className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 rounded-xl font-semibold transition-colors"
                     title="Paralisar execução"
                   >
@@ -182,11 +192,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
               {/* Botão quando Paralisado */}
               {plan.status === 'Paralisado' && (
                 <button
-                  onClick={() => {
-                    if (confirm(`Deseja retomar a execução do plano "${plan.nome}"?`)) {
-                      handleUpdateStatus('Em execução');
-                    }
-                  }}
+                  onClick={() => requestStatusChange('Em execução', 'retomar')}
                   className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors shadow-md hover:shadow-lg"
                   title="Retomar execução do plano"
                 >
@@ -203,12 +209,8 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                     Execução Concluída
                   </div>
                   <button
-                    onClick={() => {
-                      if (confirm(`Deseja reabrir a execução do plano "${plan.nome}"?`)) {
-                        handleUpdateStatus('Em execução');
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-purple-700 hover:bg-purple-50 border border-slate-200 rounded-xl text-sm font-semibold transition-colors"
+                    onClick={() => requestStatusChange('Em execução', 'reabrir')}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 text-purple-700 hover:bg-purple-100 bg-purple-50 border border-purple-200 rounded-xl text-sm font-semibold transition-colors shadow-xs"
                     title="Reabrir execução do plano"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -563,6 +565,11 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
           </div>
         </div>
 
+        {/* Modal Moderno de Confirmação e Alerta de Status */}
+        <PlanStatusConfirmModal
+          config={modalConfig}
+          onClose={() => setModalConfig(null)}
+        />
       </div>
     </div>
   );
