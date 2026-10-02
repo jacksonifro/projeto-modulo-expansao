@@ -1,17 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Legend,
-  Cell,
-} from "recharts";
+
 import {
   BookOpen,
   Home,
@@ -48,12 +36,13 @@ import {
   mockAquisicoesReferencia,
   mockCargosReferencia,
 } from "./mockDataCusto";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Calculator } from "lucide-react";
 import AmbienteEditor from "./AmbienteEditor";
 import ModeloCrecheBuilder from "./ModeloCrecheBuilder";
 
 interface ConfiguracoesCustoProps {
   onBack: () => void;
+  onNavigate?: (view: string) => void;
 }
 
 const BRL = (v: number) =>
@@ -83,6 +72,63 @@ const CATEGORIAS_LIST: { value: CategoriaAmbiente; label: string }[] = [
   { value: "outros", label: "Outros" },
 ];
 
+export const AMBIENTES_CLASSIFICACAO_OPTIONS = [
+  'COPA',
+  'FRALDÁRIO / SANITÁRIOS',
+  'PÁTIO INFANTIL COBERTO / REFEITÓRIO',
+  'PLAYGROUND',
+  'SALA DE ATIVIDADES (CRECHE)',
+  'SALA DE ATIVIDADES (PRÉ-ESCOLA)',
+] as const;
+
+export const UNIDADES_PREDEFINIDAS = [
+  "Unidade",
+  "Conjunto",
+  "Metro",
+  "Metro Quadrado (m²)",
+  "Par",
+  "Kit",
+  "Peça",
+  "Caixa",
+];
+
+function ItemCurrencyInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  className?: string;
+}) {
+  const fmt = (v: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+  const [display, setDisplay] = useState(() => (value > 0 ? fmt(value) : ""));
+
+  useEffect(() => {
+    setDisplay(value > 0 ? fmt(value) : "");
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      value={display}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^\d]/g, "");
+        const num = raw === "" ? 0 : Number(raw) / 100;
+        setDisplay(raw === "" ? "" : fmt(num));
+        onChange(num);
+      }}
+      onBlur={() => setDisplay(value > 0 ? fmt(value) : "")}
+      onFocus={() => {
+        if (value === 0) setDisplay("");
+      }}
+      className={className}
+      placeholder="R$ 0,00"
+    />
+  );
+}
+
 interface BibliotecaTabProps {
   itens: ItemBiblioteca[];
   onAddItem: (item: ItemBiblioteca) => void;
@@ -99,6 +145,7 @@ function BibliotecaTab({
   const [filtro, setFiltro] = useState<
     "todos" | "mobiliario" | "equipamento"
   >("todos");
+  const [filtroAmbiente, setFiltroAmbiente] = useState<string>("todos");
   const [busca, setBusca] = useState("");
 
   // Modal State
@@ -107,7 +154,8 @@ function BibliotecaTab({
   const [formCode, setFormCode] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formTipo, setFormTipo] = useState<TipoItemBiblioteca>("mobiliario");
-  const [formUnidade, setFormUnidade] = useState("un");
+  const [formUnidade, setFormUnidade] = useState("UNIDADE");
+  const [formAmbiente, setFormAmbiente] = useState("");
   const [formValue, setFormValue] = useState<number>(0);
   const [formCategorias, setFormCategorias] = useState<CategoriaAmbiente[]>([]);
 
@@ -117,15 +165,17 @@ function BibliotecaTab({
       setFormCode(item.codigo);
       setFormDesc(item.descricao);
       setFormTipo(item.tipo);
-      setFormUnidade(item.unidade);
+      setFormUnidade(item.unidade || "UNIDADE");
+      setFormAmbiente(item.ambienteClassificacao || "");
       setFormValue(item.valorUnitarioRef);
-      setFormCategorias(item.categoriasSugeridas);
+      setFormCategorias(item.categoriasSugeridas || []);
     } else {
       setEditingItem(null);
       setFormCode("");
       setFormDesc("");
       setFormTipo("mobiliario");
-      setFormUnidade("un");
+      setFormUnidade("UNIDADE");
+      setFormAmbiente("");
       setFormValue(0);
       setFormCategorias([]);
     }
@@ -133,27 +183,37 @@ function BibliotecaTab({
   };
 
   const handleSave = () => {
-    if (!formCode.trim() || !formDesc.trim() || !formUnidade.trim()) {
-      alert("Por favor, preencha todos os campos obrigatórios (*).");
+    if (!formDesc.trim()) {
+      alert("Por favor, preencha a descrição do item (*).");
       return;
     }
+    const unidadeFinal = (formUnidade.trim() || "UNIDADE").toUpperCase();
+    const codigoFinal = (
+      formCode.trim() ||
+      (formTipo === "mobiliario"
+        ? `MOB-${Date.now().toString().slice(-4)}`
+        : `EQP-${Date.now().toString().slice(-4)}`)
+    ).toUpperCase();
+
     if (editingItem) {
       onUpdateItem({
         ...editingItem,
-        codigo: formCode.trim(),
-        descricao: formDesc.trim(),
+        codigo: codigoFinal,
+        descricao: formDesc.trim().toUpperCase(),
         tipo: formTipo,
-        unidade: formUnidade.trim(),
+        unidade: unidadeFinal,
+        ambienteClassificacao: formAmbiente || undefined,
         valorUnitarioRef: formValue,
         categoriasSugeridas: formCategorias,
       });
     } else {
       onAddItem({
         id: `bib-${Date.now()}`,
-        codigo: formCode.trim(),
-        descricao: formDesc.trim(),
+        codigo: codigoFinal,
+        descricao: formDesc.trim().toUpperCase(),
         tipo: formTipo,
-        unidade: formUnidade.trim(),
+        unidade: unidadeFinal,
+        ambienteClassificacao: formAmbiente || undefined,
         valorUnitarioRef: formValue,
         categoriasSugeridas: formCategorias,
       });
@@ -163,6 +223,7 @@ function BibliotecaTab({
 
   const filtered = itens.filter((it) => {
     if (filtro !== "todos" && it.tipo !== filtro) return false;
+    if (filtroAmbiente !== "todos" && it.ambienteClassificacao !== filtroAmbiente) return false;
     if (
       busca &&
       !it.descricao
@@ -181,19 +242,32 @@ function BibliotecaTab({
           Biblioteca de Itens de Referência
         </h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Catálogo FNDE/SINAPI — valores de referência para
-          mobiliário e equipamentos.
+          Catálogo FNDE/SINAPI — Valores de referência para mobiliário e equipamentos, classificados por ambiente escolar.
         </p>
       </div>
 
       <div className="flex gap-3 flex-wrap justify-between items-center">
-        <div className="flex gap-3 flex-1 min-w-[280px]">
+        <div className="flex gap-3 flex-1 flex-wrap min-w-[280px]">
           <input
             className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
             placeholder="Buscar por descrição ou código..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
+
+          <select
+            value={filtroAmbiente}
+            onChange={(e) => setFiltroAmbiente(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+          >
+            <option value="todos">Todos os ambientes</option>
+            {AMBIENTES_CLASSIFICACAO_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+
           <div className="flex rounded-lg overflow-hidden border">
             {(
               ["todos", "mobiliario", "equipamento"] as const
@@ -201,7 +275,7 @@ function BibliotecaTab({
               <button
                 key={f}
                 onClick={() => setFiltro(f)}
-                className={`px-4 py-2 text-sm transition-colors ${filtro === f ? "bg-orange-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                className={`px-4 py-2 text-sm transition-colors ${filtro === f ? "bg-orange-500 text-white font-semibold" : "bg-white text-gray-600 hover:bg-gray-50"}`}
               >
                 {f === "todos"
                   ? "Todos"
@@ -227,17 +301,12 @@ function BibliotecaTab({
             <tr>
               <th className="text-left px-4 py-3">Código</th>
               <th className="text-left px-4 py-3">Descrição</th>
+              <th className="text-left px-4 py-3">Ambiente</th>
               <th className="text-left px-4 py-3">Tipo</th>
               <th className="text-left px-4 py-3">Unidade</th>
-              <th className="text-right px-4 py-3">
-                Valor Ref.
-              </th>
-              <th className="text-left px-4 py-3">
-                Categorias Sugeridas
-              </th>
-              <th className="w-24 text-center px-4 py-3">
-                Ações
-              </th>
+              <th className="text-right px-4 py-3">Valor Ref.</th>
+              <th className="text-left px-4 py-3">Categorias Sugeridas</th>
+              <th className="w-24 text-center px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -246,8 +315,17 @@ function BibliotecaTab({
                 <td className="px-4 py-2.5 font-mono text-xs text-gray-500">
                   {it.codigo}
                 </td>
-                <td className="px-4 py-2.5 text-gray-800">
-                  {it.descricao}
+                <td className="px-4 py-2.5 text-gray-800 font-medium">
+                  {it.descricao.toUpperCase()}
+                </td>
+                <td className="px-4 py-2.5">
+                  {it.ambienteClassificacao ? (
+                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200/60">
+                      {it.ambienteClassificacao.toUpperCase()}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400 italic">Não especificado</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5">
                   <span
@@ -258,8 +336,8 @@ function BibliotecaTab({
                       : "Equipamento"}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 text-gray-500">
-                  {it.unidade}
+                <td className="px-4 py-2.5 text-gray-500 font-medium">
+                  {it.unidade.toUpperCase()}
                 </td>
                 <td className="px-4 py-2.5 text-right font-medium text-gray-800">
                   {BRL(it.valorUnitarioRef)}
@@ -271,13 +349,13 @@ function BibliotecaTab({
                       .map((c) => (
                         <span
                           key={c}
-                          className="bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded"
+                          className="bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded font-mono"
                         >
                           {c}
                         </span>
                       ))}
                     {it.categoriasSugeridas.length > 3 && (
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-400 font-mono">
                         +{it.categoriasSugeridas.length - 3}
                       </span>
                     )}
@@ -288,7 +366,7 @@ function BibliotecaTab({
                     <button
                       onClick={() => openModal(it)}
                       className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Editar item"
+                      title="Editar Item"
                     >
                       <Pencil size={15} />
                     </button>
@@ -299,7 +377,7 @@ function BibliotecaTab({
                         }
                       }}
                       className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Excluir item"
+                      title="Excluir Item"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -316,148 +394,131 @@ function BibliotecaTab({
         )}
       </div>
       <p className="text-xs text-gray-400">
-        {filtered.length} de {itens.length} itens · Fonte:
-        FNDE/SINAPI · Referência: RO 2024
+        {filtered.length} de {itens.length} itens · Fonte: FNDE/SINAPI · Referência: RO 2024
       </p>
 
       {/* Modal Overlay */}
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-[2px]">
-          <div className="bg-white rounded-2xl shadow-2xl border w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in-50 zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border w-full max-w-xl overflow-hidden flex flex-col animate-in fade-in-50 zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white">
               <h3 className="font-bold text-gray-800 text-lg">
-                {editingItem ? "Editar Item da Biblioteca" : "Adicionar Novo Item"}
+                {editingItem ? "Editar Item" : "Adicionar Novo Item"}
               </h3>
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-200 rounded-lg transition-colors"
+                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Modal Body (Scrollable) */}
-            <div className="p-6 overflow-y-auto space-y-4 text-left">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">
-                    Código *
-                  </label>
-                  <input
-                    type="text"
-                    value={formCode}
-                    onChange={(e) => setFormCode(e.target.value)}
-                    placeholder="Ex: M-SAL-009"
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">
-                    Unidade *
-                  </label>
-                  <input
-                    type="text"
-                    value={formUnidade}
-                    onChange={(e) => setFormUnidade(e.target.value)}
-                    placeholder="Ex: un, m, conj"
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
-                  />
-                </div>
-              </div>
-
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 text-left">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
                   Descrição *
                 </label>
                 <input
                   type="text"
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Ex: Cadeira giratória estofada"
-                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                  placeholder="Ex: CADEIRA GIRATÓRIA ESTOFADA"
+                  className="w-full text-sm px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-500 outline-none bg-white text-gray-800 uppercase"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Unidade *
+                  </label>
+                  <select
+                    value={formUnidade}
+                    onChange={(e) => setFormUnidade(e.target.value)}
+                    className="w-full text-sm px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-500 outline-none bg-white text-gray-800"
+                  >
+                    <option value="">Selecione a unidade</option>
+                    {UNIDADES_PREDEFINIDAS.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                    {formUnidade && !UNIDADES_PREDEFINIDAS.includes(formUnidade) && (
+                      <option value={formUnidade}>{formUnidade}</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Ambiente (Classificação)
+                  </label>
+                  <select
+                    value={formAmbiente}
+                    onChange={(e) => setFormAmbiente(e.target.value)}
+                    className="w-full text-sm px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-500 outline-none bg-white text-gray-800"
+                  >
+                    <option value="">Selecione o ambiente</option>
+                    {AMBIENTES_CLASSIFICACAO_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
                     Tipo *
                   </label>
-                  <div className="flex rounded-lg overflow-hidden border mt-0.5">
+                  <div className="flex rounded-lg overflow-hidden border border-gray-300">
                     {(["mobiliario", "equipamento"] as TipoItemBiblioteca[]).map((t) => (
                       <button
                         key={t}
                         type="button"
                         onClick={() => setFormTipo(t)}
-                        className={`flex-1 py-2 text-sm font-medium transition-colors ${formTipo === t ? "bg-orange-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                        className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                          formTipo === t
+                            ? "bg-orange-500 text-white font-semibold"
+                            : "bg-white text-gray-600 hover:bg-gray-50"
+                        }`}
                       >
                         {t === "mobiliario" ? "Mobiliário" : "Equipamento"}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">
-                    Valor de Referência (R$) *
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={formValue}
-                    onChange={(e) => setFormValue(Number(e.target.value))}
-                    placeholder="0.00"
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2">
-                  Categorias Sugeridas (Onde o item pode ser usado)
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-gray-50 p-3 rounded-xl border max-h-44 overflow-y-auto">
-                  {CATEGORIAS_LIST.map((cat) => {
-                    const checked = formCategorias.includes(cat.value);
-                    return (
-                      <label
-                        key={cat.value}
-                        className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer select-none py-1 hover:bg-white px-2 rounded transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            if (checked) {
-                              setFormCategorias(formCategorias.filter((c) => c !== cat.value));
-                            } else {
-                              setFormCategorias([...formCategorias, cat.value]);
-                            }
-                          }}
-                          className="rounded text-orange-500 focus:ring-orange-300 h-3.5 w-3.5"
-                        />
-                        <span className="truncate">{cat.label}</span>
-                      </label>
-                    );
-                  })}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Valor de Referência *
+                  </label>
+                  <ItemCurrencyInput
+                    value={formValue}
+                    onChange={setFormValue}
+                    className="w-full text-sm px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-orange-500 outline-none bg-white text-gray-800"
+                  />
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-white">
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleSave}
-                className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors shadow-sm"
+                className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors shadow-sm"
               >
                 Salvar
               </button>
@@ -499,7 +560,7 @@ function ServicosCatalogTab({
     } else {
       setEditingItem(null);
       setFormDesc("");
-      setFormUnidade("ano");
+      setFormUnidade("ANO");
       setFormValue(0);
     }
     setIsOpen(true);
@@ -513,15 +574,15 @@ function ServicosCatalogTab({
     if (editingItem) {
       onUpdateItem({
         ...editingItem,
-        descricao: formDesc.trim(),
-        unidade: formUnidade.trim(),
+        descricao: formDesc.trim().toUpperCase(),
+        unidade: formUnidade.trim().toUpperCase(),
         valorAnual: formValue,
       });
     } else {
       onAddItem({
         id: `sv-${Date.now()}`,
-        descricao: formDesc.trim(),
-        unidade: formUnidade.trim(),
+        descricao: formDesc.trim().toUpperCase(),
+        unidade: formUnidade.trim().toUpperCase(),
         valorAnual: formValue,
       });
     }
@@ -573,8 +634,8 @@ function ServicosCatalogTab({
           <tbody className="divide-y divide-gray-100">
             {filtered.map((it) => (
               <tr key={it.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao}</td>
-                <td className="px-4 py-2.5 text-gray-500">{it.unidade}</td>
+                <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao.toUpperCase()}</td>
+                <td className="px-4 py-2.5 text-gray-500 font-medium">{it.unidade.toUpperCase()}</td>
                 <td className="px-4 py-2.5 text-right font-medium text-gray-800">
                   {BRL(it.valorAnual)}
                 </td>
@@ -583,7 +644,7 @@ function ServicosCatalogTab({
                     <button
                       onClick={() => openModal(it)}
                       className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Editar serviço"
+                      title="Editar Serviço"
                     >
                       <Pencil size={15} />
                     </button>
@@ -594,7 +655,7 @@ function ServicosCatalogTab({
                         }
                       }}
                       className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Excluir serviço"
+                      title="Excluir Serviço"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -635,8 +696,8 @@ function ServicosCatalogTab({
                   type="text"
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Ex: Manutenção de ar-condicionado"
-                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                  placeholder="Ex: Manutenção predial"
+                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
                 />
               </div>
 
@@ -649,8 +710,8 @@ function ServicosCatalogTab({
                     type="text"
                     value={formUnidade}
                     onChange={(e) => setFormUnidade(e.target.value)}
-                    placeholder="Ex: ano, mês, visita"
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                    placeholder="Ex: ANO, MÊS"
+                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
                   />
                 </div>
                 <div>
@@ -711,7 +772,7 @@ function AquisicoesCatalogTab({
   const [isOpen, setIsOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<AquisicaoAnual | null>(null);
   const [formDesc, setFormDesc] = useState("");
-  const [formUnidade, setFormUnidade] = useState("un");
+  const [formUnidade, setFormUnidade] = useState("UN");
   const [formValue, setFormValue] = useState<number>(0);
 
   const openModal = (item?: AquisicaoAnual) => {
@@ -723,7 +784,7 @@ function AquisicoesCatalogTab({
     } else {
       setEditingItem(null);
       setFormDesc("");
-      setFormUnidade("un");
+      setFormUnidade("UN");
       setFormValue(0);
     }
     setIsOpen(true);
@@ -737,15 +798,15 @@ function AquisicoesCatalogTab({
     if (editingItem) {
       onUpdateItem({
         ...editingItem,
-        descricao: formDesc.trim(),
-        unidade: formUnidade.trim(),
+        descricao: formDesc.trim().toUpperCase(),
+        unidade: formUnidade.trim().toUpperCase(),
         valorUnitario: formValue,
       });
     } else {
       onAddItem({
         id: `aq-${Date.now()}`,
-        descricao: formDesc.trim(),
-        unidade: formUnidade.trim(),
+        descricao: formDesc.trim().toUpperCase(),
+        unidade: formUnidade.trim().toUpperCase(),
         quantidadeAnual: 1, // default
         valorUnitario: formValue,
       });
@@ -798,8 +859,8 @@ function AquisicoesCatalogTab({
           <tbody className="divide-y divide-gray-100">
             {filtered.map((it) => (
               <tr key={it.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao}</td>
-                <td className="px-4 py-2.5 text-gray-500">{it.unidade}</td>
+                <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao.toUpperCase()}</td>
+                <td className="px-4 py-2.5 text-gray-500 font-medium">{it.unidade.toUpperCase()}</td>
                 <td className="px-4 py-2.5 text-right font-medium text-gray-800">
                   {BRL(it.valorUnitario)}
                 </td>
@@ -808,7 +869,7 @@ function AquisicoesCatalogTab({
                     <button
                       onClick={() => openModal(it)}
                       className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Editar aquisição"
+                      title="Editar Aquisição"
                     >
                       <Pencil size={15} />
                     </button>
@@ -819,7 +880,7 @@ function AquisicoesCatalogTab({
                         }
                       }}
                       className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Excluir aquisição"
+                      title="Excluir Aquisição"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -860,8 +921,8 @@ function AquisicoesCatalogTab({
                   type="text"
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Ex: Merenda escolar — creche"
-                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                  placeholder="Ex: Merenda escolar — Creche"
+                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
                 />
               </div>
 
@@ -874,13 +935,13 @@ function AquisicoesCatalogTab({
                     type="text"
                     value={formUnidade}
                     onChange={(e) => setFormUnidade(e.target.value)}
-                    placeholder="Ex: un, kg, resma"
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                    placeholder="Ex: UN, KG, RESMA"
+                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">
-                    Valor Unitário *
+                    Valor Unitário Ref. *
                   </label>
                   <input
                     type="number"
@@ -918,321 +979,7 @@ function AquisicoesCatalogTab({
   );
 }
 
-// ─── Simulador & Custeio Tab ──────────────────────────────────────────────────
-function SimuladorCusteioTab({
-  modelos,
-  ambientes,
-  cargosRef,
-}: {
-  modelos: ModeloCreche[];
-  ambientes: ModeloAmbiente[];
-  cargosRef: CargoReferencia[];
-}) {
-  const [quantidades, setQuantidades] = useState<Record<string, number>>(() => {
-    const init: Record<string, number> = {};
-    modelos.forEach((m, idx) => {
-      init[m.id] = idx === 0 ? 1 : 0; // Default to 1 for the first model
-    });
-    return init;
-  });
-  const [inflacao, setInflacao] = useState(4.5);
 
-  const handleIncrement = (id: string) => {
-    setQuantidades((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
-  };
-
-  const handleDecrement = (id: string) => {
-    setQuantidades((prev) => ({
-      ...prev,
-      [id]: Math.max(0, (prev[id] || 0) - 1),
-    }));
-  };
-
-  const rows = modelos.map((m) => {
-    const c = calcularCustoCreche(m, ambientes, cargosRef);
-    return {
-      modelo: m,
-      custos: c,
-    };
-  });
-
-  // Totais do cenário consolidado
-  let cenarioInvestimento = 0;
-  let cenarioCusteio = 0;
-  let cenarioPessoal = 0;
-  let cenarioServicos = 0;
-  let cenarioAquisicoes = 0;
-  let cenarioVagas = 0;
-  let cenarioSalas = 0;
-  let cenarioUnidades = 0;
-
-  rows.forEach(({ modelo, custos }) => {
-    const qty = quantidades[modelo.id] || 0;
-    cenarioInvestimento += custos.investimento * qty;
-    cenarioCusteio += custos.custeioAnual * qty;
-    cenarioPessoal += (custos.detalheCusteio?.pessoal || 0) * qty;
-    cenarioServicos += (custos.detalheCusteio?.servicos || 0) * qty;
-    cenarioAquisicoes += (custos.detalheCusteio?.aquisicoes || 0) * qty;
-    cenarioVagas += (modelo.capacidadeAlunos || 120) * qty;
-
-    const salasPorCreche = modelo.ambientes
-      .filter((ma) => {
-        const amb = ambientes.find((a) => a.id === ma.modeloAmbienteId);
-        return amb && (amb.categoria === "sala-atividades" || amb.categoria === "bercario");
-      })
-      .reduce((sum, ma) => sum + ma.quantidade, 0);
-
-    cenarioSalas += salasPorCreche * qty;
-    cenarioUnidades += qty;
-  });
-
-  const custoAlunoAno = cenarioVagas > 0 ? cenarioCusteio / cenarioVagas : 0;
-  const custoAlunoMes = custoAlunoAno / 12;
-
-  // Gerar dados para a projeção de 5 anos
-  const projData = [];
-  let acumulado = 0;
-  for (let i = 1; i <= 5; i++) {
-    const custoAnualAjustado = cenarioCusteio * Math.pow(1 + inflacao / 100, i - 1);
-    acumulado += custoAnualAjustado;
-    projData.push({
-      ano: `Ano ${i}`,
-      "Custo Anual": Math.round(custoAnualAjustado),
-      "Acumulado": Math.round(acumulado),
-    });
-  }
-
-  const pctPessoal = cenarioCusteio > 0 ? (cenarioPessoal / cenarioCusteio) * 100 : 0;
-  const pctServicos = cenarioCusteio > 0 ? (cenarioServicos / cenarioCusteio) * 100 : 0;
-  const pctAquisicoes = cenarioCusteio > 0 ? (cenarioAquisicoes / cenarioCusteio) * 100 : 0;
-
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div className="text-left">
-          <h2 className="text-lg font-semibold text-gray-800">
-            Simulador de Custeio e Expansão
-          </h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Planeje expansões de rede e simule o impacto financeiro consolidado de investimento e custeio.
-          </p>
-        </div>
-      </div>
-
-      {/* Network Scenario Builder */}
-      <div className="bg-slate-50/50 border border-slate-200 rounded-2xl p-5 text-left space-y-4">
-        <h3 className="font-extrabold text-slate-800 text-sm">
-          Planejamento de Unidades (Quantidade por Modelo)
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {modelos.map((modelo) => {
-            const qty = quantidades[modelo.id] || 0;
-            const singleC = rows.find((r) => r.modelo.id === modelo.id)?.custos;
-            return (
-              <div key={modelo.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between space-y-3">
-                <div>
-                  <h4 className="font-bold text-slate-800 text-sm truncate">{modelo.nome}</h4>
-                  <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{modelo.descricao}</p>
-                  <div className="text-[11px] text-slate-500 mt-1">
-                    Capacidade: <span className="font-semibold text-slate-700">{modelo.capacidadeAlunos || 120} alunos</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Investimento unit: <span className="font-bold text-blue-700">{BRL(singleC?.investimento || 0)}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Custeio unit/ano: <span className="font-bold text-orange-600">{BRL(singleC?.custeioAnual || 0)}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                  <span className="text-xs text-slate-400 font-semibold">Qtd. Simulação</span>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => handleDecrement(modelo.id)}
-                      className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-                    >
-                      -
-                    </button>
-                    <span className="w-6 text-center font-bold text-slate-800 text-sm">{qty}</span>
-                    <button 
-                      onClick={() => handleIncrement(modelo.id)}
-                      className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Scenario Consolidated Results Dashboard */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-4 border border-blue-100 shadow-sm text-left">
-          <p className="text-xs text-blue-600 font-bold uppercase tracking-wide">
-            Investimento Total
-          </p>
-          <p className="text-2xl font-extrabold text-blue-700 mt-1">
-            {BRL(cenarioInvestimento)}
-          </p>
-          <p className="text-xs text-blue-500 mt-1">
-            {cenarioUnidades} unidades planejadas
-          </p>
-        </div>
-        
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl p-4 border border-orange-100 shadow-sm text-left">
-          <p className="text-xs text-orange-600 font-bold uppercase tracking-wide">
-            Custeio Anual Consolidado
-          </p>
-          <p className="text-2xl font-extrabold text-orange-700 mt-1">
-            {BRL(cenarioCusteio)}
-          </p>
-          <p className="text-xs text-orange-500 mt-1">
-            Pessoal, Serviços e Consumo
-          </p>
-        </div>
-
-        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-2xl p-4 border border-emerald-100 shadow-sm text-left">
-          <p className="text-xs text-emerald-600 font-bold uppercase tracking-wide">
-            Novas Vagas de EI
-          </p>
-          <p className="text-2xl font-extrabold text-emerald-700 mt-1">
-            +{cenarioVagas} crianças
-          </p>
-          <p className="text-xs text-emerald-500 mt-1">
-            Atendimento nas {cenarioSalas} novas salas
-          </p>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-2xl p-4 border border-purple-100 shadow-sm text-left">
-          <p className="text-xs text-purple-600 font-bold uppercase tracking-wide">
-            Custo por Aluno / Mês
-          </p>
-          <p className="text-2xl font-extrabold text-purple-700 mt-1">
-            {BRL(custoAlunoMes)}
-          </p>
-          <p className="text-xs text-purple-500 mt-1">
-            Média ponderada da rede
-          </p>
-        </div>
-      </div>
-
-      {/* Simulator Controls & Projections */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Sliders and Distribution */}
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-5 text-left">
-          <h3 className="font-bold text-slate-800 text-sm">
-            Simulador de Reajuste
-          </h3>
-          
-          <div>
-            <div className="flex justify-between items-center text-xs font-semibold text-slate-600 mb-1.5">
-              <span>Estimativa de Inflação Anual</span>
-              <span className="text-orange-600 font-bold text-sm">{inflacao.toFixed(1)}% a.a.</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={15}
-              step={0.5}
-              value={inflacao}
-              onChange={(e) => setInflacao(Number(e.target.value))}
-              className="w-full accent-orange-500 h-1.5 bg-slate-200 rounded-lg cursor-pointer"
-            />
-            <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
-              Altere a inflação operacional projetada (pessoal, merenda, energia) para simular custos plurianuais (PPA).
-            </p>
-          </div>
-
-          <div className="border-t border-slate-200 pt-4">
-            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">
-              Distribuição de Gastos do Custeio
-            </h4>
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-xs text-slate-600 mb-1">
-                  <span className="font-medium flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
-                    Folha de Pagamento
-                  </span>
-                  <span className="font-bold text-indigo-700">{pctPessoal.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-slate-200 rounded-full h-2">
-                  <div className="bg-indigo-500 h-2 rounded-full transition-all duration-300" style={{ width: `${pctPessoal}%` }} />
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(cenarioPessoal)}/ano</div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs text-slate-600 mb-1">
-                  <span className="font-medium flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
-                    Serviços Terceirizados
-                  </span>
-                  <span className="font-bold text-blue-700">{pctServicos.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-slate-200 rounded-full h-2">
-                  <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: `${pctServicos}%` }} />
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(cenarioServicos)}/ano</div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs text-slate-600 mb-1">
-                  <span className="font-medium flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-teal-500 inline-block" />
-                    Aquisições e Consumo
-                  </span>
-                  <span className="font-bold text-teal-700">{pctAquisicoes.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-slate-200 rounded-full h-2">
-                  <div className="bg-teal-500 h-2 rounded-full transition-all duration-300" style={{ width: `${pctAquisicoes}%` }} />
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 text-right">{BRL(cenarioAquisicoes)}/ano</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Projection Chart */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 lg:col-span-2 text-left flex flex-col h-[320px]">
-          <h3 className="font-bold text-slate-800 text-sm mb-3">
-            Projeção Plurianual de Custeio (Rede Consolidada)
-          </h3>
-          <div className="flex-1 min-h-0 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={projData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="colorCusteio" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="ano" tick={{ fontSize: 10, fill: "#64748b" }} />
-                <YAxis 
-                  tick={{ fontSize: 10, fill: "#64748b" }} 
-                  tickFormatter={(v) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : `${v/1e3}k`} 
-                />
-                <Tooltip 
-                  formatter={(value: any) => [BRL(value), ""]}
-                  labelStyle={{ fontSize: 11, fontWeight: "bold", color: "#1e293b" }}
-                  contentStyle={{ borderRadius: 8, fontSize: 11 }}
-                />
-                <Area type="monotone" dataKey="Acumulado" stroke="#f97316" strokeWidth={2.5} fillOpacity={1} fill="url(#colorCusteio)" name="Custeio Acumulado" />
-                <Area type="monotone" dataKey="Custo Anual" stroke="#3b82f6" strokeWidth={1.5} fill="none" name="Valor no Ano" />
-                <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Folha de Pagamento Catalog Tab ────────────────────────────────────────
 interface FolhaPagamentoCatalogTabProps {
@@ -1281,7 +1028,7 @@ function FolhaPagamentoCatalogTab({
     if (editingItem) {
       onUpdateItem({
         ...editingItem,
-        descricao: formDesc.trim(),
+        descricao: formDesc.trim().toUpperCase(),
         remuneracaoBase: formRemuneracao,
         auxilios: formAuxilios,
         patronal: formPatronal,
@@ -1289,7 +1036,7 @@ function FolhaPagamentoCatalogTab({
     } else {
       onAddItem({
         id: `cg-${Date.now()}`,
-        descricao: formDesc.trim(),
+        descricao: formDesc.trim().toUpperCase(),
         remuneracaoBase: formRemuneracao,
         auxilios: formAuxilios,
         patronal: formPatronal,
@@ -1347,7 +1094,7 @@ function FolhaPagamentoCatalogTab({
               const total = it.remuneracaoBase + it.auxilios + it.patronal;
               return (
                 <tr key={it.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao}</td>
+                  <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao.toUpperCase()}</td>
                   <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.remuneracaoBase)}</td>
                   <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.auxilios)}</td>
                   <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.patronal)}</td>
@@ -1357,7 +1104,7 @@ function FolhaPagamentoCatalogTab({
                       <button
                         onClick={() => openModal(it)}
                         className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Editar cargo"
+                        title="Editar Cargo"
                       >
                         <Pencil size={15} />
                       </button>
@@ -1368,7 +1115,7 @@ function FolhaPagamentoCatalogTab({
                           }
                         }}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Excluir cargo"
+                        title="Excluir Cargo"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -1411,7 +1158,7 @@ function FolhaPagamentoCatalogTab({
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
                   placeholder="Ex: Professor Educação Infantil"
-                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
+                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
                 />
               </div>
 
@@ -1489,8 +1236,7 @@ type TabId =
   | "servicos"
   | "aquisicoes"
   | "folha"
-  | "modelos"
-  | "custeio";
+  | "modelos";
 
 const TABS: {
   id: TabId;
@@ -1500,7 +1246,7 @@ const TABS: {
 }[] = [
   {
     id: "biblioteca",
-    label: "Biblioteca",
+    label: "Itens",
     desc: "Itens FNDE de referência",
     icon: <BookOpen size={16} />,
   },
@@ -1513,13 +1259,13 @@ const TABS: {
   {
     id: "servicos",
     label: "Serviços",
-    desc: "Catálogo de Serviços",
+    desc: "Catálogo de serviços",
     icon: <Wrench size={16} />,
   },
   {
     id: "aquisicoes",
     label: "Aquisições",
-    desc: "Catálogo de Aquisições",
+    desc: "Catálogo de aquisições",
     icon: <ShoppingCart size={16} />,
   },
   {
@@ -1528,29 +1274,35 @@ const TABS: {
     desc: "Cargos e salários de referência",
     icon: <UserPlus size={16} />,
   },
-  {
-    id: "modelos",
-    label: "Modelos de Creche",
-    desc: "Composição Tipo B e C",
-    icon: <Building2 size={16} />,
-  },
-  {
-    id: "custeio",
-    label: "Custeio & Simulação",
-    desc: "Planejamento de rede e unitário",
-    icon: <BarChart3 size={16} />,
-  },
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ConfiguracoesCusto({
   onBack,
 }: ConfiguracoesCustoProps) {
-  const [activeTab, setActiveTab] =
-    useState<TabId>("biblioteca");
+  // Inicializa na tela de consulta de Modelos de Creche
+  const [activeTab, setActiveTab] = useState<TabId>("modelos");
   const [ambientes, setAmbientes] = useState<ModeloAmbiente[]>(() => {
-    const cached = localStorage.getItem("exp_creches_ambientes");
-    return cached ? JSON.parse(cached) : mockModelosAmbiente;
+    try {
+      const cached = localStorage.getItem("exp_creches_ambientes");
+      if (!cached) return mockModelosAmbiente;
+      const parsed: ModeloAmbiente[] = JSON.parse(cached);
+      // Remove any legacy items (e.g. b001, b002) from ambientes
+      const hasLegacy = parsed.some((a) =>
+        a.itens.some((i) => i.bibliotecaId?.startsWith("b0") || i.bibliotecaId?.startsWith("b1"))
+      );
+      const hasNewItems = parsed.some((a) =>
+        a.itens.some((i) => i.bibliotecaId?.startsWith("it-"))
+      );
+      // If cached has legacy items or lacks the new items in created environments, reset to mockModelosAmbiente!
+      if (hasLegacy || !hasNewItems) {
+        localStorage.setItem("exp_creches_ambientes", JSON.stringify(mockModelosAmbiente));
+        return mockModelosAmbiente;
+      }
+      return parsed;
+    } catch {
+      return mockModelosAmbiente;
+    }
   });
   const [modelos, setModelos] = useState<ModeloCreche[]>(() => {
     const cached = localStorage.getItem("exp_creches_modelos");
@@ -1565,8 +1317,26 @@ export default function ConfiguracoesCusto({
     });
   });
   const [bibliotecaItens, setBibliotecaItens] = useState<ItemBiblioteca[]>(() => {
-    const cached = localStorage.getItem("exp_creches_biblioteca");
-    return cached ? JSON.parse(cached) : mockBibliotecaItens;
+    try {
+      const cached = localStorage.getItem("exp_creches_biblioteca");
+      if (!cached) return mockBibliotecaItens;
+      const parsed: ItemBiblioteca[] = JSON.parse(cached);
+      // Purge completely any old legacy items (b001, b002, etc.)
+      const clean = parsed.filter(
+        (it) =>
+          !it.id.startsWith("b0") &&
+          !it.id.startsWith("b1") &&
+          (it.id.startsWith("it-") || it.id.startsWith("bib-"))
+      );
+      // Keep all official 33 new items plus any user-created items
+      const officialIds = new Set(mockBibliotecaItens.map((m) => m.id));
+      const userAdded = clean.filter((it) => !officialIds.has(it.id));
+      const result = [...mockBibliotecaItens, ...userAdded];
+      localStorage.setItem("exp_creches_biblioteca", JSON.stringify(result));
+      return result;
+    } catch {
+      return mockBibliotecaItens;
+    }
   });
   const [servicosRef, setServicosRef] = useState<ServicoAnual[]>(() => {
     const cached = localStorage.getItem("exp_creches_servicos_ref");
@@ -1612,6 +1382,7 @@ export default function ConfiguracoesCusto({
       localStorage.removeItem("exp_creches_biblioteca");
       localStorage.removeItem("exp_creches_servicos_ref");
       localStorage.removeItem("exp_creches_aquisicoes_ref");
+      localStorage.removeItem("exp_creches_cargos_ref");
 
       setAmbientes(mockModelosAmbiente);
       setModelos(mockModelosCreche);
@@ -1624,7 +1395,6 @@ export default function ConfiguracoesCusto({
   };
 
   const currentIdx = TABS.findIndex((t) => t.id === activeTab);
-  const padraoCnt = ambientes.filter((a) => a.padrao).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -1634,20 +1404,20 @@ export default function ConfiguracoesCusto({
           <div>
             <button
               onClick={onBack}
-              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors mb-4"
+              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors mb-4 font-semibold"
             >
               <ChevronLeft size={16} />
               Voltar
             </button>
             <div className="flex items-center gap-3 mb-1">
               <div className="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center">
-                <Settings className="w-5 h-5 text-white" />
+                <Building2 className="w-5 h-5 text-white" />
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-slate-800">
-                  Configurações de Custo
+                  Consultar Modelos de Creches
                 </h1>
-                <p className="text-slate-500">
+                <p className="text-slate-500 font-medium">
                   Ambientes, modelos e estimativas de custo para creches FNDE
                 </p>
               </div>
@@ -1657,7 +1427,7 @@ export default function ConfiguracoesCusto({
             onClick={restaurarPadroes}
             className="flex items-center gap-1.5 px-4 py-2 border border-slate-300 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors mt-9 shadow-sm"
           >
-            <RotateCcw className="w-4 h-4" /> Restaurar Padrões
+            <RotateCcw className="w-4 h-4" /> Restaurar padrões
           </button>
         </div>
 
@@ -1665,22 +1435,37 @@ export default function ConfiguracoesCusto({
           {/* Sidebar */}
           <aside className="w-56 shrink-0 bg-white rounded-2xl shadow-lg overflow-hidden sticky top-6">
             <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-4 py-4 text-white">
-              <p className="text-xs font-semibold uppercase tracking-widest opacity-80">
+              <p className="text-xs font-semibold tracking-wider opacity-80">
                 Configurações
               </p>
               <p className="text-sm font-bold mt-0.5">
                 Custo Creche
               </p>
-              <div className="mt-2 flex gap-2 text-xs opacity-90">
-                <span className="bg-white/20 px-2 py-0.5 rounded-full">
-                  {ambientes.length} ambientes
-                </span>
-                <span className="bg-white/20 px-2 py-0.5 rounded-full">
-                  {padraoCnt} padrão
-                </span>
-              </div>
             </div>
 
+            {/* Acesso rápido a Consultar Modelos */}
+            <div className="p-2 border-b border-slate-100">
+              <button
+                onClick={() => setActiveTab("modelos")}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-all rounded-xl ${
+                  activeTab === "modelos"
+                    ? "bg-orange-500 text-white font-bold shadow-sm"
+                    : "text-slate-700 hover:bg-slate-100 font-semibold"
+                }`}
+              >
+                <Building2 size={17} className={activeTab === "modelos" ? "text-white" : "text-orange-500"} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold truncate leading-tight">
+                    Consultar Modelos
+                  </p>
+                  <p className={`text-[10px] truncate ${activeTab === "modelos" ? "text-white/80" : "text-slate-400"}`}>
+                    Visão dos modelos
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* Opções de 1 a 5 */}
             <nav className="py-2">
               {TABS.map((tab, idx) => {
                 const active = activeTab === tab.id;
@@ -1690,7 +1475,7 @@ export default function ConfiguracoesCusto({
                     onClick={() => setActiveTab(tab.id)}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all ${
                       active
-                        ? "bg-orange-50 border-r-2 border-orange-500 text-orange-700"
+                        ? "bg-orange-50 border-r-2 border-orange-500 text-orange-700 font-semibold"
                         : "text-gray-600 hover:bg-gray-50"
                     }`}
                   >
@@ -1705,7 +1490,7 @@ export default function ConfiguracoesCusto({
                     </span>
                     <div className="min-w-0">
                       <p
-                        className={`text-sm font-medium truncate ${active ? "text-orange-700" : "text-gray-700"}`}
+                        className={`text-sm font-medium truncate ${active ? "text-orange-700 font-bold" : "text-gray-700"}`}
                       >
                         {tab.label}
                       </p>
@@ -1723,12 +1508,12 @@ export default function ConfiguracoesCusto({
                 <div
                   className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-500"
                   style={{
-                    width: `${((currentIdx + 1) / TABS.length) * 100}%`,
+                    width: `${activeTab === "modelos" ? 100 : ((currentIdx + 1) / TABS.length) * 100}%`,
                   }}
                 />
               </div>
-              <p className="text-xs text-gray-400 mt-1 text-center">
-                {currentIdx + 1} / {TABS.length}
+              <p className="text-xs text-gray-400 mt-1 text-center font-medium">
+                {activeTab === "modelos" ? "Modelos de Creche" : `${currentIdx + 1} / ${TABS.length}`}
               </p>
             </div>
           </aside>
@@ -1791,13 +1576,6 @@ export default function ConfiguracoesCusto({
                 onChange={setModelos}
                 servicosRef={servicosRef}
                 aquisicoesRef={aquisicoesRef}
-                cargosRef={cargosRef}
-              />
-            )}
-            {activeTab === "custeio" && (
-              <SimuladorCusteioTab
-                modelos={modelos}
-                ambientes={ambientes}
                 cargosRef={cargosRef}
               />
             )}

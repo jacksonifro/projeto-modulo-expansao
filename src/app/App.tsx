@@ -18,6 +18,7 @@ import {
   ChevronRight,
   MapPin,
   Activity,
+  Calculator,
 } from 'lucide-react';
 
 type SidebarView =
@@ -25,6 +26,7 @@ type SidebarView =
   | 'dashboard'
   | 'diagnostico-municipio'
   | 'configuracoes-custo'
+  | 'custeio-simulacao'
   | 'cadastro-servidores'
   | 'servidores'
   | 'unidades-escolares'
@@ -45,10 +47,11 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, num: '1', section: 'expansao' },
   { id: 'diagnostico-municipio', label: 'Diagnóstico do Município', icon: <Activity className="w-5 h-5" />, num: '2', section: 'expansao' },
   { id: 'planos', label: 'Planos de Expansão', icon: <FolderKanban className="w-5 h-5" />, num: '3', section: 'expansao' },
-  { id: 'configuracoes-custo', label: 'Config. de Custo', icon: <Settings className="w-5 h-5" />, num: '4', section: 'expansao' },
-  { id: 'all-schools', label: 'Quadro Kanban', icon: <BarChart3 className="w-5 h-5" />, num: '5', section: 'expansao' },
-  { id: 'reports', label: 'Relatórios', icon: <FileText className="w-5 h-5" />, num: '6', section: 'expansao' },
-  { id: 'mapas', label: 'Mapas Interativos', icon: <MapPin className="w-5 h-5" />, num: '7', section: 'expansao' },
+  { id: 'configuracoes-custo', label: 'Consultar Modelos de Creches', icon: <Building2 className="w-5 h-5" />, num: '4', section: 'expansao' },
+  { id: 'custeio-simulacao', label: 'Custeio & Simulação', icon: <Calculator className="w-5 h-5" />, num: '5', section: 'expansao' },
+  { id: 'all-schools', label: 'Quadro Kanban', icon: <BarChart3 className="w-5 h-5" />, num: '6', section: 'expansao' },
+  { id: 'reports', label: 'Relatórios', icon: <FileText className="w-5 h-5" />, num: '7', section: 'expansao' },
+  { id: 'mapas', label: 'Mapas Interativos', icon: <MapPin className="w-5 h-5" />, num: '8', section: 'expansao' },
 ];
 
 export default function App() {

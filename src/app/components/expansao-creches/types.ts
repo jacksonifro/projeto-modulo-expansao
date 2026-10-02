@@ -51,6 +51,7 @@ export interface ItemBiblioteca {
   tipo: TipoItemBiblioteca;
   descricao: string;
   unidade: string;
+  ambienteClassificacao?: string; // Classificação por ambiente: COPA, FRALDÁRIO / SANITÁRIOS, etc.
   valorUnitarioRef: number; // valor de referência SINAPI/FNDE
   categoriasSugeridas: CategoriaAmbiente[];
 }

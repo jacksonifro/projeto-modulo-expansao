@@ -83,7 +83,7 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
     <div className="space-y-3">
       <div className="flex items-center gap-2 mb-3">
         <select value={addingId} onChange={e => setAddingId(e.target.value)}
-          className="flex-1 text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+          className="flex-1 text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none font-medium">
           <option value="">— Adicionar ambiente ao modelo —</option>
           {ambientes.map(a => {
             const c = calcularCustoAmbiente(a);
@@ -95,7 +95,7 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
           })}
         </select>
         <button onClick={addAmbiente} disabled={!addingId}
-          className="flex items-center gap-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">
+          className="flex items-center gap-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-40">
           <Plus className="w-4 h-4" /> Adicionar
         </button>
       </div>
@@ -103,16 +103,16 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
       {modelo.ambientes.length === 0 ? (
         <div className="text-center py-8 text-slate-400 border border-dashed border-slate-300 rounded-xl">
           <Building2 className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">Nenhum ambiente adicionado</p>
+          <p className="text-sm font-semibold">Nenhum ambiente adicionado</p>
           <p className="text-xs">Selecione um ambiente da biblioteca acima</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50">
+            <thead className="bg-slate-50 text-xs">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Ambiente</th>
-                <th className="text-center px-4 py-3 font-semibold text-slate-600">Área unit.</th>
+                <th className="text-center px-4 py-3 font-semibold text-slate-600">Área Unit.</th>
                 <th className="text-center px-4 py-3 font-semibold text-slate-600 w-24">Qtd</th>
                 <th className="text-right px-4 py-3 font-semibold text-slate-600">Obra/un.</th>
                 <th className="text-right px-4 py-3 font-semibold text-slate-600">Mob.+Eq./un.</th>
@@ -134,7 +134,7 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
                       </div>
                       <input
                         value={ma.nomeOverride ?? ''}
-                        onChange={e => updateAmbiente(ma.id, 'nomeOverride', e.target.value || undefined)}
+                        onChange={e => updateAmbiente(ma.id, 'nomeOverride', e.target.value.toUpperCase() || undefined)}
                         placeholder="Nome personalizado (opcional)"
                         className="mt-0.5 text-xs text-slate-400 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 outline-none w-full"
                       />
@@ -143,7 +143,7 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
                     <td className="px-4 py-3 text-center">
                       <input type="number" min={1} value={ma.quantidade}
                         onChange={e => updateAmbiente(ma.id, 'quantidade', Number(e.target.value))}
-                        className="w-20 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none" />
+                        className="w-20 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-bold" />
                     </td>
                     <td className="px-4 py-3 text-right text-slate-600">{BRL(c.obras)}</td>
                     <td className="px-4 py-3 text-right text-slate-600">{BRL(c.mobiliario + c.equipamentos)}</td>
@@ -160,8 +160,8 @@ function AmbientesDoModelo({ modelo, ambientes, onUpdate }: {
             </tbody>
             <tfoot className="bg-slate-100 border-t-2 border-slate-300">
               <tr>
-                <td className="px-4 py-3 font-bold text-slate-700" colSpan={5}>
-                  Área total: {modelo.ambientes.reduce((s, ma) => {
+                <td className="px-4 py-3 font-semibold text-slate-700" colSpan={5}>
+                  Área Total: {modelo.ambientes.reduce((s, ma) => {
                     const amb = ambientes.find(a => a.id === ma.modeloAmbienteId);
                     return s + (amb ? amb.areaMq * ma.quantidade : 0);
                   }, 0)} m²
@@ -243,7 +243,7 @@ function ServicosTab({
         <button
           onClick={addServico}
           disabled={!addingId}
-          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0 shadow-sm"
+          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0 shadow-sm"
         >
           <Plus className="w-4 h-4" /> Vincular Serviço
         </button>
@@ -254,13 +254,13 @@ function ServicosTab({
           <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3 border border-blue-100">
             <Wrench className="w-5 h-5 text-blue-500" />
           </div>
-          <p className="font-semibold text-slate-700 text-sm">Nenhum serviço operacional vinculado</p>
+          <p className="font-bold text-slate-700 text-sm">Nenhum serviço operacional vinculado</p>
           <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Vincule serviços do catálogo de referência para compor os custos operacionais anuais deste modelo.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-slate-50 border-b border-slate-200 text-xs">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Descrição</th>
                 <th className="text-center px-4 py-3 font-semibold text-slate-600 w-32">Unidade</th>
@@ -277,8 +277,8 @@ function ServicosTab({
                   <td className="px-4 py-3 text-center">
                     <input
                       value={sv.unidade}
-                      onChange={(e) => update(sv.id, "unidade", e.target.value)}
-                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-white text-gray-800 font-medium"
+                      onChange={(e) => update(sv.id, "unidade", e.target.value.toUpperCase())}
+                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-white text-gray-800 font-bold uppercase"
                     />
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -301,8 +301,8 @@ function ServicosTab({
             </tbody>
             <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold">
               <tr>
-                <td className="px-4 py-3 font-bold text-slate-700" colSpan={2}>
-                  Total serviços / ano
+                <td className="px-4 py-3 font-semibold text-slate-700" colSpan={2}>
+                  Total Serviços / Ano
                 </td>
                 <td className="px-4 py-3 text-right font-black text-blue-700 text-base">
                   {BRL(total)}
@@ -378,7 +378,7 @@ function AquisicoesTab({
         <button
           onClick={addAquisicao}
           disabled={!addingId}
-          className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors shrink-0 shadow-sm"
+          className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600 transition-colors shrink-0 shadow-sm"
         >
           <Plus className="w-4 h-4" /> Vincular Aquisição
         </button>
@@ -389,19 +389,19 @@ function AquisicoesTab({
           <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mx-auto mb-3 border border-orange-100">
             <ShoppingCart className="w-5 h-5 text-orange-500" />
           </div>
-          <p className="font-semibold text-slate-700 text-sm">Nenhuma aquisição vinculada</p>
+          <p className="font-bold text-slate-700 text-sm">Nenhuma aquisição vinculada</p>
           <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Vincule materiais e suprimentos do catálogo de referência para compor as aquisições anuais deste modelo.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-slate-50 border-b border-slate-200 text-xs">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Descrição</th>
                 <th className="text-center px-4 py-3 font-semibold text-slate-600 w-32">Unidade</th>
                 <th className="text-center px-4 py-3 font-semibold text-slate-600 w-28">Quantidade</th>
                 <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Valor Unit.</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Total/ano</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Total/Ano</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -414,8 +414,8 @@ function AquisicoesTab({
                   <td className="px-4 py-3 text-center">
                     <input
                       value={aq.unidade}
-                      onChange={(e) => update(aq.id, "unidade", e.target.value)}
-                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-gray-800 font-medium"
+                      onChange={(e) => update(aq.id, "unidade", e.target.value.toUpperCase())}
+                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-gray-800 font-bold uppercase"
                     />
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -447,7 +447,7 @@ function AquisicoesTab({
             </tbody>
             <tfoot className="bg-slate-100 border-t-2 border-slate-300">
               <tr>
-                <td className="px-4 py-3 font-bold" colSpan={4}>Total aquisições / ano</td>
+                <td className="px-4 py-3 font-semibold" colSpan={4}>Total Aquisições / Ano</td>
                 <td className="px-4 py-3 text-right font-black text-orange-700">{BRL(total)}</td>
                 <td />
               </tr>
@@ -531,7 +531,7 @@ function FolhaPagamentoTab({
         <button
           onClick={addCargo}
           disabled={!addingId}
-          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shrink-0 shadow-sm"
+          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors shrink-0 shadow-sm"
         >
           <Plus className="w-4 h-4" /> Adicionar à Equipe
         </button>
@@ -542,18 +542,18 @@ function FolhaPagamentoTab({
           <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3 border border-blue-100">
             <UserPlus className="w-5 h-5 text-blue-500" />
           </div>
-          <p className="font-semibold text-slate-700 text-sm">Nenhum cargo na equipe</p>
+          <p className="font-bold text-slate-700 text-sm">Nenhum cargo na equipe</p>
           <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Vincule os cargos necessários para a operação padrão desta creche.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-slate-50 border-b border-slate-200 text-xs">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Cargo/Função</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600">Custo Unit. (Mês)</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600">Custo Unit. (mês)</th>
                 <th className="text-center px-4 py-3 font-semibold text-slate-600 w-28">Quantidade</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Total (Mês)</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Total (mês)</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -593,7 +593,7 @@ function FolhaPagamentoTab({
             </tbody>
             <tfoot className="bg-slate-100 border-t-2 border-slate-300">
               <tr>
-                <td className="px-4 py-3 font-bold" colSpan={3}>Custo mensal da equipe</td>
+                <td className="px-4 py-3 font-semibold" colSpan={3}>Custo Mensal da Equipe</td>
                 <td className="px-4 py-3 text-right font-black text-blue-700">{BRL(totalMensal)}</td>
                 <td />
               </tr>
@@ -641,7 +641,7 @@ function ModeloCard({
     { id: 'ambientes', label: 'Ambientes', icon: <Building2 className="w-3.5 h-3.5" /> },
     { id: 'servicos', label: 'Serviços', icon: <Wrench className="w-3.5 h-3.5" /> },
     { id: 'aquisicoes', label: 'Aquisições', icon: <ShoppingCart className="w-3.5 h-3.5" /> },
-    { id: 'folha', label: 'Folha Pagamento', icon: <UserPlus className="w-3.5 h-3.5" /> },
+    { id: 'folha', label: 'Folha de Pagamento', icon: <UserPlus className="w-3.5 h-3.5" /> },
     { id: 'resumo', label: 'Resumo', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   ];
 
@@ -679,19 +679,19 @@ function ModeloCard({
         {/* Cost summary */}
         <div className="hidden lg:grid grid-cols-4 gap-4 shrink-0">
           <div className="text-center">
-            <div className="text-xs text-slate-400">Investimento</div>
+            <div className="text-xs text-slate-400 font-semibold">Investimento</div>
             <div className="font-bold text-slate-800">{BRL(custo.investimento)}</div>
           </div>
           <div className="text-center">
-            <div className="text-xs text-slate-400">Custeio/ano</div>
+            <div className="text-xs text-slate-400 font-semibold">Custeio/Ano</div>
             <div className="font-bold text-amber-700">{BRL(custo.custeioAnual)}</div>
           </div>
           <div className="text-center">
-            <div className="text-xs text-slate-400">Ambientes</div>
+            <div className="text-xs text-slate-400 font-semibold">Ambientes</div>
             <div className="font-bold text-blue-700">{modelo.ambientes.length}</div>
           </div>
           <div className="text-center">
-            <div className="text-xs text-slate-400">Capacidade</div>
+            <div className="text-xs text-slate-400 font-semibold">Capacidade</div>
             <div className="font-bold text-green-700">{modelo.capacidadeAlunos} vagas</div>
           </div>
         </div>
@@ -729,7 +729,7 @@ function ModeloCard({
               <div className="flex items-center gap-2">
                 <input type="number" min={0} max={30} value={modelo.reservaPct}
                   onChange={e => onUpdate({ ...modelo, reservaPct: Number(e.target.value) })}
-                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold" />
                 <span className="text-slate-500 text-sm font-semibold shrink-0">%</span>
               </div>
             </div>
@@ -798,7 +798,7 @@ function ResumoModelo({ modelo, ambientes, custo }: {
   const custeioAquisicoes = modelo.aquisicoes.reduce((s, aq) => s + aq.quantidadeAnual * aq.valorUnitario, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-left">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Obra Civil', value: custo.obras, color: 'text-slate-800', bg: 'bg-slate-50 border-slate-200' },
@@ -808,7 +808,7 @@ function ResumoModelo({ modelo, ambientes, custo }: {
         ].map(item => (
           <div key={item.label} className={`rounded-xl border p-4 text-center ${item.bg}`}>
             <div className={`font-bold text-lg ${item.color}`}>{BRL(item.value)}</div>
-            <div className="text-xs text-slate-500 mt-1">{item.label}</div>
+            <div className="text-xs text-slate-500 mt-1 font-semibold">{item.label}</div>
           </div>
         ))}
       </div>
@@ -816,27 +816,27 @@ function ResumoModelo({ modelo, ambientes, custo }: {
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="text-blue-200 text-sm font-semibold">INVESTIMENTO TOTAL</div>
+            <div className="text-blue-200 text-xs font-bold tracking-wider">INVESTIMENTO TOTAL</div>
             <div className="text-4xl font-black">{BRL(custo.investimento)}</div>
-            <div className="text-blue-200 text-xs mt-1">Área total: {totalArea} m²  ·  Custo/m²: {BRL(custo.investimento / Math.max(1, totalArea))}</div>
+            <div className="text-blue-200 text-xs mt-1">Área Total: {totalArea} m²  ·  Custo/m²: {BRL(custo.investimento / Math.max(1, totalArea))}</div>
           </div>
           <div className="text-right">
-            <div className="text-blue-200 text-sm">Custeio anual</div>
+            <div className="text-blue-200 text-xs font-bold">CUSTEIO ANUAL</div>
             <div className="text-2xl font-bold">{BRL(custo.custeioAnual)}</div>
-            <div className="text-blue-200 text-xs">serv. + aquisições</div>
+            <div className="text-blue-200 text-xs">Serv. + Aquisições</div>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-4 border-t border-blue-500 pt-4">
           <div className="text-center">
-            <div className="text-blue-200 text-xs">Serviços/ano</div>
+            <div className="text-blue-200 text-xs font-semibold">Serviços/Ano</div>
             <div className="font-bold">{BRL(custeioServicos)}</div>
           </div>
           <div className="text-center">
-            <div className="text-blue-200 text-xs">Aquisições/ano</div>
+            <div className="text-blue-200 text-xs font-semibold">Aquisições/Ano</div>
             <div className="font-bold">{BRL(custeioAquisicoes)}</div>
           </div>
           <div className="text-center">
-            <div className="text-blue-200 text-xs">Ambientes</div>
+            <div className="text-blue-200 text-xs font-semibold">Ambientes</div>
             <div className="font-bold">{modelo.ambientes.reduce((s, ma) => s + ma.quantidade, 0)} espaços</div>
           </div>
         </div>
@@ -844,7 +844,7 @@ function ResumoModelo({ modelo, ambientes, custo }: {
 
       {/* Breakdown por ambiente */}
       <div>
-        <h4 className="font-bold text-slate-700 mb-3">Custo por ambiente</h4>
+        <h4 className="font-bold text-slate-700 mb-3 text-xs tracking-wider">Custo por Ambiente</h4>
         <div className="space-y-2">
           {modelo.ambientes.map(ma => {
             const amb = ambientes.find(a => a.id === ma.modeloAmbienteId);
@@ -933,48 +933,58 @@ export default function ModeloCrecheBuilder({
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
         <AlertCircle className="w-12 h-12 mb-4 opacity-30" />
-        <p className="font-semibold text-slate-600">Cadastre ambientes primeiro</p>
-        <p className="text-sm mt-1">Vá à aba <strong>Ambientes</strong> e configure os espaços antes de montar um modelo de creche.</p>
+        <p className="font-bold text-slate-600">Cadastre ambientes primeiro</p>
+        <p className="text-xs mt-1">Vá à aba <strong>Ambientes</strong> e configure os espaços antes de montar um modelo de creche.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 p-6">
+      {/* Header Superior com Botão Novo */}
+      <div className="flex items-center justify-between gap-4 pb-3 border-b border-slate-100">
+        <div className="text-left">
+          <h2 className="text-xl font-bold text-slate-800 tracking-tight">
+            Consultar Modelos de Creches
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Modelos de creche cadastrados com composições de ambientes, custos e capacidade.
+          </p>
+        </div>
+        <button
+          onClick={openAddModal}
+          className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold transition-colors shadow-sm text-xs shrink-0"
+        >
+          <Plus className="w-4 h-4" /> Novo Modelo de Creche
+        </button>
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-          <div className="text-2xl font-bold text-slate-800">{modelos.length}</div>
-          <div className="text-sm text-slate-500">Modelos de Creche</div>
+          <div className="text-2xl font-black text-slate-800">{modelos.length}</div>
+          <div className="text-xs text-slate-500 font-semibold mt-1">Modelos de Creche</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-          <div className="text-2xl font-bold text-blue-700">
+          <div className="text-2xl font-black text-blue-700">
             {modelos.filter(m => m.tipoBase === 'tipo1').length}
           </div>
-          <div className="text-sm text-slate-500">Modelos Tipo 1</div>
+          <div className="text-xs text-slate-500 font-semibold mt-1">Modelos Tipo 1</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-          <div className="text-2xl font-bold text-green-700">
+          <div className="text-2xl font-black text-green-700">
             {modelos.filter(m => m.tipoBase === 'tipo2').length}
           </div>
-          <div className="text-sm text-slate-500">Modelos Tipo 2</div>
+          <div className="text-xs text-slate-500 font-semibold mt-1">Modelos Tipo 2</div>
         </div>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex justify-end">
-        <button onClick={openAddModal}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-sm text-sm">
-          <Plus className="w-4 h-4" /> Novo Modelo de Creche
-        </button>
       </div>
 
       {/* Lista de modelos */}
       {modelos.length === 0 ? (
         <div className="text-center py-12 text-slate-400 border border-dashed border-slate-300 rounded-2xl">
           <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>Nenhum modelo configurado</p>
-          <p className="text-sm">Clique em "Novo Modelo de Creche" para começar</p>
+          <p className="font-bold text-sm">Nenhum modelo configurado</p>
+          <p className="text-xs mt-1">Clique em "Novo Modelo de Creche" para começar</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -1018,7 +1028,7 @@ export default function ModeloCrecheBuilder({
                   value={formNome}
                   onChange={(e) => setFormNome(e.target.value)}
                   placeholder="Ex: Creche Modular Padrão Cacoal"
-                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800"
+                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800 font-semibold"
                 />
               </div>
 
@@ -1063,7 +1073,7 @@ export default function ModeloCrecheBuilder({
                     max={100}
                     value={formReservaPct}
                     onChange={(e) => setFormReservaPct(Number(e.target.value))}
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800"
+                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-800 font-bold"
                   />
                 </div>
               </div>
@@ -1073,14 +1083,14 @@ export default function ModeloCrecheBuilder({
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="px-4 py-2 border rounded-lg text-sm text-slate-600 hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 border rounded-lg text-xs font-bold text-slate-600 hover:bg-gray-100 transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleSave}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
               >
                 Salvar
               </button>

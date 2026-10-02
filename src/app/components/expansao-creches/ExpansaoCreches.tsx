@@ -12,6 +12,7 @@ import ReportFilters from './ReportFilters';
 import ReportView from './ReportView';
 import Servidores from './Servidores';
 import ConfiguracoesCusto from './ConfiguracoesCusto';
+import CusteioSimulacao from './CusteioSimulacao';
 import UnidadesEscolares from './UnidadesEscolares';
 import PlanoView from './PlanoView';
 import QuadroKanbanGlobal from './QuadroKanbanGlobal';
@@ -20,7 +21,7 @@ import MapasMenu from './MapasMenu';
 import MapaDemandasView from './MapaDemandasView';
 import DiagnosticoMunicipio from './DiagnosticoMunicipio';
 
-type View = 'dashboard' | 'schools' | 'kanban' | 'planos' | 'all-schools' | 'new-plano' | 'edit-plano' | 'view-plano' | 'new-school' | 'edit-school' | 'view-school' | 'reports' | 'report-filters' | 'report-view' | 'servidores' | 'configuracoes-custo' | 'unidades-escolares' | 'mapas' | 'mapa-demandas' | 'diagnostico-municipio';
+type View = 'dashboard' | 'schools' | 'kanban' | 'planos' | 'all-schools' | 'new-plano' | 'edit-plano' | 'view-plano' | 'new-school' | 'edit-school' | 'view-school' | 'reports' | 'report-filters' | 'report-view' | 'servidores' | 'configuracoes-custo' | 'custeio-simulacao' | 'unidades-escolares' | 'mapas' | 'mapa-demandas' | 'diagnostico-municipio';
 
 interface NavigationState {
   view: View;
@@ -68,6 +69,8 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
       setNavigation({ view: 'servidores' });
     } else if (view === 'configuracoes-custo') {
       setNavigation({ view: 'configuracoes-custo' });
+    } else if (view === 'custeio-simulacao') {
+      setNavigation({ view: 'custeio-simulacao' });
     } else if (view === 'unidades-escolares') {
       setNavigation({ view: 'unidades-escolares' });
     } else if (view === 'view-plano') {
@@ -171,7 +174,10 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
         <Servidores onBack={handleBack} />
       )}
       {navigation.view === 'configuracoes-custo' && (
-        <ConfiguracoesCusto onBack={handleBack} />
+        <ConfiguracoesCusto onBack={handleBack} onNavigate={handleNavigate} />
+      )}
+      {navigation.view === 'custeio-simulacao' && (
+        <CusteioSimulacao onBack={handleBack} onNavigate={handleNavigate} />
       )}
       {navigation.view === 'unidades-escolares' && (
         <UnidadesEscolares onBack={handleBack} />

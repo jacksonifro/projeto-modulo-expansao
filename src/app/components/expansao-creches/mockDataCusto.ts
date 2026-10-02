@@ -16,82 +16,51 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const mockBibliotecaItens: ItemBiblioteca[] = [
-  // ── Mobiliário Sala de Atividades ───────────────────────────────────────
-  { id: 'b001', codigo: 'M-SAL-001', tipo: 'mobiliario', descricao: 'Mesa infantil trapezoidal 120x60cm', unidade: 'un', valorUnitarioRef: 420, categoriasSugeridas: ['sala-atividades', 'sala-recursos'] },
-  { id: 'b002', codigo: 'M-SAL-002', tipo: 'mobiliario', descricao: 'Cadeira infantil PP sem braço', unidade: 'un', valorUnitarioRef: 148, categoriasSugeridas: ['sala-atividades', 'refeitorio', 'sala-recursos'] },
-  { id: 'b003', codigo: 'M-SAL-003', tipo: 'mobiliario', descricao: 'Mesa professor 120x60cm c/ gaveta', unidade: 'un', valorUnitarioRef: 780, categoriasSugeridas: ['sala-atividades', 'bercario', 'sala-professores', 'sala-recursos'] },
-  { id: 'b004', codigo: 'M-SAL-004', tipo: 'mobiliario', descricao: 'Cadeira ergonômica professor', unidade: 'un', valorUnitarioRef: 520, categoriasSugeridas: ['sala-atividades', 'bercario', 'administracao', 'sala-professores'] },
-  { id: 'b005', codigo: 'M-SAL-005', tipo: 'mobiliario', descricao: 'Armário baixo 120x40x80cm c/ 2 portas', unidade: 'un', valorUnitarioRef: 1380, categoriasSugeridas: ['sala-atividades', 'sala-recursos'] },
-  { id: 'b006', codigo: 'M-SAL-006', tipo: 'mobiliario', descricao: 'Estante aberta para livros/material pedagógico', unidade: 'un', valorUnitarioRef: 720, categoriasSugeridas: ['sala-atividades', 'sala-professores', 'sala-recursos'] },
-  { id: 'b007', codigo: 'M-SAL-007', tipo: 'mobiliario', descricao: 'Quadro branco magnético 200x120cm', unidade: 'un', valorUnitarioRef: 580, categoriasSugeridas: ['sala-atividades', 'sala-recursos', 'sala-professores'] },
-  { id: 'b008', codigo: 'M-SAL-008', tipo: 'mobiliario', descricao: 'Cabide/gancho individual com placa identificação', unidade: 'un', valorUnitarioRef: 68, categoriasSugeridas: ['sala-atividades', 'bercario'] },
+  // ── ITENS DE REFERÊNCIA POR AMBIENTE (FNDE / SINAPI) ──────────────────────
+  // COPA
+  { id: 'it-cop-001', codigo: 'COP-001', tipo: 'equipamento', descricao: 'ESTERILIZADOR DE MAMADEIRAS PARA MICROONDAS', unidade: 'UN', ambienteClassificacao: 'COPA', valorUnitarioRef: 84.55, categoriasSugeridas: ['cozinha', 'bercario'] },
+  { id: 'it-cop-002', codigo: 'COP-002', tipo: 'equipamento', descricao: 'FOGÃO ELÉTRICO 2 BOCAS ANTIADERENTE AÇO INOX', unidade: 'UN', ambienteClassificacao: 'COPA', valorUnitarioRef: 250.00, categoriasSugeridas: ['cozinha'] },
+  { id: 'it-cop-003', codigo: 'COP-003', tipo: 'equipamento', descricao: 'MICROONDAS 30L - LINHA BRANCA', unidade: 'UN', ambienteClassificacao: 'COPA', valorUnitarioRef: 389.14, categoriasSugeridas: ['cozinha'] },
+  { id: 'it-cop-004', codigo: 'COP-004', tipo: 'equipamento', descricao: 'PURIFICADOR DE ÁGUA', unidade: 'UN', ambienteClassificacao: 'COPA', valorUnitarioRef: 492.99, categoriasSugeridas: ['cozinha', 'refeitorio'] },
+  { id: 'it-cop-005', codigo: 'COP-005', tipo: 'equipamento', descricao: 'REFRIGERADOR DOMÉSTICO "FROSTFREE" 300L', unidade: 'UN', ambienteClassificacao: 'COPA', valorUnitarioRef: 1762.21, categoriasSugeridas: ['cozinha'] },
+  { id: 'it-cop-006', codigo: 'COP-006', tipo: 'equipamento', descricao: 'CISTERNA 300L', unidade: 'UN', ambienteClassificacao: 'COPA', valorUnitarioRef: 649.00, categoriasSugeridas: ['cozinha', 'outros'] },
 
-  // ── Mobiliário Berçário ─────────────────────────────────────────────────
-  { id: 'b010', codigo: 'M-BER-001', tipo: 'mobiliario', descricao: 'Berço grade móvel colchão incluso', unidade: 'un', valorUnitarioRef: 1250, categoriasSugeridas: ['bercario'] },
-  { id: 'b011', codigo: 'M-BER-002', tipo: 'mobiliario', descricao: 'Mesa trocador c/ cuba e gradil', unidade: 'un', valorUnitarioRef: 1680, categoriasSugeridas: ['bercario', 'fraldario'] },
-  { id: 'b012', codigo: 'M-BER-003', tipo: 'mobiliario', descricao: 'Poltrona amamentação c/ apoio lateral', unidade: 'un', valorUnitarioRef: 1450, categoriasSugeridas: ['bercario', 'sala-amamentacao'] },
-  { id: 'b013', codigo: 'M-BER-004', tipo: 'mobiliario', descricao: 'Armário alto 2 portas para enxoval', unidade: 'un', valorUnitarioRef: 1680, categoriasSugeridas: ['bercario', 'lavanderia'] },
-  { id: 'b014', codigo: 'M-BER-005', tipo: 'mobiliario', descricao: 'Colchonete tatame espuma D33 100x50cm', unidade: 'un', valorUnitarioRef: 185, categoriasSugeridas: ['bercario', 'sala-atividades'] },
+  // FRALDÁRIO / SANITÁRIOS
+  { id: 'it-fra-001', codigo: 'FRA-001', tipo: 'mobiliario', descricao: 'COLCHONETE PARA TROCADOR', unidade: 'UN', ambienteClassificacao: 'FRALDÁRIO / SANITÁRIOS', valorUnitarioRef: 23.01, categoriasSugeridas: ['bercario', 'banheiro-infantil'] },
+  { id: 'it-fra-002', codigo: 'FRA-002', tipo: 'mobiliario', descricao: 'LIXEIRA COM PEDAL 50L', unidade: 'UN', ambienteClassificacao: 'FRALDÁRIO / SANITÁRIOS', valorUnitarioRef: 150.09, categoriasSugeridas: ['banheiro-infantil', 'banheiro-adulto', 'cozinha'] },
 
-  // ── Mobiliário Refeitório ───────────────────────────────────────────────
-  { id: 'b020', codigo: 'M-REF-001', tipo: 'mobiliario', descricao: 'Mesa refeitório infantil 4 lugares', unidade: 'un', valorUnitarioRef: 820, categoriasSugeridas: ['refeitorio'] },
-  { id: 'b021', codigo: 'M-REF-002', tipo: 'mobiliario', descricao: 'Balcão de distribuição aço inox 200cm', unidade: 'un', valorUnitarioRef: 4200, categoriasSugeridas: ['refeitorio'] },
-  { id: 'b022', codigo: 'M-REF-003', tipo: 'mobiliario', descricao: 'Armário aço 4 portas', unidade: 'un', valorUnitarioRef: 2100, categoriasSugeridas: ['refeitorio', 'cozinha', 'deposito', 'lavanderia'] },
+  // PÁTIO INFANTIL COBERTO / REFEITÓRIO
+  { id: 'it-pat-001', codigo: 'PAT-001', tipo: 'equipamento', descricao: 'BEBEDOURO ELÉTRICO ACESSÍVEL', unidade: 'UN', ambienteClassificacao: 'PÁTIO INFANTIL COBERTO / REFEITÓRIO', valorUnitarioRef: 1859.83, categoriasSugeridas: ['refeitorio', 'area-descoberta'] },
+  { id: 'it-pat-002', codigo: 'PAT-002', tipo: 'mobiliario', descricao: 'CONJUNTO REFEITÓRIO 1 - 1 MESA + 4 CADEIRAS', unidade: 'CONJ', ambienteClassificacao: 'PÁTIO INFANTIL COBERTO / REFEITÓRIO', valorUnitarioRef: 1436.76, categoriasSugeridas: ['refeitorio'] },
+  { id: 'it-pat-003', codigo: 'PAT-003', tipo: 'mobiliario', descricao: 'CONJUNTO REFEITÓRIO 3 - 1 MESA + 4 CADEIRAS', unidade: 'CONJ', ambienteClassificacao: 'PÁTIO INFANTIL COBERTO / REFEITÓRIO', valorUnitarioRef: 1538.96, categoriasSugeridas: ['refeitorio'] },
 
-  // ── Mobiliário Cozinha ──────────────────────────────────────────────────
-  { id: 'b030', codigo: 'M-COZ-001', tipo: 'mobiliario', descricao: 'Mesa trabalho aço inox 150x70cm', unidade: 'un', valorUnitarioRef: 2800, categoriasSugeridas: ['cozinha'] },
-  { id: 'b031', codigo: 'M-COZ-002', tipo: 'mobiliario', descricao: 'Cuba aço inox dupla 120x60cm', unidade: 'un', valorUnitarioRef: 1380, categoriasSugeridas: ['cozinha', 'lavanderia'] },
-  { id: 'b032', codigo: 'M-COZ-003', tipo: 'mobiliario', descricao: 'Prateleira aço inox 120x40cm', unidade: 'un', valorUnitarioRef: 580, categoriasSugeridas: ['cozinha', 'despensa'] },
-  { id: 'b033', codigo: 'M-COZ-004', tipo: 'mobiliario', descricao: 'Carrinho transporte aço inox 2 prateleiras', unidade: 'un', valorUnitarioRef: 1120, categoriasSugeridas: ['cozinha', 'refeitorio'] },
+  // PLAYGROUND
+  { id: 'it-pla-001', codigo: 'PLA-001', tipo: 'equipamento', descricao: 'GIRA GIRA CARROSSEL EM POLIETILENO - DIM: 100X49CM (DXA)', unidade: 'UN', ambienteClassificacao: 'PLAYGROUND', valorUnitarioRef: 1951.70, categoriasSugeridas: ['area-descoberta'] },
+  { id: 'it-pla-002', codigo: 'PLA-002', tipo: 'mobiliario', descricao: 'CASA DE BONECAS', unidade: 'UN', ambienteClassificacao: 'PLAYGROUND', valorUnitarioRef: 5372.51, categoriasSugeridas: ['area-descoberta'] },
+  { id: 'it-pla-003', codigo: 'PLA-003', tipo: 'equipamento', descricao: 'ESCORREGADOR GRANDE EM POLIETILENO - DIM: 59X115X205CM (LXAXC)', unidade: 'UN', ambienteClassificacao: 'PLAYGROUND', valorUnitarioRef: 737.58, categoriasSugeridas: ['area-descoberta'] },
+  { id: 'it-pla-004', codigo: 'PLA-004', tipo: 'equipamento', descricao: 'GANGORRA DUPLA EM POLIETILENO - DIM: 40X47X111CM (LXAXC)', unidade: 'UN', ambienteClassificacao: 'PLAYGROUND', valorUnitarioRef: 236.70, categoriasSugeridas: ['area-descoberta'] },
+  { id: 'it-pla-005', codigo: 'PLA-005', tipo: 'equipamento', descricao: 'TÚNEL LÚDICO EM POLIETILENO - DIM: 87X87X214CM (LXAXC)', unidade: 'UN', ambienteClassificacao: 'PLAYGROUND', valorUnitarioRef: 3732.42, categoriasSugeridas: ['area-descoberta'] },
 
-  // ── Mobiliário Administração ────────────────────────────────────────────
-  { id: 'b040', codigo: 'M-ADM-001', tipo: 'mobiliario', descricao: 'Mesa escritório L 150x150cm c/ gavetas', unidade: 'un', valorUnitarioRef: 1480, categoriasSugeridas: ['administracao'] },
-  { id: 'b041', codigo: 'M-ADM-002', tipo: 'mobiliario', descricao: 'Cadeira escritório com rodízios', unidade: 'un', valorUnitarioRef: 780, categoriasSugeridas: ['administracao', 'sala-professores'] },
-  { id: 'b042', codigo: 'M-ADM-003', tipo: 'mobiliario', descricao: 'Armário arquivo 4 gavetas', unidade: 'un', valorUnitarioRef: 2200, categoriasSugeridas: ['administracao'] },
-  { id: 'b043', codigo: 'M-ADM-004', tipo: 'mobiliario', descricao: 'Mesa reunião 180x90cm', unidade: 'un', valorUnitarioRef: 2600, categoriasSugeridas: ['administracao', 'sala-professores'] },
-  { id: 'b044', codigo: 'M-ADM-005', tipo: 'mobiliario', descricao: 'Cadeira visita fixa sem rodízios', unidade: 'un', valorUnitarioRef: 340, categoriasSugeridas: ['administracao', 'sala-professores'] },
-  { id: 'b045', codigo: 'M-ADM-006', tipo: 'mobiliario', descricao: 'Sofá 3 lugares espera', unidade: 'un', valorUnitarioRef: 3200, categoriasSugeridas: ['administracao'] },
-  { id: 'b046', codigo: 'M-ADM-007', tipo: 'mobiliario', descricao: 'Armário alto 2 portas com chave', unidade: 'un', valorUnitarioRef: 1800, categoriasSugeridas: ['administracao', 'sala-professores'] },
+  // SALA DE ATIVIDADES (CRECHE)
+  { id: 'it-sac-001', codigo: 'SAC-001', tipo: 'equipamento', descricao: 'APARELHO DE AR CONDICIONADO SPLIT 30.000 BTU\'S', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 3747.14, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sac-002', codigo: 'SAC-002', tipo: 'equipamento', descricao: 'APARELHO DE SOM TIPO MICROSYSTEM', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 184.96, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sac-003', codigo: 'SAC-003', tipo: 'mobiliario', descricao: 'QUADRO MURAL EM FELTRO', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 226.46, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sac-004', codigo: 'SAC-004', tipo: 'equipamento', descricao: 'VENTILADOR DE PAREDE', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 184.96, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sac-005', codigo: 'SAC-005', tipo: 'mobiliario', descricao: 'CAMA EMPILHÁVEL', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 168.96, categoriasSugeridas: ['sala-atividades', 'bercario'] },
+  { id: 'it-sac-006', codigo: 'SAC-006', tipo: 'mobiliario', descricao: 'CONJUNTO COLETIVO 1 - 1 MESA + 4 CADEIRAS', unidade: 'CONJ', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 780.95, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sac-007', codigo: 'SAC-007', tipo: 'mobiliario', descricao: 'CONJUNTO PROFESSOR - 1 MESA + 4 CADEIRAS', unidade: 'CONJ', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 431.46, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sac-008', codigo: 'SAC-008', tipo: 'mobiliario', descricao: 'QUADRO BRANCO TIPO LOUSA MAGNÉTICO - 1200X3000', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 536.00, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sac-009', codigo: 'SAC-009', tipo: 'mobiliario', descricao: 'TATAME EM E.V.A', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (CRECHE)', valorUnitarioRef: 57.06, categoriasSugeridas: ['sala-atividades', 'bercario'] },
 
-  // ── Equipamentos Sala de Atividades ─────────────────────────────────────
-  { id: 'b060', codigo: 'E-SAL-001', tipo: 'equipamento', descricao: 'Ar condicionado split 9.000 BTU', unidade: 'un', valorUnitarioRef: 2450, categoriasSugeridas: ['sala-atividades', 'bercario', 'administracao', 'sala-professores'] },
-  { id: 'b061', codigo: 'E-SAL-002', tipo: 'equipamento', descricao: 'TV LED 50" c/ suporte articulado', unidade: 'un', valorUnitarioRef: 2980, categoriasSugeridas: ['sala-atividades', 'sala-recursos', 'sala-professores'] },
-  { id: 'b062', codigo: 'E-SAL-003', tipo: 'equipamento', descricao: 'Aparelho de som bluetooth', unidade: 'un', valorUnitarioRef: 680, categoriasSugeridas: ['sala-atividades', 'refeitorio'] },
-
-  // ── Equipamentos Berçário / Fraldário ────────────────────────────────────
-  { id: 'b070', codigo: 'E-BER-001', tipo: 'equipamento', descricao: 'Ar condicionado split 12.000 BTU', unidade: 'un', valorUnitarioRef: 3100, categoriasSugeridas: ['bercario', 'sala-amamentacao'] },
-  { id: 'b071', codigo: 'E-BER-002', tipo: 'equipamento', descricao: 'Babá eletrônica monitor de vídeo', unidade: 'un', valorUnitarioRef: 850, categoriasSugeridas: ['bercario'] },
-  { id: 'b072', codigo: 'E-BER-003', tipo: 'equipamento', descricao: 'Freezer vertical 280L', unidade: 'un', valorUnitarioRef: 2900, categoriasSugeridas: ['bercario', 'cozinha'] },
-
-  // ── Equipamentos Cozinha ────────────────────────────────────────────────
-  { id: 'b080', codigo: 'E-COZ-001', tipo: 'equipamento', descricao: 'Fogão industrial 6 bocas c/ forno', unidade: 'un', valorUnitarioRef: 5800, categoriasSugeridas: ['cozinha'] },
-  { id: 'b081', codigo: 'E-COZ-002', tipo: 'equipamento', descricao: 'Geladeira comercial 600L 2 portas', unidade: 'un', valorUnitarioRef: 5200, categoriasSugeridas: ['cozinha'] },
-  { id: 'b082', codigo: 'E-COZ-003', tipo: 'equipamento', descricao: 'Freezer horizontal 500L', unidade: 'un', valorUnitarioRef: 3600, categoriasSugeridas: ['cozinha'] },
-  { id: 'b083', codigo: 'E-COZ-004', tipo: 'equipamento', descricao: 'Forno combinado 10 GN c/ controle', unidade: 'un', valorUnitarioRef: 12500, categoriasSugeridas: ['cozinha'] },
-  { id: 'b084', codigo: 'E-COZ-005', tipo: 'equipamento', descricao: 'Liquidificador industrial 5L', unidade: 'un', valorUnitarioRef: 980, categoriasSugeridas: ['cozinha'] },
-  { id: 'b085', codigo: 'E-COZ-006', tipo: 'equipamento', descricao: 'Exaustor/coifa industrial 120cm', unidade: 'un', valorUnitarioRef: 3200, categoriasSugeridas: ['cozinha'] },
-
-  // ── Equipamentos Lavanderia ─────────────────────────────────────────────
-  { id: 'b090', codigo: 'E-LAV-001', tipo: 'equipamento', descricao: 'Máquina lavar roupa 15kg', unidade: 'un', valorUnitarioRef: 4200, categoriasSugeridas: ['lavanderia'] },
-  { id: 'b091', codigo: 'E-LAV-002', tipo: 'equipamento', descricao: 'Secadora industrial 10kg', unidade: 'un', valorUnitarioRef: 3800, categoriasSugeridas: ['lavanderia'] },
-  { id: 'b092', codigo: 'E-LAV-003', tipo: 'equipamento', descricao: 'Ferro de passar industrial a vapor', unidade: 'un', valorUnitarioRef: 2200, categoriasSugeridas: ['lavanderia'] },
-
-  // ── Equipamentos Administração ──────────────────────────────────────────
-  { id: 'b100', codigo: 'E-ADM-001', tipo: 'equipamento', descricao: 'Computador desktop c/ monitor 21"', unidade: 'un', valorUnitarioRef: 4200, categoriasSugeridas: ['administracao', 'sala-professores'] },
-  { id: 'b101', codigo: 'E-ADM-002', tipo: 'equipamento', descricao: 'Impressora multifuncional laser', unidade: 'un', valorUnitarioRef: 2800, categoriasSugeridas: ['administracao'] },
-  { id: 'b102', codigo: 'E-ADM-003', tipo: 'equipamento', descricao: 'Nobreak 1200VA', unidade: 'un', valorUnitarioRef: 980, categoriasSugeridas: ['administracao'] },
-  { id: 'b103', codigo: 'E-ADM-004', tipo: 'equipamento', descricao: 'Telefone IP VoIP', unidade: 'un', valorUnitarioRef: 380, categoriasSugeridas: ['administracao'] },
-
-  // ── Equipamentos Área Externa ───────────────────────────────────────────
-  { id: 'b110', codigo: 'E-EXT-001', tipo: 'equipamento', descricao: 'Conjunto parquinho (escorregador + balanço + gira-gira)', unidade: 'un', valorUnitarioRef: 18500, categoriasSugeridas: ['area-descoberta'] },
-  { id: 'b111', codigo: 'E-EXT-002', tipo: 'equipamento', descricao: 'Casa de boneca/casinha playground', unidade: 'un', valorUnitarioRef: 4800, categoriasSugeridas: ['area-descoberta'] },
-  { id: 'b112', codigo: 'E-EXT-003', tipo: 'equipamento', descricao: 'Caixa de areia 200x200cm c/ cobertura', unidade: 'un', valorUnitarioRef: 3200, categoriasSugeridas: ['area-descoberta', 'solario'] },
-  { id: 'b113', codigo: 'E-EXT-004', tipo: 'equipamento', descricao: 'Banco externo madeira plástica 200cm', unidade: 'un', valorUnitarioRef: 1200, categoriasSugeridas: ['area-descoberta', 'solario'] },
-
-  // ── Equipamentos Segurança ──────────────────────────────────────────────
-  { id: 'b120', codigo: 'E-SEG-001', tipo: 'equipamento', descricao: 'Câmera CFTV dome interno', unidade: 'un', valorUnitarioRef: 420, categoriasSugeridas: ['administracao', 'guarita'] },
-  { id: 'b121', codigo: 'E-SEG-002', tipo: 'equipamento', descricao: 'DVR 8 canais c/ HD 1TB', unidade: 'un', valorUnitarioRef: 1800, categoriasSugeridas: ['administracao', 'guarita'] },
-  { id: 'b122', codigo: 'E-SEG-003', tipo: 'equipamento', descricao: 'Interfone/videoporteiro c/ câmera', unidade: 'un', valorUnitarioRef: 980, categoriasSugeridas: ['guarita', 'administracao'] },
+  // SALA DE ATIVIDADES (PRÉ-ESCOLA)
+  { id: 'it-sap-001', codigo: 'SAP-001', tipo: 'equipamento', descricao: 'APARELHO DE AR CONDICIONADO SPLIT 30.000 BTU\'S', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 3747.14, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sap-002', codigo: 'SAP-002', tipo: 'equipamento', descricao: 'APARELHO DE SOM TIPO MICROSYSTEM', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 184.96, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sap-003', codigo: 'SAP-003', tipo: 'mobiliario', descricao: 'QUADRO MURAL EM FELTRO', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 226.46, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sap-004', codigo: 'SAP-004', tipo: 'equipamento', descricao: 'VENTILADOR DE PAREDE', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 184.96, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sap-005', codigo: 'SAP-005', tipo: 'mobiliario', descricao: 'CONJUNTO ALUNO 1 - 1 MESA + 1 CADEIRA', unidade: 'CONJ', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 239.09, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sap-006', codigo: 'SAP-006', tipo: 'mobiliario', descricao: 'CONJUNTO ALUNO 3 - 1 MESA + 1 CADEIRA', unidade: 'CONJ', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 238.07, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sap-007', codigo: 'SAP-007', tipo: 'mobiliario', descricao: 'CONJUNTO PROFESSOR - 1 MESA + 1 CADEIRA', unidade: 'CONJ', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 431.46, categoriasSugeridas: ['sala-atividades'] },
+  { id: 'it-sap-008', codigo: 'SAP-008', tipo: 'mobiliario', descricao: 'QUADRO BRANCO TIPO LOUSA MAGNÉTICO - 1200X3000', unidade: 'UN', ambienteClassificacao: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)', valorUnitarioRef: 536.00, categoriasSugeridas: ['sala-atividades'] },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,218 +71,203 @@ export const mockBibliotecaItens: ItemBiblioteca[] = [
 const CUB = 4950; // R$/m² — referência SINAPI RO 2024
 
 export const mockModelosAmbiente: ModeloAmbiente[] = [
-  // ── 1. Sala de Atividades (padrão) ────────────────────────────────────────
+  // ── 1. SALA DE ATIVIDADES (CRECHE) ─────────────────────────────────────────
   {
-    id: 'ma01', nome: 'Sala de Atividades (Padrão)', categoria: 'sala-atividades',
-    areaMq: 48, custoConstrucaoMq: CUB, padrao: true, capacidadeAlunos: 20,
+    id: 'ma01',
+    nome: 'SALA DE ATIVIDADES (CRECHE)',
+    categoria: 'sala-atividades',
+    areaMq: 48,
+    custoConstrucaoMq: CUB,
+    padrao: true,
+    capacidadeAlunos: 20,
     itens: [
-      { id: 'i001', bibliotecaId: 'b001', tipo: 'mobiliario', descricao: 'Mesa infantil trapezoidal 120x60cm', quantidade: 8, valorUnitario: 420 },
-      { id: 'i002', bibliotecaId: 'b002', tipo: 'mobiliario', descricao: 'Cadeira infantil PP sem braço', quantidade: 20, valorUnitario: 148 },
-      { id: 'i003', bibliotecaId: 'b003', tipo: 'mobiliario', descricao: 'Mesa professor 120x60cm c/ gaveta', quantidade: 1, valorUnitario: 780 },
-      { id: 'i004', bibliotecaId: 'b004', tipo: 'mobiliario', descricao: 'Cadeira ergonômica professor', quantidade: 1, valorUnitario: 520 },
-      { id: 'i005', bibliotecaId: 'b005', tipo: 'mobiliario', descricao: 'Armário baixo 120x40x80cm c/ 2 portas', quantidade: 2, valorUnitario: 1380 },
-      { id: 'i006', bibliotecaId: 'b006', tipo: 'mobiliario', descricao: 'Estante aberta para livros/material pedagógico', quantidade: 1, valorUnitario: 720 },
-      { id: 'i007', bibliotecaId: 'b007', tipo: 'mobiliario', descricao: 'Quadro branco magnético 200x120cm', quantidade: 1, valorUnitario: 580 },
-      { id: 'i008', bibliotecaId: 'b008', tipo: 'mobiliario', descricao: 'Cabide/gancho individual com placa', quantidade: 20, valorUnitario: 68 },
-      { id: 'i009', bibliotecaId: 'b060', tipo: 'equipamento', descricao: 'Ar condicionado split 9.000 BTU', quantidade: 1, valorUnitario: 2450 },
-      { id: 'i010', bibliotecaId: 'b061', tipo: 'equipamento', descricao: 'TV LED 50" c/ suporte articulado', quantidade: 1, valorUnitario: 2980 },
-      { id: 'i011', bibliotecaId: 'b062', tipo: 'equipamento', descricao: 'Aparelho de som bluetooth', quantidade: 1, valorUnitario: 680 },
+      { id: 'i-sac-01', bibliotecaId: 'it-sac-001', tipo: 'equipamento', descricao: 'APARELHO DE AR CONDICIONADO SPLIT 30.000 BTU\'S', quantidade: 1, valorUnitario: 3747.14 },
+      { id: 'i-sac-02', bibliotecaId: 'it-sac-002', tipo: 'equipamento', descricao: 'APARELHO DE SOM TIPO MICROSYSTEM', quantidade: 1, valorUnitario: 184.96 },
+      { id: 'i-sac-03', bibliotecaId: 'it-sac-003', tipo: 'mobiliario', descricao: 'QUADRO MURAL EM FELTRO', quantidade: 2, valorUnitario: 226.46 },
+      { id: 'i-sac-04', bibliotecaId: 'it-sac-004', tipo: 'equipamento', descricao: 'VENTILADOR DE PAREDE', quantidade: 2, valorUnitario: 184.96 },
+      { id: 'i-sac-05', bibliotecaId: 'it-sac-005', tipo: 'mobiliario', descricao: 'CAMA EMPILHÁVEL', quantidade: 20, valorUnitario: 168.96 },
+      { id: 'i-sac-06', bibliotecaId: 'it-sac-006', tipo: 'mobiliario', descricao: 'CONJUNTO COLETIVO 1 - 1 MESA + 4 CADEIRAS', quantidade: 5, valorUnitario: 780.95 },
+      { id: 'i-sac-07', bibliotecaId: 'it-sac-007', tipo: 'mobiliario', descricao: 'CONJUNTO PROFESSOR - 1 MESA + 4 CADEIRAS', quantidade: 1, valorUnitario: 431.46 },
+      { id: 'i-sac-08', bibliotecaId: 'it-sac-008', tipo: 'mobiliario', descricao: 'QUADRO BRANCO TIPO LOUSA MAGNÉTICO - 1200X3000', quantidade: 1, valorUnitario: 536.00 },
+      { id: 'i-sac-09', bibliotecaId: 'it-sac-009', tipo: 'mobiliario', descricao: 'TATAME EM E.V.A', quantidade: 10, valorUnitario: 57.06 },
     ],
   },
 
-  // ── 2. Berçário ───────────────────────────────────────────────────────────
+  // ── 2. SALA DE ATIVIDADES (PRÉ-ESCOLA) ──────────────────────────────────────
   {
-    id: 'ma02', nome: 'Berçário', categoria: 'bercario',
-    areaMq: 42, custoConstrucaoMq: CUB, padrao: true, capacidadeAlunos: 15,
+    id: 'ma02',
+    nome: 'SALA DE ATIVIDADES (PRÉ-ESCOLA)',
+    categoria: 'sala-atividades',
+    areaMq: 48,
+    custoConstrucaoMq: CUB,
+    padrao: true,
+    capacidadeAlunos: 25,
     itens: [
-      { id: 'i020', bibliotecaId: 'b010', tipo: 'mobiliario', descricao: 'Berço grade móvel colchão incluso', quantidade: 8, valorUnitario: 1250 },
-      { id: 'i021', bibliotecaId: 'b011', tipo: 'mobiliario', descricao: 'Mesa trocador c/ cuba e gradil', quantidade: 2, valorUnitario: 1680 },
-      { id: 'i022', bibliotecaId: 'b012', tipo: 'mobiliario', descricao: 'Poltrona amamentação c/ apoio lateral', quantidade: 2, valorUnitario: 1450 },
-      { id: 'i023', bibliotecaId: 'b013', tipo: 'mobiliario', descricao: 'Armário alto 2 portas para enxoval', quantidade: 2, valorUnitario: 1680 },
-      { id: 'i024', bibliotecaId: 'b003', tipo: 'mobiliario', descricao: 'Mesa professor 120x60cm c/ gaveta', quantidade: 1, valorUnitario: 780 },
-      { id: 'i025', bibliotecaId: 'b004', tipo: 'mobiliario', descricao: 'Cadeira ergonômica professor', quantidade: 1, valorUnitario: 520 },
-      { id: 'i026', bibliotecaId: 'b070', tipo: 'equipamento', descricao: 'Ar condicionado split 12.000 BTU', quantidade: 2, valorUnitario: 3100 },
-      { id: 'i027', bibliotecaId: 'b071', tipo: 'equipamento', descricao: 'Babá eletrônica monitor de vídeo', quantidade: 2, valorUnitario: 850 },
-      { id: 'i028', bibliotecaId: 'b072', tipo: 'equipamento', descricao: 'Freezer vertical 280L', quantidade: 1, valorUnitario: 2900 },
+      { id: 'i-sap-01', bibliotecaId: 'it-sap-001', tipo: 'equipamento', descricao: 'APARELHO DE AR CONDICIONADO SPLIT 30.000 BTU\'S', quantidade: 1, valorUnitario: 3747.14 },
+      { id: 'i-sap-02', bibliotecaId: 'it-sap-002', tipo: 'equipamento', descricao: 'APARELHO DE SOM TIPO MICROSYSTEM', quantidade: 1, valorUnitario: 184.96 },
+      { id: 'i-sap-03', bibliotecaId: 'it-sap-003', tipo: 'mobiliario', descricao: 'QUADRO MURAL EM FELTRO', quantidade: 2, valorUnitario: 226.46 },
+      { id: 'i-sap-04', bibliotecaId: 'it-sap-004', tipo: 'equipamento', descricao: 'VENTILADOR DE PAREDE', quantidade: 2, valorUnitario: 184.96 },
+      { id: 'i-sap-05', bibliotecaId: 'it-sap-005', tipo: 'mobiliario', descricao: 'CONJUNTO ALUNO 1 - 1 MESA + 1 CADEIRA', quantidade: 12, valorUnitario: 239.09 },
+      { id: 'i-sap-06', bibliotecaId: 'it-sap-006', tipo: 'mobiliario', descricao: 'CONJUNTO ALUNO 3 - 1 MESA + 1 CADEIRA', quantidade: 13, valorUnitario: 238.07 },
+      { id: 'i-sap-07', bibliotecaId: 'it-sap-007', tipo: 'mobiliario', descricao: 'CONJUNTO PROFESSOR - 1 MESA + 1 CADEIRA', quantidade: 1, valorUnitario: 431.46 },
+      { id: 'i-sap-08', bibliotecaId: 'it-sap-008', tipo: 'mobiliario', descricao: 'QUADRO BRANCO TIPO LOUSA MAGNÉTICO - 1200X3000', quantidade: 1, valorUnitario: 536.00 },
     ],
   },
 
-  // ── 3. Solário ────────────────────────────────────────────────────────────
+  // ── 3. COPA ───────────────────────────────────────────────────────────────
   {
-    id: 'ma03', nome: 'Solário', categoria: 'solario',
-    areaMq: 28, custoConstrucaoMq: CUB * 0.6, padrao: true,
+    id: 'ma07',
+    nome: 'COPA',
+    categoria: 'cozinha',
+    areaMq: 25,
+    custoConstrucaoMq: CUB * 1.2,
+    padrao: true,
     itens: [
-      { id: 'i030', bibliotecaId: 'b014', tipo: 'mobiliario', descricao: 'Colchonete tatame espuma D33 100x50cm', quantidade: 8, valorUnitario: 185 },
-      { id: 'i031', bibliotecaId: 'b112', tipo: 'equipamento', descricao: 'Caixa de areia 200x200cm c/ cobertura', quantidade: 1, valorUnitario: 3200 },
-      { id: 'i032', bibliotecaId: 'b113', tipo: 'equipamento', descricao: 'Banco externo madeira plástica 200cm', quantidade: 2, valorUnitario: 1200 },
+      { id: 'i-cop-01', bibliotecaId: 'it-cop-001', tipo: 'equipamento', descricao: 'ESTERILIZADOR DE MAMADEIRAS PARA MICROONDAS', quantidade: 2, valorUnitario: 84.55 },
+      { id: 'i-cop-02', bibliotecaId: 'it-cop-002', tipo: 'equipamento', descricao: 'FOGÃO ELÉTRICO 2 BOCAS ANTIADERENTE AÇO INOX', quantidade: 2, valorUnitario: 250.00 },
+      { id: 'i-cop-03', bibliotecaId: 'it-cop-003', tipo: 'equipamento', descricao: 'MICROONDAS 30L - LINHA BRANCA', quantidade: 2, valorUnitario: 389.14 },
+      { id: 'i-cop-04', bibliotecaId: 'it-cop-004', tipo: 'equipamento', descricao: 'PURIFICADOR DE ÁGUA', quantidade: 2, valorUnitario: 492.99 },
+      { id: 'i-cop-05', bibliotecaId: 'it-cop-005', tipo: 'equipamento', descricao: 'REFRIGERADOR DOMÉSTICO "FROSTFREE" 300L', quantidade: 2, valorUnitario: 1762.21 },
+      { id: 'i-cop-06', bibliotecaId: 'it-cop-006', tipo: 'equipamento', descricao: 'CISTERNA 300L', quantidade: 1, valorUnitario: 649.00 },
     ],
   },
 
-  // ── 4. Fraldário ─────────────────────────────────────────────────────────
+  // ── 4. FRALDÁRIO / SANITÁRIOS ─────────────────────────────────────────────
   {
-    id: 'ma04', nome: 'Fraldário', categoria: 'fraldario',
-    areaMq: 8, custoConstrucaoMq: CUB * 1.2, padrao: true,
+    id: 'ma04',
+    nome: 'FRALDÁRIO / SANITÁRIOS',
+    categoria: 'fraldario',
+    areaMq: 18,
+    custoConstrucaoMq: CUB * 1.3,
+    padrao: true,
     itens: [
-      { id: 'i040', bibliotecaId: 'b011', tipo: 'mobiliario', descricao: 'Mesa trocador c/ cuba e gradil', quantidade: 2, valorUnitario: 1680 },
-      { id: 'i041', bibliotecaId: 'b013', tipo: 'mobiliario', descricao: 'Armário alto 2 portas para enxoval', quantidade: 1, valorUnitario: 1680 },
+      { id: 'i-fra-01', bibliotecaId: 'it-fra-001', tipo: 'mobiliario', descricao: 'COLCHONETE PARA TROCADOR', quantidade: 4, valorUnitario: 23.01 },
+      { id: 'i-fra-02', bibliotecaId: 'it-fra-002', tipo: 'mobiliario', descricao: 'LIXEIRA COM PEDAL 50L', quantidade: 4, valorUnitario: 150.09 },
     ],
   },
 
-  // ── 5. Sala de Amamentação ────────────────────────────────────────────────
+  // ── 5. PÁTIO INFANTIL COBERTO / REFEITÓRIO ────────────────────────────────
   {
-    id: 'ma05', nome: 'Sala de Amamentação', categoria: 'sala-amamentacao',
-    areaMq: 10, custoConstrucaoMq: CUB, padrao: true,
+    id: 'ma06',
+    nome: 'PÁTIO INFANTIL COBERTO / REFEITÓRIO',
+    categoria: 'refeitorio',
+    areaMq: 100,
+    custoConstrucaoMq: CUB * 0.9,
+    padrao: true,
     itens: [
-      { id: 'i050', bibliotecaId: 'b012', tipo: 'mobiliario', descricao: 'Poltrona amamentação c/ apoio lateral', quantidade: 2, valorUnitario: 1450 },
-      { id: 'i051', bibliotecaId: 'b013', tipo: 'mobiliario', descricao: 'Armário alto 2 portas para enxoval', quantidade: 1, valorUnitario: 1680 },
-      { id: 'i052', bibliotecaId: 'b070', tipo: 'equipamento', descricao: 'Ar condicionado split 12.000 BTU', quantidade: 1, valorUnitario: 3100 },
+      { id: 'i-pat-01', bibliotecaId: 'it-pat-001', tipo: 'equipamento', descricao: 'BEBEDOURO ELÉTRICO ACESSÍVEL', quantidade: 2, valorUnitario: 1859.83 },
+      { id: 'i-pat-02', bibliotecaId: 'it-pat-002', tipo: 'mobiliario', descricao: 'CONJUNTO REFEITÓRIO 1 - 1 MESA + 4 CADEIRAS', quantidade: 10, valorUnitario: 1436.76 },
+      { id: 'i-pat-03', bibliotecaId: 'it-pat-003', tipo: 'mobiliario', descricao: 'CONJUNTO REFEITÓRIO 3 - 1 MESA + 4 CADEIRAS', quantidade: 10, valorUnitario: 1538.96 },
     ],
   },
 
-  // ── 6. Refeitório ─────────────────────────────────────────────────────────
+  // ── 6. PLAYGROUND ─────────────────────────────────────────────────────────
   {
-    id: 'ma06', nome: 'Refeitório', categoria: 'refeitorio',
-    areaMq: 90, custoConstrucaoMq: CUB * 0.9, padrao: true,
+    id: 'ma15',
+    nome: 'PLAYGROUND',
+    categoria: 'area-descoberta',
+    areaMq: 150,
+    custoConstrucaoMq: CUB * 0.4,
+    padrao: true,
     itens: [
-      { id: 'i060', bibliotecaId: 'b020', tipo: 'mobiliario', descricao: 'Mesa refeitório infantil 4 lugares', quantidade: 20, valorUnitario: 820 },
-      { id: 'i061', bibliotecaId: 'b002', tipo: 'mobiliario', descricao: 'Cadeira infantil PP sem braço', quantidade: 80, valorUnitario: 148 },
-      { id: 'i062', bibliotecaId: 'b021', tipo: 'mobiliario', descricao: 'Balcão de distribuição aço inox 200cm', quantidade: 2, valorUnitario: 4200 },
-      { id: 'i063', bibliotecaId: 'b022', tipo: 'mobiliario', descricao: 'Armário aço 4 portas', quantidade: 2, valorUnitario: 2100 },
-      { id: 'i064', bibliotecaId: 'b033', tipo: 'mobiliario', descricao: 'Carrinho transporte aço inox', quantidade: 1, valorUnitario: 1120 },
-      { id: 'i065', bibliotecaId: 'b062', tipo: 'equipamento', descricao: 'Aparelho de som bluetooth', quantidade: 1, valorUnitario: 680 },
+      { id: 'i-pla-01', bibliotecaId: 'it-pla-001', tipo: 'equipamento', descricao: 'GIRA GIRA CARROSSEL EM POLIETILENO - DIM: 100X49CM (DXA)', quantidade: 1, valorUnitario: 1951.70 },
+      { id: 'i-pla-02', bibliotecaId: 'it-pla-002', tipo: 'mobiliario', descricao: 'CASA DE BONECAS', quantidade: 1, valorUnitario: 5372.51 },
+      { id: 'i-pla-03', bibliotecaId: 'it-pla-003', tipo: 'equipamento', descricao: 'ESCORREGADOR GRANDE EM POLIETILENO - DIM: 59X115X205CM (LXAXC)', quantidade: 2, valorUnitario: 737.58 },
+      { id: 'i-pla-04', bibliotecaId: 'it-pla-004', tipo: 'equipamento', descricao: 'GANGORRA DUPLA EM POLIETILENO - DIM: 40X47X111CM (LXAXC)', quantidade: 2, valorUnitario: 236.70 },
+      { id: 'i-pla-05', bibliotecaId: 'it-pla-005', tipo: 'equipamento', descricao: 'TÚNEL LÚDICO EM POLIETILENO - DIM: 87X87X214CM (LXAXC)', quantidade: 1, valorUnitario: 3732.42 },
     ],
   },
 
-  // ── 7. Cozinha ────────────────────────────────────────────────────────────
+  // ── Ambientes de Apoio ───────────────────────────────────────────────────
   {
-    id: 'ma07', nome: 'Cozinha', categoria: 'cozinha',
-    areaMq: 30, custoConstrucaoMq: CUB * 1.3, padrao: true,
-    itens: [
-      { id: 'i070', bibliotecaId: 'b030', tipo: 'mobiliario', descricao: 'Mesa trabalho aço inox 150x70cm', quantidade: 2, valorUnitario: 2800 },
-      { id: 'i071', bibliotecaId: 'b031', tipo: 'mobiliario', descricao: 'Cuba aço inox dupla 120x60cm', quantidade: 2, valorUnitario: 1380 },
-      { id: 'i072', bibliotecaId: 'b032', tipo: 'mobiliario', descricao: 'Prateleira aço inox 120x40cm', quantidade: 6, valorUnitario: 580 },
-      { id: 'i073', bibliotecaId: 'b033', tipo: 'mobiliario', descricao: 'Carrinho transporte aço inox', quantidade: 2, valorUnitario: 1120 },
-      { id: 'i074', bibliotecaId: 'b022', tipo: 'mobiliario', descricao: 'Armário aço 4 portas', quantidade: 2, valorUnitario: 2100 },
-      { id: 'i075', bibliotecaId: 'b080', tipo: 'equipamento', descricao: 'Fogão industrial 6 bocas c/ forno', quantidade: 1, valorUnitario: 5800 },
-      { id: 'i076', bibliotecaId: 'b081', tipo: 'equipamento', descricao: 'Geladeira comercial 600L 2 portas', quantidade: 1, valorUnitario: 5200 },
-      { id: 'i077', bibliotecaId: 'b082', tipo: 'equipamento', descricao: 'Freezer horizontal 500L', quantidade: 1, valorUnitario: 3600 },
-      { id: 'i078', bibliotecaId: 'b083', tipo: 'equipamento', descricao: 'Forno combinado 10 GN c/ controle', quantidade: 1, valorUnitario: 12500 },
-      { id: 'i079', bibliotecaId: 'b084', tipo: 'equipamento', descricao: 'Liquidificador industrial 5L', quantidade: 2, valorUnitario: 980 },
-      { id: 'i080', bibliotecaId: 'b085', tipo: 'equipamento', descricao: 'Exaustor/coifa industrial 120cm', quantidade: 1, valorUnitario: 3200 },
-    ],
-  },
-
-  // ── 8. Despensa ───────────────────────────────────────────────────────────
-  {
-    id: 'ma08', nome: 'Despensa', categoria: 'despensa',
-    areaMq: 12, custoConstrucaoMq: CUB * 0.8, padrao: true,
-    itens: [
-      { id: 'i085', bibliotecaId: 'b032', tipo: 'mobiliario', descricao: 'Prateleira aço inox 120x40cm', quantidade: 8, valorUnitario: 580 },
-      { id: 'i086', bibliotecaId: 'b022', tipo: 'mobiliario', descricao: 'Armário aço 4 portas', quantidade: 2, valorUnitario: 2100 },
-    ],
-  },
-
-  // ── 9. Lavanderia ─────────────────────────────────────────────────────────
-  {
-    id: 'ma09', nome: 'Lavanderia', categoria: 'lavanderia',
-    areaMq: 16, custoConstrucaoMq: CUB * 1.1, padrao: true,
-    itens: [
-      { id: 'i090', bibliotecaId: 'b031', tipo: 'mobiliario', descricao: 'Cuba aço inox dupla 120x60cm', quantidade: 1, valorUnitario: 1380 },
-      { id: 'i091', bibliotecaId: 'b013', tipo: 'mobiliario', descricao: 'Armário alto 2 portas para enxoval', quantidade: 2, valorUnitario: 1680 },
-      { id: 'i092', bibliotecaId: 'b090', tipo: 'equipamento', descricao: 'Máquina lavar roupa 15kg', quantidade: 2, valorUnitario: 4200 },
-      { id: 'i093', bibliotecaId: 'b091', tipo: 'equipamento', descricao: 'Secadora industrial 10kg', quantidade: 1, valorUnitario: 3800 },
-      { id: 'i094', bibliotecaId: 'b092', tipo: 'equipamento', descricao: 'Ferro de passar industrial a vapor', quantidade: 1, valorUnitario: 2200 },
-    ],
-  },
-
-  // ── 10. Administração ─────────────────────────────────────────────────────
-  {
-    id: 'ma10', nome: 'Administração / Secretaria', categoria: 'administracao',
-    areaMq: 30, custoConstrucaoMq: CUB, padrao: true,
-    itens: [
-      { id: 'i100', bibliotecaId: 'b040', tipo: 'mobiliario', descricao: 'Mesa escritório L 150x150cm c/ gavetas', quantidade: 3, valorUnitario: 1480 },
-      { id: 'i101', bibliotecaId: 'b041', tipo: 'mobiliario', descricao: 'Cadeira escritório com rodízios', quantidade: 3, valorUnitario: 780 },
-      { id: 'i102', bibliotecaId: 'b042', tipo: 'mobiliario', descricao: 'Armário arquivo 4 gavetas', quantidade: 2, valorUnitario: 2200 },
-      { id: 'i103', bibliotecaId: 'b043', tipo: 'mobiliario', descricao: 'Mesa reunião 180x90cm', quantidade: 1, valorUnitario: 2600 },
-      { id: 'i104', bibliotecaId: 'b044', tipo: 'mobiliario', descricao: 'Cadeira visita fixa', quantidade: 6, valorUnitario: 340 },
-      { id: 'i105', bibliotecaId: 'b045', tipo: 'mobiliario', descricao: 'Sofá 3 lugares espera', quantidade: 1, valorUnitario: 3200 },
-      { id: 'i106', bibliotecaId: 'b046', tipo: 'mobiliario', descricao: 'Armário alto 2 portas com chave', quantidade: 2, valorUnitario: 1800 },
-      { id: 'i107', bibliotecaId: 'b060', tipo: 'equipamento', descricao: 'Ar condicionado split 9.000 BTU', quantidade: 2, valorUnitario: 2450 },
-      { id: 'i108', bibliotecaId: 'b100', tipo: 'equipamento', descricao: 'Computador desktop c/ monitor 21"', quantidade: 3, valorUnitario: 4200 },
-      { id: 'i109', bibliotecaId: 'b101', tipo: 'equipamento', descricao: 'Impressora multifuncional laser', quantidade: 1, valorUnitario: 2800 },
-      { id: 'i110', bibliotecaId: 'b102', tipo: 'equipamento', descricao: 'Nobreak 1200VA', quantidade: 1, valorUnitario: 980 },
-      { id: 'i111', bibliotecaId: 'b103', tipo: 'equipamento', descricao: 'Telefone IP VoIP', quantidade: 2, valorUnitario: 380 },
-      { id: 'i112', bibliotecaId: 'b120', tipo: 'equipamento', descricao: 'Câmera CFTV dome interno', quantidade: 4, valorUnitario: 420 },
-      { id: 'i113', bibliotecaId: 'b121', tipo: 'equipamento', descricao: 'DVR 8 canais c/ HD 1TB', quantidade: 1, valorUnitario: 1800 },
-    ],
-  },
-
-  // ── 11. Sala de Professores ───────────────────────────────────────────────
-  {
-    id: 'ma11', nome: 'Sala de Professores', categoria: 'sala-professores',
-    areaMq: 22, custoConstrucaoMq: CUB, padrao: true,
-    itens: [
-      { id: 'i120', bibliotecaId: 'b040', tipo: 'mobiliario', descricao: 'Mesa escritório L 150x150cm', quantidade: 4, valorUnitario: 1480 },
-      { id: 'i121', bibliotecaId: 'b041', tipo: 'mobiliario', descricao: 'Cadeira escritório com rodízios', quantidade: 4, valorUnitario: 780 },
-      { id: 'i122', bibliotecaId: 'b046', tipo: 'mobiliario', descricao: 'Armário alto 2 portas com chave (roupeiro)', quantidade: 8, valorUnitario: 1800 },
-      { id: 'i123', bibliotecaId: 'b043', tipo: 'mobiliario', descricao: 'Mesa reunião 180x90cm', quantidade: 1, valorUnitario: 2600 },
-      { id: 'i124', bibliotecaId: 'b044', tipo: 'mobiliario', descricao: 'Cadeira visita fixa', quantidade: 8, valorUnitario: 340 },
-      { id: 'i125', bibliotecaId: 'b006', tipo: 'mobiliario', descricao: 'Estante aberta para livros', quantidade: 2, valorUnitario: 720 },
-      { id: 'i126', bibliotecaId: 'b060', tipo: 'equipamento', descricao: 'Ar condicionado split 9.000 BTU', quantidade: 1, valorUnitario: 2450 },
-      { id: 'i127', bibliotecaId: 'b100', tipo: 'equipamento', descricao: 'Computador desktop c/ monitor 21"', quantidade: 2, valorUnitario: 4200 },
-    ],
-  },
-
-  // ── 12. Sala de Recursos Multifuncionais (AEE) ────────────────────────────
-  {
-    id: 'ma12', nome: 'Sala de Recursos Multifuncionais (AEE)', categoria: 'sala-recursos',
-    areaMq: 36, custoConstrucaoMq: CUB, padrao: true,
-    itens: [
-      { id: 'i130', bibliotecaId: 'b003', tipo: 'mobiliario', descricao: 'Mesa professor 120x60cm c/ gaveta', quantidade: 1, valorUnitario: 780 },
-      { id: 'i131', bibliotecaId: 'b004', tipo: 'mobiliario', descricao: 'Cadeira ergonômica professor', quantidade: 1, valorUnitario: 520 },
-      { id: 'i132', bibliotecaId: 'b001', tipo: 'mobiliario', descricao: 'Mesa infantil trapezoidal 120x60cm', quantidade: 4, valorUnitario: 420 },
-      { id: 'i133', bibliotecaId: 'b002', tipo: 'mobiliario', descricao: 'Cadeira infantil PP sem braço', quantidade: 8, valorUnitario: 148 },
-      { id: 'i134', bibliotecaId: 'b005', tipo: 'mobiliario', descricao: 'Armário baixo 120x40x80cm c/ 2 portas', quantidade: 2, valorUnitario: 1380 },
-      { id: 'i135', bibliotecaId: 'b006', tipo: 'mobiliario', descricao: 'Estante aberta para material pedagógico', quantidade: 2, valorUnitario: 720 },
-      { id: 'i136', bibliotecaId: 'b007', tipo: 'mobiliario', descricao: 'Quadro branco magnético 200x120cm', quantidade: 1, valorUnitario: 580 },
-      { id: 'i137', bibliotecaId: 'b060', tipo: 'equipamento', descricao: 'Ar condicionado split 9.000 BTU', quantidade: 1, valorUnitario: 2450 },
-      { id: 'i138', bibliotecaId: 'b061', tipo: 'equipamento', descricao: 'TV LED 50" c/ suporte articulado', quantidade: 1, valorUnitario: 2980 },
-      { id: 'i139', bibliotecaId: 'b100', tipo: 'equipamento', descricao: 'Computador desktop c/ monitor 21"', quantidade: 2, valorUnitario: 4200 },
-    ],
-  },
-
-  // ── 13. Banheiro Infantil ─────────────────────────────────────────────────
-  {
-    id: 'ma13', nome: 'Banheiro Infantil', categoria: 'banheiro-infantil',
-    areaMq: 9, custoConstrucaoMq: CUB * 1.4, padrao: true,
-    itens: [],  // instalações hidráulicas embutidas no custo de construção
-  },
-
-  // ── 14. Banheiro Adulto ───────────────────────────────────────────────────
-  {
-    id: 'ma14', nome: 'Banheiro Adulto / PCD', categoria: 'banheiro-adulto',
-    areaMq: 6, custoConstrucaoMq: CUB * 1.5, padrao: true,
+    id: 'ma03',
+    nome: 'SOLÁRIO',
+    categoria: 'solario',
+    areaMq: 28,
+    custoConstrucaoMq: CUB * 0.6,
+    padrao: true,
     itens: [],
   },
-
-  // ── 15. Área Descoberta / Pátio ───────────────────────────────────────────
   {
-    id: 'ma15', nome: 'Área Descoberta / Pátio', categoria: 'area-descoberta',
-    areaMq: 180, custoConstrucaoMq: CUB * 0.3, padrao: true,
-    itens: [
-      { id: 'i150', bibliotecaId: 'b110', tipo: 'equipamento', descricao: 'Conjunto parquinho (escorregador + balanço + gira-gira)', quantidade: 1, valorUnitario: 18500 },
-      { id: 'i151', bibliotecaId: 'b111', tipo: 'equipamento', descricao: 'Casa de boneca/casinha playground', quantidade: 1, valorUnitario: 4800 },
-      { id: 'i152', bibliotecaId: 'b113', tipo: 'equipamento', descricao: 'Banco externo madeira plástica 200cm', quantidade: 4, valorUnitario: 1200 },
-    ],
+    id: 'ma05',
+    nome: 'SALA DE AMAMENTAÇÃO',
+    categoria: 'sala-amamentacao',
+    areaMq: 10,
+    custoConstrucaoMq: CUB,
+    padrao: true,
+    itens: [],
   },
-
-  // ── 16. Guarita ───────────────────────────────────────────────────────────
   {
-    id: 'ma16', nome: 'Guarita / Controle de Acesso', categoria: 'guarita',
-    areaMq: 6, custoConstrucaoMq: CUB, padrao: true,
-    itens: [
-      { id: 'i160', bibliotecaId: 'b122', tipo: 'equipamento', descricao: 'Interfone/videoporteiro c/ câmera', quantidade: 1, valorUnitario: 980 },
-    ],
+    id: 'ma08',
+    nome: 'DESPENSA',
+    categoria: 'despensa',
+    areaMq: 12,
+    custoConstrucaoMq: CUB * 0.8,
+    padrao: true,
+    itens: [],
+  },
+  {
+    id: 'ma09',
+    nome: 'LAVANDERIA',
+    categoria: 'lavanderia',
+    areaMq: 16,
+    custoConstrucaoMq: CUB * 1.1,
+    padrao: true,
+    itens: [],
+  },
+  {
+    id: 'ma10',
+    nome: 'ADMINISTRAÇÃO / SECRETARIA',
+    categoria: 'administracao',
+    areaMq: 30,
+    custoConstrucaoMq: CUB,
+    padrao: true,
+    itens: [],
+  },
+  {
+    id: 'ma11',
+    nome: 'SALA DE PROFESSORES',
+    categoria: 'sala-professores',
+    areaMq: 22,
+    custoConstrucaoMq: CUB,
+    padrao: true,
+    itens: [],
+  },
+  {
+    id: 'ma12',
+    nome: 'SALA DE RECURSOS (AEE)',
+    categoria: 'sala-recursos',
+    areaMq: 36,
+    custoConstrucaoMq: CUB,
+    padrao: true,
+    itens: [],
+  },
+  {
+    id: 'ma13',
+    nome: 'BANHEIRO INFANTIL',
+    categoria: 'banheiro-infantil',
+    areaMq: 9,
+    custoConstrucaoMq: CUB * 1.4,
+    padrao: true,
+    itens: [],
+  },
+  {
+    id: 'ma14',
+    nome: 'BANHEIRO ADULTO / PCD',
+    categoria: 'banheiro-adulto',
+    areaMq: 6,
+    custoConstrucaoMq: CUB * 1.5,
+    padrao: true,
+    itens: [],
+  },
+  {
+    id: 'ma16',
+    nome: 'GUARITA / CONTROLE DE ACESSO',
+    categoria: 'guarita',
+    areaMq: 6,
+    custoConstrucaoMq: CUB,
+    padrao: true,
+    itens: [],
   },
 ];
 
@@ -322,17 +276,17 @@ export const mockModelosAmbiente: ModeloAmbiente[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const mockModelosCreche: ModeloCreche[] = [
-  // ── FNDE Tipo 1 — Proinfância B ──────────────────────────────────────────
+  // ── FNDE TIPO 1 — PROINFÂNCIA B ──────────────────────────────────────────
   // Capacidade: 228 crianças | Área total aprox.: 1.347 m²
   {
     id: 'mc01',
-    nome: 'Creche FNDE Tipo 1 (Proinfância B)',
+    nome: 'CRECHE FNDE TIPO 1 (PROINFÂNCIA B)',
     tipoBase: 'tipo1',
-    descricao: 'Modelo padrão FNDE — Proinfância Tipo B. Capacidade para 228 crianças em período integral. 10 salas de atividades.',
+    descricao: 'MODELO PADRÃO FNDE — PROINFÂNCIA TIPO B. CAPACIDADE PARA 228 CRIANÇAS EM PERÍODO INTEGRAL. 10 SALAS DE ATIVIDADES.',
     reservaPct: 10,
     capacidadeAlunos: 228,
     ambientes: [
-      { id: 'mca01', modeloAmbienteId: 'ma01', nomeOverride: 'Sala de Atividades (×10)', quantidade: 10 },
+      { id: 'mca01', modeloAmbienteId: 'ma01', nomeOverride: 'SALA DE ATIVIDADES (CRECHE) (×10)', quantidade: 10 },
       { id: 'mca02', modeloAmbienteId: 'ma02', quantidade: 2 },
       { id: 'mca03', modeloAmbienteId: 'ma03', quantidade: 2 },
       { id: 'mca04', modeloAmbienteId: 'ma04', quantidade: 4 },
@@ -350,19 +304,19 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'mca16', modeloAmbienteId: 'ma16', quantidade: 1 },
     ],
     servicos: [
-      { id: 'sv02', descricao: 'Energia elétrica', unidade: 'ano', valorAnual: 48000 },
-      { id: 'sv03', descricao: 'Água e esgoto', unidade: 'ano', valorAnual: 14400 },
-      { id: 'sv04', descricao: 'Internet e telefonia', unidade: 'ano', valorAnual: 7200 },
-      { id: 'sv05', descricao: 'Vigilância e segurança', unidade: 'ano', valorAnual: 86400 },
-      { id: 'sv06', descricao: 'Limpeza e higiene (terceirizado)', unidade: 'ano', valorAnual: 72000 },
-      { id: 'sv07', descricao: 'Manutenção predial', unidade: 'ano', valorAnual: 36000 },
+      { id: 'sv02', descricao: 'ENERGIA ELÉTRICA', unidade: 'ANO', valorAnual: 48000 },
+      { id: 'sv03', descricao: 'ÁGUA E ESGOTO', unidade: 'ANO', valorAnual: 14400 },
+      { id: 'sv04', descricao: 'INTERNET E TELEFONIA', unidade: 'ANO', valorAnual: 7200 },
+      { id: 'sv05', descricao: 'VIGILÂNCIA E SEGURANÇA', unidade: 'ANO', valorAnual: 86400 },
+      { id: 'sv06', descricao: 'LIMPEZA E HIGIENE (TERCEIRIZADO)', unidade: 'ANO', valorAnual: 72000 },
+      { id: 'sv07', descricao: 'MANUTENÇÃO PREDIAL', unidade: 'ANO', valorAnual: 36000 },
     ],
     aquisicoes: [
-      { id: 'aq01', descricao: 'Merenda escolar (PNAE)', unidade: 'aluno/ano', quantidadeAnual: 228, valorUnitario: 1260 },
-      { id: 'aq02', descricao: 'Material pedagógico', unidade: 'aluno/ano', quantidadeAnual: 228, valorUnitario: 480 },
-      { id: 'aq03', descricao: 'Material de limpeza e higiene', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 2800 },
-      { id: 'aq04', descricao: 'Uniforme e EPI (funcionários)', unidade: 'ano', quantidadeAnual: 1, valorUnitario: 18000 },
-      { id: 'aq05', descricao: 'Gás de cozinha', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 1200 },
+      { id: 'aq01', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ALUNO/ANO', quantidadeAnual: 228, valorUnitario: 1260 },
+      { id: 'aq02', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ALUNO/ANO', quantidadeAnual: 228, valorUnitario: 480 },
+      { id: 'aq03', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 2800 },
+      { id: 'aq04', descricao: 'UNIFORME E EPI (FUNCIONÁRIOS)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 18000 },
+      { id: 'aq05', descricao: 'GÁS DE COZINHA', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 1200 },
     ],
     pessoal: [
       { id: 'mp01', cargoId: 'cg01', quantidade: 1 }, // Diretor
@@ -374,17 +328,17 @@ export const mockModelosCreche: ModeloCreche[] = [
     ],
   },
 
-  // ── FNDE Tipo 2 — Proinfância C ──────────────────────────────────────────
+  // ── FNDE TIPO 2 — PROINFÂNCIA C ──────────────────────────────────────────
   // Capacidade: 120 crianças | Área total aprox.: 768 m²
   {
     id: 'mc02',
-    nome: 'Creche FNDE Tipo 2 (Proinfância C)',
+    nome: 'CRECHE FNDE TIPO 2 (PROINFÂNCIA C)',
     tipoBase: 'tipo2',
-    descricao: 'Modelo padrão FNDE — Proinfância Tipo C. Capacidade para 120 crianças. 4 salas de atividades + 1 berçário.',
+    descricao: 'MODELO PADRÃO FNDE — PROINFÂNCIA TIPO C. CAPACIDADE PARA 120 CRIANÇAS. 4 SALAS DE ATIVIDADES + 1 BERÇÁRIO.',
     reservaPct: 10,
     capacidadeAlunos: 120,
     ambientes: [
-      { id: 'mca20', modeloAmbienteId: 'ma01', nomeOverride: 'Sala de Atividades (×4)', quantidade: 4 },
+      { id: 'mca20', modeloAmbienteId: 'ma01', nomeOverride: 'SALA DE ATIVIDADES (CRECHE) (×4)', quantidade: 4 },
       { id: 'mca21', modeloAmbienteId: 'ma02', quantidade: 1 },
       { id: 'mca22', modeloAmbienteId: 'ma03', quantidade: 1 },
       { id: 'mca23', modeloAmbienteId: 'ma04', quantidade: 2 },
@@ -401,19 +355,19 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'mca34', modeloAmbienteId: 'ma16', quantidade: 1 },
     ],
     servicos: [
-      { id: 'sv11', descricao: 'Energia elétrica', unidade: 'ano', valorAnual: 28800 },
-      { id: 'sv12', descricao: 'Água e esgoto', unidade: 'ano', valorAnual: 9600 },
-      { id: 'sv13', descricao: 'Internet e telefonia', unidade: 'ano', valorAnual: 7200 },
-      { id: 'sv14', descricao: 'Vigilância e segurança', unidade: 'ano', valorAnual: 64800 },
-      { id: 'sv15', descricao: 'Limpeza e higiene (terceirizado)', unidade: 'ano', valorAnual: 48000 },
-      { id: 'sv16', descricao: 'Manutenção predial', unidade: 'ano', valorAnual: 24000 },
+      { id: 'sv11', descricao: 'ENERGIA ELÉTRICA', unidade: 'ANO', valorAnual: 28800 },
+      { id: 'sv12', descricao: 'ÁGUA E ESGOTO', unidade: 'ANO', valorAnual: 9600 },
+      { id: 'sv13', descricao: 'INTERNET E TELEFONIA', unidade: 'ANO', valorAnual: 7200 },
+      { id: 'sv14', descricao: 'VIGILÂNCIA E SEGURANÇA', unidade: 'ANO', valorAnual: 64800 },
+      { id: 'sv15', descricao: 'LIMPEZA E HIGIENE (TERCEIRIZADO)', unidade: 'ANO', valorAnual: 48000 },
+      { id: 'sv16', descricao: 'MANUTENÇÃO PREDIAL', unidade: 'ANO', valorAnual: 24000 },
     ],
     aquisicoes: [
-      { id: 'aq10', descricao: 'Merenda escolar (PNAE)', unidade: 'aluno/ano', quantidadeAnual: 120, valorUnitario: 1260 },
-      { id: 'aq11', descricao: 'Material pedagógico', unidade: 'aluno/ano', quantidadeAnual: 120, valorUnitario: 480 },
-      { id: 'aq12', descricao: 'Material de limpeza e higiene', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 1800 },
-      { id: 'aq13', descricao: 'Uniforme e EPI (funcionários)', unidade: 'ano', quantidadeAnual: 1, valorUnitario: 12000 },
-      { id: 'aq14', descricao: 'Gás de cozinha', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 800 },
+      { id: 'aq10', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 1260 },
+      { id: 'aq11', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 480 },
+      { id: 'aq12', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 1800 },
+      { id: 'aq13', descricao: 'UNIFORME E EPI (FUNCIONÁRIOS)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 12000 },
+      { id: 'aq14', descricao: 'GÁS DE COZINHA', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 800 },
     ],
     pessoal: [
       { id: 'mp11', cargoId: 'cg01', quantidade: 1 }, // Diretor
@@ -444,12 +398,12 @@ export function calcularCustoAmbiente(ambiente: ModeloAmbiente): {
 }
 
 export const mockCargosReferencia: CargoReferencia[] = [
-  { id: 'cg01', descricao: 'Diretor Escolar', remuneracaoBase: 6500, auxilios: 500, patronal: 1300 },
-  { id: 'cg02', descricao: 'Coordenador Pedagógico', remuneracaoBase: 5800, auxilios: 500, patronal: 1160 },
-  { id: 'cg03', descricao: 'Professor Educação Infantil (40h)', remuneracaoBase: 4420, auxilios: 500, patronal: 884 },
-  { id: 'cg04', descricao: 'Monitor/Auxiliar de Creche', remuneracaoBase: 2200, auxilios: 350, patronal: 440 },
-  { id: 'cg05', descricao: 'Merendeira/Cozinheira', remuneracaoBase: 1800, auxilios: 350, patronal: 360 },
-  { id: 'cg06', descricao: 'Auxiliar de Limpeza', remuneracaoBase: 1500, auxilios: 350, patronal: 300 },
+  { id: 'cg01', descricao: 'DIRETOR ESCOLAR', remuneracaoBase: 6500, auxilios: 500, patronal: 1300 },
+  { id: 'cg02', descricao: 'COORDENADOR PEDAGÓGICO', remuneracaoBase: 5800, auxilios: 500, patronal: 1160 },
+  { id: 'cg03', descricao: 'PROFESSOR EDUCAÇÃO INFANTIL (40H)', remuneracaoBase: 4420, auxilios: 500, patronal: 884 },
+  { id: 'cg04', descricao: 'MONITOR/AUXILIAR DE CRECHE', remuneracaoBase: 2200, auxilios: 350, patronal: 440 },
+  { id: 'cg05', descricao: 'MERENDEIRA/COZINHEIRA', remuneracaoBase: 1800, auxilios: 350, patronal: 360 },
+  { id: 'cg06', descricao: 'AUXILIAR DE LIMPEZA', remuneracaoBase: 1500, auxilios: 350, patronal: 300 },
 ];
 
 export function calcularCustoCreche(
@@ -494,20 +448,20 @@ export function calcularCustoCreche(
 }
 
 export const mockServicosReferencia: ServicoAnual[] = [
-  { id: 'ref-sv01', descricao: 'Pessoal (professores, auxiliares, direção)', unidade: 'ano', valorAnual: 1420000 },
-  { id: 'ref-sv02', descricao: 'Energia elétrica', unidade: 'ano', valorAnual: 48000 },
-  { id: 'ref-sv03', descricao: 'Água e esgoto', unidade: 'ano', valorAnual: 14400 },
-  { id: 'ref-sv04', descricao: 'Internet e telefonia', unidade: 'ano', valorAnual: 7200 },
-  { id: 'ref-sv05', descricao: 'Vigilância e segurança', unidade: 'ano', valorAnual: 86400 },
-  { id: 'ref-sv06', descricao: 'Limpeza e higiene (terceirizado)', unidade: 'ano', valorAnual: 72000 },
-  { id: 'ref-sv07', descricao: 'Manutenção predial', unidade: 'ano', valorAnual: 36000 },
+  { id: 'ref-sv01', descricao: 'PESSOAL (PROFESSORES, AUXILIARES, DIREÇÃO)', unidade: 'ANO', valorAnual: 1420000 },
+  { id: 'ref-sv02', descricao: 'ENERGIA ELÉTRICA', unidade: 'ANO', valorAnual: 48000 },
+  { id: 'ref-sv03', descricao: 'ÁGUA E ESGOTO', unidade: 'ANO', valorAnual: 14400 },
+  { id: 'ref-sv04', descricao: 'INTERNET E TELEFONIA', unidade: 'ANO', valorAnual: 7200 },
+  { id: 'ref-sv05', descricao: 'VIGILÂNCIA E SEGURANÇA', unidade: 'ANO', valorAnual: 86400 },
+  { id: 'ref-sv06', descricao: 'LIMPEZA E HIGIENE (TERCEIRIZADO)', unidade: 'ANO', valorAnual: 72000 },
+  { id: 'ref-sv07', descricao: 'MANUTENÇÃO PREDIAL', unidade: 'ANO', valorAnual: 36000 },
 ];
 
 export const mockAquisicoesReferencia: AquisicaoAnual[] = [
-  { id: 'ref-aq01', descricao: 'Merenda escolar (PNAE)', unidade: 'aluno/ano', quantidadeAnual: 120, valorUnitario: 1260 },
-  { id: 'ref-aq02', descricao: 'Material pedagógico', unidade: 'aluno/ano', quantidadeAnual: 120, valorUnitario: 480 },
-  { id: 'ref-aq03', descricao: 'Material de limpeza e higiene', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 1800 },
-  { id: 'ref-aq04', descricao: 'Uniforme e EPI (funcionários)', unidade: 'ano', quantidadeAnual: 1, valorUnitario: 12000 },
-  { id: 'ref-aq05', descricao: 'Gás de cozinha', unidade: 'mês', quantidadeAnual: 12, valorUnitario: 800 },
+  { id: 'ref-aq01', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 1260 },
+  { id: 'ref-aq02', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 480 },
+  { id: 'ref-aq03', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 1800 },
+  { id: 'ref-aq04', descricao: 'UNIFORME E EPI (FUNCIONÁRIOS)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 12000 },
+  { id: 'ref-aq05', descricao: 'GÁS DE COZINHA', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 800 },
 ];
 

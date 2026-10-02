@@ -157,22 +157,22 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
         {/* Custo summary badges */}
         <div className="hidden md:flex items-center gap-2 shrink-0">
           <div className="text-right">
-            <div className="text-xs text-slate-400">Obra civil</div>
+            <div className="text-xs text-slate-400 font-semibold">Obra Civil</div>
             <div className="text-sm font-semibold text-slate-700">{BRL(custo.obras)}</div>
           </div>
           <div className="w-px h-8 bg-slate-200" />
           <div className="text-right">
-            <div className="text-xs text-slate-400">Mobiliário</div>
+            <div className="text-xs text-slate-400 font-semibold">Mobiliário</div>
             <div className="text-sm font-semibold text-blue-700">{BRL(custo.mobiliario)}</div>
           </div>
           <div className="w-px h-8 bg-slate-200" />
           <div className="text-right">
-            <div className="text-xs text-slate-400">Equipamentos</div>
+            <div className="text-xs text-slate-400 font-semibold">Equipamentos</div>
             <div className="text-sm font-semibold text-purple-700">{BRL(custo.equipamentos)}</div>
           </div>
           <div className="w-px h-8 bg-slate-200" />
           <div className="text-right">
-            <div className="text-xs text-slate-400">Total</div>
+            <div className="text-xs text-slate-400 font-semibold">Total</div>
             <div className="font-bold text-green-700">{BRL(custo.total)}</div>
           </div>
         </div>
@@ -224,7 +224,7 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
                 className={`${inputCls} w-full`} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Custo construção / m²</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Custo Construção / m²</label>
               <CurrencyInput value={ambiente.custoConstrucaoMq}
                 onChange={v => onUpdate({ ...ambiente, custoConstrucaoMq: v })}
                 className={`${inputCls} w-full`} />
@@ -239,9 +239,9 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
               </div>
             )}
             <div className="flex flex-col justify-center bg-green-50 border border-green-200 rounded-xl p-3 text-center">
-              <div className="text-xs text-green-600 font-semibold">Obra civil total</div>
+              <div className="text-xs text-green-600 font-semibold">Obra Civil Total</div>
               <div className="font-bold text-green-700 text-lg">{BRL(custo.obras)}</div>
-              <div className="text-xs text-green-500">{ambiente.areaMq} m² × {BRL(ambiente.custoConstrucaoMq)}/m²</div>
+              <div className="text-xs text-green-500 font-medium">{ambiente.areaMq} m² × {BRL(ambiente.custoConstrucaoMq)}/m²</div>
             </div>
           </div>
 
@@ -281,13 +281,13 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
                       <tr key={item.id} className="hover:bg-slate-50">
                         <td className="px-3 py-2">
                           <input value={item.descricao}
-                            onChange={e => updateItem(item.id, 'descricao', e.target.value)}
-                            className="w-full text-sm bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none py-0.5" />
+                            onChange={e => updateItem(item.id, 'descricao', e.target.value.toUpperCase())}
+                            className="w-full text-sm bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none py-0.5 uppercase" />
                         </td>
                         <td className="px-3 py-2 text-center">
                           <input type="number" min={1} value={item.quantidade}
                             onChange={e => updateItem(item.id, 'quantidade', Number(e.target.value))}
-                            className="w-20 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none" />
+                            className="w-20 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-bold" />
                         </td>
                         <td className="px-3 py-2 text-right">
                           <CurrencyInput value={item.valorUnitario}
@@ -345,13 +345,13 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
                       <tr key={item.id} className="hover:bg-slate-50">
                         <td className="px-3 py-2">
                           <input value={item.descricao}
-                            onChange={e => updateItem(item.id, 'descricao', e.target.value)}
-                            className="w-full text-sm bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 outline-none py-0.5" />
+                            onChange={e => updateItem(item.id, 'descricao', e.target.value.toUpperCase())}
+                            className="w-full text-sm bg-transparent border-b border-transparent hover:border-slate-300 focus:border-purple-500 outline-none py-0.5 uppercase" />
                         </td>
                         <td className="px-3 py-2 text-center">
                           <input type="number" min={1} value={item.quantidade}
                             onChange={e => updateItem(item.id, 'quantidade', Number(e.target.value))}
-                            className="w-20 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none" />
+                            className="w-20 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none font-bold" />
                         </td>
                         <td className="px-3 py-2 text-right">
                           <CurrencyInput value={item.valorUnitario}
@@ -377,19 +377,19 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
             {/* Total bar */}
             <div className="mt-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 grid grid-cols-4 gap-3 text-center">
               <div>
-                <div className="text-xs text-slate-500">Obra Civil</div>
+                <div className="text-xs text-slate-500 font-semibold">Obra Civil</div>
                 <div className="font-bold text-slate-700">{BRL(custo.obras)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500">Mobiliário</div>
+                <div className="text-xs text-slate-500 font-semibold">Mobiliário</div>
                 <div className="font-bold text-blue-700">{BRL(custo.mobiliario)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500">Equipamentos</div>
+                <div className="text-xs text-slate-500 font-semibold">Equipamentos</div>
                 <div className="font-bold text-purple-700">{BRL(custo.equipamentos)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 font-semibold">TOTAL AMBIENTE</div>
+                <div className="text-xs text-slate-500 font-bold">Total Ambiente</div>
                 <div className="font-black text-green-700 text-lg">{BRL(custo.total)}</div>
               </div>
             </div>
@@ -401,7 +401,7 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
       {addingItem && (
         <div className="border-t border-slate-200 bg-blue-50 px-5 py-4">
           <div className="flex items-center gap-3 mb-3">
-            <h4 className="font-semibold text-slate-700 text-sm">Adicionar item</h4>
+            <h4 className="font-semibold text-slate-700 text-sm">Adicionar Item</h4>
             <div className="flex gap-2">
               {(['mobiliario', 'equipamento'] as TipoItemBiblioteca[]).map(t => (
                 <button key={t} onClick={() => setNewItemTipo(t)}
@@ -416,7 +416,7 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
               className="flex-1 text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
               <option value="">— Selecione da biblioteca —</option>
               {bibFiltrada.map(b => (
-                <option key={b.id} value={b.id}>{b.codigo} · {b.descricao} · {BRL(b.valorUnitarioRef)}</option>
+                <option key={b.id} value={b.id}>{b.codigo} · {b.descricao.toUpperCase()} · {BRL(b.valorUnitarioRef)}</option>
               ))}
             </select>
             <button onClick={addItemFromBiblioteca} disabled={!newItemBibId}
@@ -424,7 +424,7 @@ function AmbienteCard({ ambiente, onUpdate, onDelete, onClone, bibliotecaItens }
               <Check className="w-4 h-4" /> Adicionar
             </button>
             <button onClick={addItemManual}
-              className="px-3 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-white">
+              className="px-3 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-semibold hover:bg-white">
               Manual
             </button>
             <button onClick={() => { setAddingItem(false); setNewItemBibId(''); }}
@@ -474,7 +474,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
     }
     const novo: ModeloAmbiente = {
       id: `ma-${Date.now()}`,
-      nome: formNome.trim(),
+      nome: formNome.trim().toUpperCase(),
       categoria: formCategoria,
       areaMq: formArea,
       custoConstrucaoMq: formCusto,
@@ -490,7 +490,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
     const clone: ModeloAmbiente = {
       ...amb,
       id: `ma-${Date.now()}`,
-      nome: `${amb.nome} (cópia)`,
+      nome: `${amb.nome} (Cópia)`,
       padrao: false,
       itens: amb.itens.map(i => ({ ...i, id: `item-${Date.now()}-${Math.random()}` })),
     };
@@ -520,15 +520,15 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
           <div className="text-2xl font-bold text-slate-800">{totalAmbientes}</div>
-          <div className="text-sm text-slate-500">Modelos de Ambiente</div>
+          <div className="text-sm text-slate-500 font-semibold">Modelos de Ambiente</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
           <div className="text-2xl font-bold text-blue-700">{totalArea} m²</div>
-          <div className="text-sm text-slate-500">Área total configurada</div>
+          <div className="text-sm text-slate-500 font-semibold">Área Total Configurada</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
           <div className="text-xl font-bold text-green-700">{BRL(totalCusto)}</div>
-          <div className="text-sm text-slate-500">Custo total dos ambientes</div>
+          <div className="text-sm text-slate-500 font-semibold">Custo Total dos Ambientes</div>
         </div>
       </div>
 
@@ -544,7 +544,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
           />
           <select value={filterCategoria} onChange={e => setFilterCategoria(e.target.value)}
             className="text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-            <option value="todas">Todas as categorias</option>
+            <option value="todas">Todas as Categorias</option>
             {CATEGORIAS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
           <div className="flex rounded-lg border border-slate-300 overflow-hidden">
@@ -557,7 +557,8 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
           </div>
         </div>
         <button onClick={openAddModal}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-sm text-sm">
+          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-sm text-sm"
+        >
           <Plus className="w-4 h-4" /> Novo Ambiente
         </button>
       </div>
@@ -567,7 +568,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-slate-400">
             <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>Nenhum ambiente encontrado</p>
+            <p className="font-semibold">Nenhum ambiente encontrado</p>
           </div>
         ) : (
           filtered.map(amb => (
@@ -659,7 +660,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
                 {(formCategoria === 'sala-atividades' || formCategoria === 'bercario') && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Capacidade (alunos/vagas)
+                      Capacidade (Alunos/Vagas)
                     </label>
                     <input
                       type="number"
@@ -679,7 +680,7 @@ export default function AmbienteEditor({ ambientes, onChange, bibliotecaItens }:
                       onChange={() => setFormPadrao(!formPadrao)}
                       className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
                     />
-                    <span>Ambiente Padrão FNDE</span>
+                    <span className="font-semibold text-xs">Ambiente Padrão FNDE</span>
                   </label>
                 </div>
               </div>
