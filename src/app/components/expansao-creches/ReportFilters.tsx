@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ChevronLeft, FileText, Download, Printer, X } from 'lucide-react';
 import { mockPlans, mockSchools } from './mockData';
-import { ExpansionPlan } from './types';
+import { ExpansionPlan, PlanoCusteio } from './types';
+import { loadPlanosCusteio } from './utils/custeioMigration';
 
 interface ReportFiltersProps {
   reportType: string;
@@ -14,9 +15,11 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
     const cached = localStorage.getItem("exp_creches_plans");
     return cached ? JSON.parse(cached) : mockPlans;
   });
+  const [planosCusteio] = useState<PlanoCusteio[]>(() => loadPlanosCusteio());
 
   const [filters, setFilters] = useState({
     planoId: '',
+    planoCusteioId: '',
     escolaId: '',
     dataInicio: '',
     dataFim: '',
@@ -32,6 +35,7 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
   });
 
   const reportTitles: { [key: string]: string } = {
+    'plano-custeio': 'Relatório Consolidado do Plano de Custeio',
     'diagnostico-demanda': 'Relatório Diagnóstico de Demanda Escolar',
     'expansao-vagas-obras': 'Relatório de Expansão de Vagas e Obras',
     'orcamentario-financeiro': 'Relatório Orçamentário e Financeiro',
@@ -84,6 +88,28 @@ export default function ReportFilters({ reportType, onNavigate, onBack }: Report
                     ))}
                   </select>
                 </div>
+
+                {(reportType === 'plano-custeio' || reportType === 'planejamento-pessoal') && (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      Plano de Custeio Vinculado
+                    </label>
+                    <select
+                      value={filters.planoCusteioId}
+                      onChange={(e) => setFilters({ ...filters, planoCusteioId: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    >
+                      <option value="">Cenário principal / mais recente</option>
+                      {planosCusteio
+                        .filter(pc => !filters.planoId || pc.planoExpansaoId === filters.planoId)
+                        .map(pc => (
+                          <option key={pc.id} value={pc.id}>
+                            {pc.nome} ({pc.cenarioLabel})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Filtro de Escola visível apenas em alguns relatórios */}
                 {['diagnostico-demanda', 'acompanhamento-execucao'].includes(reportType) && (

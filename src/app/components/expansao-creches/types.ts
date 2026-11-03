@@ -103,6 +103,7 @@ export interface AquisicaoAnual {
 export interface CargoReferencia {
   id: string;
   descricao: string;
+  unidade?: string;
   remuneracaoBase: number;
   auxilios: number;
   patronal: number;
@@ -447,3 +448,147 @@ export interface CadUnicoPorUnidade {
   unidadeId: string;
   raios: CadUnicoRaioData[];
 }
+
+// ─── Plano de Custeio (Operação e Manutenção) ──────────────────────────────
+
+export type CriterioProporcionalidade =
+  | 'por_ambiente'           // Multiplicado pelo nº de salas/ambientes adicionados
+  | 'por_vaga'               // Multiplicado pela capacidade de alunos/vagas adicionadas
+  | 'por_turma'              // Multiplicado pelo nº de turmas em operação
+  | 'por_profissional'       // Vinculado ao total de profissionais
+  | 'por_unidade'            // 1x para Nova Creche; 0x (compartilhado) por padrão em Ampliação
+  | 'percentual_utilizacao'  // Fração percentual (ex.: +20% de contrato existente na ampliação)
+  | 'valor_fixo_incremental' // Valor fixo específico para a intervenção
+  | 'manual';                // Definido livremente pelo usuário
+
+export type PeriodicidadeDespesa = 'unica' | 'mensal' | 'anual';
+
+export type NaturezaCustoIntervencao = 'exclusivo_intervencao' | 'compartilhado_rede';
+
+export type OrigemCalculoItemCusteio = 'automatico' | 'ajustado_manualmente' | 'incluido_manualmente';
+
+export type StatusPlanoCusteio = 'Rascunho' | 'Em Análise' | 'Aprovado' | 'Arquivado';
+
+export interface IntervencaoCusteioVinculada {
+  id: string;
+  origemTipo: 'obra' | 'acao';
+  origemId: string;
+  unidadeId?: string;
+  nomeUnidadeOuObra: string;
+  localizacaoResumo: string;
+  escopo: 'unidade_completa' | 'incremental';
+  subtipoIntervencao: 'nova_construcao' | 'retomada' | 'ampliacao' | 'adaptacao';
+  modeloCrecheId?: string;
+  modeloCrecheNome?: string;
+  projetoProprio?: boolean;
+  salasAdicionais: number;
+  vagasAdicionais: number;
+  turmasPrevistas: number;
+  turmasPadraoModelo?: number;
+  etapasAtendidas: EtapaEI[];
+  ambientesPrevistos: { ambienteId: string; nome: string; quantidade: number }[];
+  dataConclusaoObra?: string; // YYYY-MM-DD
+  dataInicioOperacao: string; // YYYY-MM
+  dataFimOperacao?: string;   // YYYY-MM
+  ativoNoCusteio: boolean;
+}
+
+export interface ItemCusteioBase {
+  id: string;
+  intervencaoCusteioId: string; // ID de IntervencaoCusteioVinculada ou 'global'
+  catalogoRefId?: string;
+  descricao: string;
+  criterioCalculo: CriterioProporcionalidade;
+  fatorProporcional: number;    // Razão exata (sem truncamento), ex.: 40/120 = 0.333333...
+  numeradorProporcao?: number;  // Ex.: 40 (vagas da intervenção)
+  denominadorProporcao?: number;// Ex.: 120 (vagas do modelo referência)
+  unidadeProporcao?: string;    // Ex.: 'vagas' | 'salas' | 'turmas' | 'prof.' | 'unid.'
+  percentualRateio?: number;    // 0–100 quando criterioCalculo === 'percentual_utilizacao'
+  memoriaCalculo: string;       // Explicação legível do cálculo proporcional
+  naturezaCusto: NaturezaCustoIntervencao;
+  periodicidade: PeriodicidadeDespesa;
+  unidadeMedida: string;        // 'ANO' | 'UN' | 'KIT' | 'MES'
+  quantidade: number;
+  valorUnitario: number;        // Valor base anual (quando 'anual') ou unitário (quando 'unica'/'mensal')
+  dataInicio: string;           // YYYY-MM
+  dataFim?: string;             // YYYY-MM
+  ocorrenciasNoPeriodo: number; // Meses ativos (recorrentes) ou 1/0 (única)
+  valorAnualizado: number;      // Custo anual de referência (para recorrentes) ou valor único
+  valorTotalProjetado: number;  // Total acumulado dentro do período do Plano de Custeio
+  origemCalculo: OrigemCalculoItemCusteio;
+  quantidadeOriginal?: number;
+  valorUnitarioOriginal?: number;
+  justificativaAjuste?: string;
+}
+
+export interface ItemCusteioServico extends ItemCusteioBase {
+  categoria: 'servico';
+  tipoServico: 'utilidades' | 'seguranca' | 'limpeza' | 'conectividade' | 'manutencao' | 'outros';
+}
+
+export interface ItemCusteioAquisicao extends ItemCusteioBase {
+  categoria: 'aquisicao';
+  tipoAquisicao: 'pontual_implantacao' | 'recorrente_manutencao';
+  subcategoriaAquisicao: 'mobiliario_equipamento' | 'alimentacao' | 'material_pedagogico' | 'insumos_higiene' | 'uniformes_epi' | 'outros';
+}
+
+export interface ItemCusteioPessoal extends ItemCusteioBase {
+  categoria: 'pessoal';
+  categoriaCargo: 'pedagogico' | 'administrativo' | 'apoio';
+  cargoRefId?: string;
+  funcao: string;
+  cargaHoraria: string;
+  remuneracaoBase: number;
+  auxilios: number;
+  patronalUnitario: number;
+  custoMensalUnitario: number;
+  custoAnualUnitario: number; // (remuneracaoBase + auxilios + patronalUnitario) * 13.33
+}
+
+export interface ParametrosSimulacaoCusteio {
+  taxaReajusteAnualServicos: number;   // % ao ano
+  taxaReajusteAnualAquisicoes: number; // % ao ano
+  taxaReajusteAnualPessoal: number;    // % ao ano
+  observacoesCenario?: string;
+}
+
+export interface ResumoFinanceiroCusteio {
+  totalServicosPeriodo: number;
+  totalAquisicoesPontuaisPeriodo: number;
+  totalAquisicoesRecorrentesPeriodo: number;
+  totalPessoalPeriodo: number;
+  totalGeralPeriodo: number;
+  custoAnualRegimePleno: number; // Custo anualizado de 12 meses com todas as intervenções ativas em operação
+  custoMedioAnual: number;       // Desembolso médio anual ao longo do horizonte do plano
+  custoMedioMensal: number;
+  custoPorVagaAdicionalAno: number;
+  totalVagasContempladas: number;
+  totalSalasContempladas: number;
+  totalProfissionais: number;
+  totalInicialAutomatico: number;
+}
+
+export interface PlanoCusteio {
+  id: string;
+  planoExpansaoId: string;
+  nome: string;
+  descricao: string;
+  cenarioLabel: string;
+  versao: number;
+  status: StatusPlanoCusteio;
+  dataInicio: string; // YYYY-MM
+  dataFim: string;    // YYYY-MM
+  anoInicio: number;
+  anoFim: number;
+  responsavelNome: string;
+  dataCriacao: string;
+  dataAtualizacao: string;
+  intervencoes: IntervencaoCusteioVinculada[];
+  configSalas: ConfiguracaoSala[];
+  servicos: ItemCusteioServico[];
+  aquisicoes: ItemCusteioAquisicao[];
+  pessoal: ItemCusteioPessoal[];
+  parametrosSimulacao: ParametrosSimulacaoCusteio;
+  resumoFinanceiro: ResumoFinanceiroCusteio;
+}
+

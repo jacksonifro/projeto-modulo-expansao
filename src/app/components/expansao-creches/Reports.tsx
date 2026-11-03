@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, FileText, Building2, BarChart3, TrendingUp, Calendar, FileBarChart, PieChart, Users, LayoutDashboard } from 'lucide-react';
+import { ChevronLeft, FileText, Building2, BarChart3, TrendingUp, Calendar, FileBarChart, PieChart, Users, LayoutDashboard, Calculator } from 'lucide-react';
 
 interface ReportsProps {
   onNavigate: (view: string, reportType?: string) => void;
@@ -8,6 +8,13 @@ interface ReportsProps {
 
 export default function Reports({ onNavigate, onBack }: ReportsProps) {
   const reportTypes = [
+    {
+      id: 'plano-custeio',
+      title: 'Relatório do Plano de Custeio',
+      description: 'Serviços, aquisições pontuais/recorrentes, folha de pessoal proporcional e cronograma financeiro.',
+      icon: Calculator,
+      color: 'bg-teal-600',
+    },
     {
       id: 'diagnostico-demanda',
       title: 'Diagnóstico de Demanda Escolar',

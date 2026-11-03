@@ -32,6 +32,7 @@ import {
   mockModelosCreche,
   calcularCustoAmbiente,
   calcularCustoCreche,
+  calcularCustoAnualCargo,
   mockServicosReferencia,
   mockAquisicoesReferencia,
   mockCargosReferencia,
@@ -548,26 +549,23 @@ function ServicosCatalogTab({
   const [isOpen, setIsOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ServicoAnual | null>(null);
   const [formDesc, setFormDesc] = useState("");
-  const [formUnidade, setFormUnidade] = useState("ano");
   const [formValue, setFormValue] = useState<number>(0);
 
   const openModal = (item?: ServicoAnual) => {
     if (item) {
       setEditingItem(item);
       setFormDesc(item.descricao);
-      setFormUnidade(item.unidade);
       setFormValue(item.valorAnual);
     } else {
       setEditingItem(null);
       setFormDesc("");
-      setFormUnidade("ANO");
       setFormValue(0);
     }
     setIsOpen(true);
   };
 
   const handleSave = () => {
-    if (!formDesc.trim() || !formUnidade.trim()) {
+    if (!formDesc.trim()) {
       alert("Por favor, preencha todos os campos obrigatórios (*).");
       return;
     }
@@ -575,14 +573,14 @@ function ServicosCatalogTab({
       onUpdateItem({
         ...editingItem,
         descricao: formDesc.trim().toUpperCase(),
-        unidade: formUnidade.trim().toUpperCase(),
+        unidade: "ANO",
         valorAnual: formValue,
       });
     } else {
       onAddItem({
         id: `sv-${Date.now()}`,
         descricao: formDesc.trim().toUpperCase(),
-        unidade: formUnidade.trim().toUpperCase(),
+        unidade: "ANO",
         valorAnual: formValue,
       });
     }
@@ -602,7 +600,7 @@ function ServicosCatalogTab({
           Catálogo de Serviços de Referência
         </h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Serviços anuais de referência para custeio operacional das creches.
+          Serviços anuais de referência para custeio operacional das creches (Unidade fixa: ANO).
         </p>
       </div>
 
@@ -635,7 +633,11 @@ function ServicosCatalogTab({
             {filtered.map((it) => (
               <tr key={it.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao.toUpperCase()}</td>
-                <td className="px-4 py-2.5 text-gray-500 font-medium">{it.unidade.toUpperCase()}</td>
+                <td className="px-4 py-2.5">
+                  <span className="inline-block px-2.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                    ANO
+                  </span>
+                </td>
                 <td className="px-4 py-2.5 text-right font-medium text-gray-800">
                   {BRL(it.valorAnual)}
                 </td>
@@ -704,27 +706,23 @@ function ServicosCatalogTab({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">
-                    Unidade *
+                    Unidade (Fixa)
                   </label>
                   <input
                     type="text"
-                    value={formUnidade}
-                    onChange={(e) => setFormUnidade(e.target.value)}
-                    placeholder="Ex: ANO, MÊS"
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
+                    value="ANO"
+                    disabled
+                    readOnly
+                    className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 font-bold cursor-not-allowed uppercase"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">
                     Valor de Referência (Anual) *
                   </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
+                  <ItemCurrencyInput
                     value={formValue}
-                    onChange={(e) => setFormValue(Number(e.target.value))}
-                    placeholder="0.00"
+                    onChange={setFormValue}
                     className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
                   />
                 </div>
@@ -772,26 +770,23 @@ function AquisicoesCatalogTab({
   const [isOpen, setIsOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<AquisicaoAnual | null>(null);
   const [formDesc, setFormDesc] = useState("");
-  const [formUnidade, setFormUnidade] = useState("UN");
   const [formValue, setFormValue] = useState<number>(0);
 
   const openModal = (item?: AquisicaoAnual) => {
     if (item) {
       setEditingItem(item);
       setFormDesc(item.descricao);
-      setFormUnidade(item.unidade);
       setFormValue(item.valorUnitario);
     } else {
       setEditingItem(null);
       setFormDesc("");
-      setFormUnidade("UN");
       setFormValue(0);
     }
     setIsOpen(true);
   };
 
   const handleSave = () => {
-    if (!formDesc.trim() || !formUnidade.trim()) {
+    if (!formDesc.trim()) {
       alert("Por favor, preencha todos os campos obrigatórios (*).");
       return;
     }
@@ -799,15 +794,15 @@ function AquisicoesCatalogTab({
       onUpdateItem({
         ...editingItem,
         descricao: formDesc.trim().toUpperCase(),
-        unidade: formUnidade.trim().toUpperCase(),
+        unidade: "ANO",
         valorUnitario: formValue,
       });
     } else {
       onAddItem({
         id: `aq-${Date.now()}`,
         descricao: formDesc.trim().toUpperCase(),
-        unidade: formUnidade.trim().toUpperCase(),
-        quantidadeAnual: 1, // default
+        unidade: "ANO",
+        quantidadeAnual: 1,
         valorUnitario: formValue,
       });
     }
@@ -827,7 +822,7 @@ function AquisicoesCatalogTab({
           Catálogo de Aquisições de Referência
         </h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Itens de aquisição recorrente (materiais, merenda, etc.) para custeio operacional.
+          Itens de aquisição recorrente (materiais, merenda, etc.) previstos por ano para custeio operacional (Unidade fixa: ANO).
         </p>
       </div>
 
@@ -852,7 +847,7 @@ function AquisicoesCatalogTab({
             <tr>
               <th className="text-left px-4 py-3">Descrição</th>
               <th className="text-left px-4 py-3">Unidade</th>
-              <th className="text-right px-4 py-3">Valor Unitário Ref.</th>
+              <th className="text-right px-4 py-3">Valor de Referência (Anual)</th>
               <th className="w-24 text-center px-4 py-3">Ações</th>
             </tr>
           </thead>
@@ -860,7 +855,11 @@ function AquisicoesCatalogTab({
             {filtered.map((it) => (
               <tr key={it.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao.toUpperCase()}</td>
-                <td className="px-4 py-2.5 text-gray-500 font-medium">{it.unidade.toUpperCase()}</td>
+                <td className="px-4 py-2.5">
+                  <span className="inline-block px-2.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                    ANO
+                  </span>
+                </td>
                 <td className="px-4 py-2.5 text-right font-medium text-gray-800">
                   {BRL(it.valorUnitario)}
                 </td>
@@ -929,27 +928,23 @@ function AquisicoesCatalogTab({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">
-                    Unidade *
+                    Unidade (Fixa)
                   </label>
                   <input
                     type="text"
-                    value={formUnidade}
-                    onChange={(e) => setFormUnidade(e.target.value)}
-                    placeholder="Ex: UN, KG, RESMA"
-                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
+                    value="ANO"
+                    disabled
+                    readOnly
+                    className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 font-bold cursor-not-allowed uppercase"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">
-                    Valor Unitário Ref. *
+                    Valor de Referência (Anual) *
                   </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
+                  <ItemCurrencyInput
                     value={formValue}
-                    onChange={(e) => setFormValue(Number(e.target.value))}
-                    placeholder="0.00"
+                    onChange={setFormValue}
                     className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
                   />
                 </div>
@@ -1029,6 +1024,7 @@ function FolhaPagamentoCatalogTab({
       onUpdateItem({
         ...editingItem,
         descricao: formDesc.trim().toUpperCase(),
+        unidade: "ANO",
         remuneracaoBase: formRemuneracao,
         auxilios: formAuxilios,
         patronal: formPatronal,
@@ -1037,6 +1033,7 @@ function FolhaPagamentoCatalogTab({
       onAddItem({
         id: `cg-${Date.now()}`,
         descricao: formDesc.trim().toUpperCase(),
+        unidade: "ANO",
         remuneracaoBase: formRemuneracao,
         auxilios: formAuxilios,
         patronal: formPatronal,
@@ -1051,6 +1048,9 @@ function FolhaPagamentoCatalogTab({
       it.descricao.toLowerCase().includes(busca.toLowerCase())
   );
 
+  const previewMensal = formRemuneracao + formAuxilios + formPatronal;
+  const previewAnual = previewMensal * 13.33;
+
   return (
     <div className="p-6 space-y-4 relative">
       <div>
@@ -1058,7 +1058,7 @@ function FolhaPagamentoCatalogTab({
           Catálogo de Cargos (Folha de Pagamento)
         </h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Cargos de referência para montagem de equipes nas creches.
+          Cargos de referência para montagem de equipes nas creches com previsão de custo anual (Unidade fixa: ANO · 12 meses + 13º + 1/3 férias).
         </p>
       </div>
 
@@ -1082,23 +1082,32 @@ function FolhaPagamentoCatalogTab({
           <thead className="bg-gray-50 text-gray-600 border-b border-gray-200">
             <tr>
               <th className="text-left px-4 py-3">Cargo/Função</th>
+              <th className="text-left px-4 py-3">Unidade</th>
               <th className="text-right px-4 py-3">Salário Base (Mês)</th>
               <th className="text-right px-4 py-3">Auxílios (Mês)</th>
               <th className="text-right px-4 py-3">Encargo Patronal (Mês)</th>
-              <th className="text-right px-4 py-3">Custo Mensal Total</th>
+              <th className="text-right px-4 py-3">Custo Mensal</th>
+              <th className="text-right px-4 py-3">Custo Anual Total</th>
               <th className="w-24 text-center px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.map((it) => {
-              const total = it.remuneracaoBase + it.auxilios + it.patronal;
+              const totalMensal = it.remuneracaoBase + it.auxilios + it.patronal;
+              const totalAnual = calcularCustoAnualCargo(it);
               return (
                 <tr key={it.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2.5 text-gray-800 font-semibold">{it.descricao.toUpperCase()}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-block px-2.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                      ANO
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.remuneracaoBase)}</td>
                   <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.auxilios)}</td>
                   <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(it.patronal)}</td>
-                  <td className="px-4 py-2.5 text-right font-bold text-gray-800">{BRL(total)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-slate-600">{BRL(totalMensal)}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-orange-700">{BRL(totalAnual)}</td>
                   <td className="px-4 py-2.5 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
@@ -1149,17 +1158,31 @@ function FolhaPagamentoCatalogTab({
             </div>
 
             <div className="p-6 space-y-4 text-left">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">
-                  Descrição / Função *
-                </label>
-                <input
-                  type="text"
-                  value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Ex: Professor Educação Infantil"
-                  className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
-                />
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Descrição / Função *
+                  </label>
+                  <input
+                    type="text"
+                    value={formDesc}
+                    onChange={(e) => setFormDesc(e.target.value)}
+                    placeholder="Ex: Professor Educação Infantil"
+                    className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Unidade (Fixa)
+                  </label>
+                  <input
+                    type="text"
+                    value="ANO"
+                    disabled
+                    readOnly
+                    className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 font-bold cursor-not-allowed uppercase"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1167,12 +1190,9 @@ function FolhaPagamentoCatalogTab({
                   <label className="block text-xs font-semibold text-gray-600 mb-1">
                     Remuneração Base (R$ / Mês)
                   </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
+                  <ItemCurrencyInput
                     value={formRemuneracao}
-                    onChange={(e) => setFormRemuneracao(Number(e.target.value))}
+                    onChange={setFormRemuneracao}
                     className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
                   />
                 </div>
@@ -1180,12 +1200,9 @@ function FolhaPagamentoCatalogTab({
                   <label className="block text-xs font-semibold text-gray-600 mb-1">
                     Auxílios (Alimentação/Transp)
                   </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
+                  <ItemCurrencyInput
                     value={formAuxilios}
-                    onChange={(e) => setFormAuxilios(Number(e.target.value))}
+                    onChange={setFormAuxilios}
                     className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
                   />
                 </div>
@@ -1195,14 +1212,25 @@ function FolhaPagamentoCatalogTab({
                 <label className="block text-xs font-semibold text-gray-600 mb-1">
                   Encargo Patronal / Custos Indiretos (Mês)
                 </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                <ItemCurrencyInput
                   value={formPatronal}
-                  onChange={(e) => setFormPatronal(Number(e.target.value))}
+                  onChange={setFormPatronal}
                   className="w-full text-sm px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-300 outline-none bg-white text-gray-800"
                 />
+              </div>
+
+              <div className="bg-orange-50/70 border border-orange-200 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <span className="block text-[11px] font-semibold text-orange-700 uppercase">
+                    Custo Anual Previsto (Unidade: ANO)
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    Mensal {BRL(previewMensal)} × 13,33 (12 meses + 13º + 1/3 férias)
+                  </span>
+                </div>
+                <span className="text-base font-extrabold text-orange-700">
+                  {BRL(previewAnual)} / ano
+                </span>
               </div>
             </div>
 
@@ -1309,11 +1337,20 @@ export default function ConfiguracoesCusto({
     if (!cached) return mockModelosCreche;
     const parsed: ModeloCreche[] = JSON.parse(cached);
     return parsed.map(m => {
-      if (!m.pessoal) {
-        const mockMatch = mockModelosCreche.find(x => x.id === m.id);
-        return { ...m, pessoal: mockMatch?.pessoal || [] };
-      }
-      return m;
+      const mockMatch = mockModelosCreche.find(x => x.id === m.id);
+      const servicos = (m.servicos || []).map(sv => ({ ...sv, unidade: "ANO" }));
+      const aquisicoes = (m.aquisicoes || []).map(aq => {
+        if (aq.quantidadeAnual && aq.quantidadeAnual > 1) {
+          return { ...aq, unidade: "ANO", quantidadeAnual: 1, valorUnitario: aq.valorUnitario * aq.quantidadeAnual };
+        }
+        return { ...aq, unidade: "ANO", quantidadeAnual: 1 };
+      });
+      return {
+        ...m,
+        servicos,
+        aquisicoes,
+        pessoal: m.pessoal || mockMatch?.pessoal || [],
+      };
     });
   });
   const [bibliotecaItens, setBibliotecaItens] = useState<ItemBiblioteca[]>(() => {
@@ -1340,15 +1377,23 @@ export default function ConfiguracoesCusto({
   });
   const [servicosRef, setServicosRef] = useState<ServicoAnual[]>(() => {
     const cached = localStorage.getItem("exp_creches_servicos_ref");
-    return cached ? JSON.parse(cached) : mockServicosReferencia;
+    const list: ServicoAnual[] = cached ? JSON.parse(cached) : mockServicosReferencia;
+    return list.map(sv => ({ ...sv, unidade: "ANO" }));
   });
   const [aquisicoesRef, setAquisicoesRef] = useState<AquisicaoAnual[]>(() => {
     const cached = localStorage.getItem("exp_creches_aquisicoes_ref");
-    return cached ? JSON.parse(cached) : mockAquisicoesReferencia;
+    const list: AquisicaoAnual[] = cached ? JSON.parse(cached) : mockAquisicoesReferencia;
+    return list.map(aq => {
+      if (aq.quantidadeAnual && aq.quantidadeAnual > 1) {
+        return { ...aq, unidade: "ANO", quantidadeAnual: 1, valorUnitario: aq.valorUnitario * aq.quantidadeAnual };
+      }
+      return { ...aq, unidade: "ANO", quantidadeAnual: 1 };
+    });
   });
   const [cargosRef, setCargosRef] = useState<CargoReferencia[]>(() => {
     const cached = localStorage.getItem("exp_creches_cargos_ref");
-    return cached ? JSON.parse(cached) : mockCargosReferencia;
+    const list: CargoReferencia[] = cached ? JSON.parse(cached) : mockCargosReferencia;
+    return list.map(cg => ({ ...cg, unidade: "ANO" }));
   });
 
   useEffect(() => {
@@ -1415,7 +1460,7 @@ export default function ConfiguracoesCusto({
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-slate-800">
-                  Consultar Modelos de Creches
+                  Modelos de Creche
                 </h1>
                 <p className="text-slate-500 font-medium">
                   Ambientes, modelos e estimativas de custo para creches FNDE
@@ -1443,7 +1488,7 @@ export default function ConfiguracoesCusto({
               </p>
             </div>
 
-            {/* Acesso rápido a Consultar Modelos */}
+            {/* Acesso rápido a Modelos de Creche */}
             <div className="p-2 border-b border-slate-100">
               <button
                 onClick={() => setActiveTab("modelos")}
@@ -1456,7 +1501,7 @@ export default function ConfiguracoesCusto({
                 <Building2 size={17} className={activeTab === "modelos" ? "text-white" : "text-orange-500"} />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold truncate leading-tight">
-                    Consultar Modelos
+                    Modelos de Creche
                   </p>
                   <p className={`text-[10px] truncate ${activeTab === "modelos" ? "text-white/80" : "text-slate-400"}`}>
                     Visão dos modelos

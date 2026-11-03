@@ -29,6 +29,7 @@ interface NavigationState {
   schoolId?: string;
   reportType?: string;
   reportFilters?: any;
+  custeioOptions?: any;
 }
 
 interface ExpansaoCrechesProps {
@@ -70,7 +71,10 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
     } else if (view === 'configuracoes-custo') {
       setNavigation({ view: 'configuracoes-custo' });
     } else if (view === 'custeio-simulacao') {
-      setNavigation({ view: 'custeio-simulacao' });
+      setNavigation({
+        view: 'custeio-simulacao',
+        custeioOptions: typeof id === 'object' && id !== null ? id : undefined,
+      });
     } else if (view === 'unidades-escolares') {
       setNavigation({ view: 'unidades-escolares' });
     } else if (view === 'view-plano') {
@@ -119,10 +123,10 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
         <PlanosList onNavigate={handleNavigate} onBack={handleBack} />
       )}
       {navigation.view === 'new-plano' && (
-        <PlanoForm onBack={handleBack} isEdit={false} />
+        <PlanoForm onBack={handleBack} onNavigate={handleNavigate} isEdit={false} />
       )}
       {navigation.view === 'edit-plano' && (
-        <PlanoForm onBack={handleBack} isEdit={true} planId={navigation.planId} />
+        <PlanoForm onBack={handleBack} onNavigate={handleNavigate} isEdit={true} planId={navigation.planId} />
       )}
       {navigation.view === 'all-schools' && (
         <QuadroKanbanGlobal />
@@ -177,7 +181,11 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
         <ConfiguracoesCusto onBack={handleBack} onNavigate={handleNavigate} />
       )}
       {navigation.view === 'custeio-simulacao' && (
-        <CusteioSimulacao onBack={handleBack} onNavigate={handleNavigate} />
+        <CusteioSimulacao
+          onBack={handleBack}
+          onNavigate={handleNavigate}
+          initialOptions={navigation.custeioOptions}
+        />
       )}
       {navigation.view === 'unidades-escolares' && (
         <UnidadesEscolares onBack={handleBack} />
@@ -187,6 +195,7 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
           planId={navigation.planId}
           onBack={handleBack}
           onEdit={() => handleNavigate('edit-plano', navigation.planId)}
+          onNavigate={handleNavigate}
         />
       )}
       {navigation.view === 'mapas' && (

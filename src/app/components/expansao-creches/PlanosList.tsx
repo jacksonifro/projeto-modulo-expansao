@@ -2,15 +2,16 @@ import { useState } from 'react';
 import {
   Plus, Search, Filter, Calendar, DollarSign, Users, ChevronLeft,
   Edit2, Trash2, Eye, ArrowRight, Building2, Play, CheckCircle2,
-  Pause, RotateCcw, AlertCircle
+  Pause, RotateCcw, AlertCircle, Calculator
 } from 'lucide-react';
 import { mockPlans, mockSchools, mockActivities } from './mockData';
-import { ExpansionPlan, PlanStatus } from './types';
+import { ExpansionPlan, PlanStatus, PlanoCusteio } from './types';
+import { loadPlanosCusteio } from './utils/custeioMigration';
 import PlanStatusConfirmModal, { PlanModalConfig, PlanActionType } from './PlanStatusConfirmModal';
 import { toast } from 'sonner';
 
 interface PlanosListProps {
-  onNavigate: (view: string, planId?: string) => void;
+  onNavigate: (view: string, planId?: any) => void;
   onBack: () => void;
 }
 
@@ -23,6 +24,7 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
     const cached = localStorage.getItem("exp_creches_plans");
     return cached ? JSON.parse(cached) : mockPlans;
   });
+  const [planosCusteio] = useState<PlanoCusteio[]>(() => loadPlanosCusteio());
 
   const handleUpdatePlanStatus = (planId: string, newStatus: PlanStatus) => {
     const updated = plans.map(p => {
@@ -399,12 +401,34 @@ export default function PlanosList({ onNavigate, onBack }: PlanosListProps) {
                 )}
 
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 px-6 py-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 mt-4">
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <Building2 className="w-4 h-4" />
-                    <span className="font-semibold">{planSchools.length} escola{planSchools.length !== 1 ? 's' : ''} vinculada{planSchools.length !== 1 ? 's' : ''}</span>
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
+                    <span className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4" />
+                      <span className="font-semibold">{planSchools.length} escola{planSchools.length !== 1 ? 's' : ''} vinculada{planSchools.length !== 1 ? 's' : ''}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs">
+                      <Calculator className="w-3.5 h-3.5" />
+                      {planosCusteio.filter(pc => pc.planoExpansaoId === plan.id).length} Plano(s) de Custeio
+                    </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const vinculados = planosCusteio.filter(pc => pc.planoExpansaoId === plan.id);
+                        onNavigate('custeio-simulacao', {
+                          planoExpansaoId: plan.id,
+                          planoCusteioId: vinculados.length === 1 ? vinculados[0].id : undefined,
+                          openCreateModal: vinculados.length === 0,
+                        });
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg font-semibold transition-colors shadow-2xs text-sm"
+                    >
+                      <Calculator className="w-4 h-4 text-emerald-600" />
+                      Planos de Custeio
+                    </button>
+
                     {/* Botão de Ação de Execução Principal no Rodapé */}
                     {plan.status === 'Planejamento' && (
                       <button

@@ -45,13 +45,12 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, num: '1', section: 'expansao' },
-  { id: 'diagnostico-municipio', label: 'Diagnóstico do Município', icon: <Activity className="w-5 h-5" />, num: '2', section: 'expansao' },
-  { id: 'planos', label: 'Planos de Expansão', icon: <FolderKanban className="w-5 h-5" />, num: '3', section: 'expansao' },
-  { id: 'configuracoes-custo', label: 'Consultar Modelos de Creches', icon: <Building2 className="w-5 h-5" />, num: '4', section: 'expansao' },
-  { id: 'custeio-simulacao', label: 'Custeio & Simulação', icon: <Calculator className="w-5 h-5" />, num: '5', section: 'expansao' },
-  { id: 'all-schools', label: 'Quadro Kanban', icon: <BarChart3 className="w-5 h-5" />, num: '6', section: 'expansao' },
-  { id: 'reports', label: 'Relatórios', icon: <FileText className="w-5 h-5" />, num: '7', section: 'expansao' },
-  { id: 'mapas', label: 'Mapas Interativos', icon: <MapPin className="w-5 h-5" />, num: '8', section: 'expansao' },
+  { id: 'planos', label: 'Planos de Expansão', icon: <FolderKanban className="w-5 h-5" />, num: '2', section: 'expansao' },
+  { id: 'custeio-simulacao', label: 'Plano de Custeio', icon: <Calculator className="w-5 h-5" />, num: '3', section: 'expansao' },
+  { id: 'configuracoes-custo', label: 'Modelos de Creche', icon: <Building2 className="w-5 h-5" />, num: '4', section: 'expansao' },
+  { id: 'all-schools', label: 'Execução do Plano', icon: <BarChart3 className="w-5 h-5" />, num: '5', section: 'expansao' },
+  { id: 'reports', label: 'Relatórios', icon: <FileText className="w-5 h-5" />, num: '6', section: 'expansao' },
+  { id: 'mapas', label: 'Mapas Interativos', icon: <MapPin className="w-5 h-5" />, num: '7', section: 'expansao' },
 ];
 
 export default function App() {

@@ -72,8 +72,8 @@ export default function QuadroKanbanGlobal() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-800 mb-2">Quadro Kanban Global</h1>
-        <p className="text-slate-600">Gerencie todas as obras e ações em andamento</p>
+        <h1 className="text-3xl font-bold text-slate-800 mb-2">Execução do Plano</h1>
+        <p className="text-slate-600">Acompanhe e gerencie o andamento de todas as obras e ações pelo Quadro Kanban</p>
       </div>
 
       {/* Seletor de Plano */}

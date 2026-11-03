@@ -14,6 +14,13 @@ import {
   ConfiguracaoSala, ItemPessoal
 } from './types';
 import { calcularCustoObraTotal, calcularCustoAcaoTotal, calcularAutoDistribuicao } from './utils/planLogic';
+import { getPlanosCusteioByExpansaoId } from './utils/custeioMigration';
+import {
+  formatYMDisplay,
+  calcularVagasObraPadrao,
+  calcularVagasAcaoPadrao,
+  parseSalasFromAcao,
+} from './utils/custeioCalculator';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Legend, ComposedChart, Line
@@ -21,13 +28,14 @@ import {
 
 interface PlanoFormProps {
   onBack: () => void;
+  onNavigate?: (view: string, payload?: any) => void;
   isEdit?: boolean;
   planId?: string;
 }
 
 type TabGroup = 'planejamento';
 type TabId =
-  | 'dados' | 'equipe' | 'estrategias' | 'acoes-unidades' | 'obras' | 'desembolso' | 'pessoal' | 'projecao-orcamentaria';
+  | 'dados' | 'equipe' | 'estrategias' | 'acoes-unidades' | 'obras' | 'desembolso' | 'projecao-orcamentaria';
 
 const BRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const PCT = (v: number) => `${v.toFixed(1)}%`;
@@ -51,8 +59,7 @@ const TABS: TabDef[] = [
   { id: 'acoes-unidades', label: 'Ações em Unidades', group: 'planejamento', icon: <Building2 className="w-4 h-4" />, desc: 'Adaptação e ampliação' },
   { id: 'obras', label: 'Obras', group: 'planejamento', icon: <Wrench className="w-4 h-4" />, desc: 'Novas e retomadas' },
   { id: 'desembolso', label: 'Desembolso', group: 'planejamento', icon: <DollarSign className="w-4 h-4" />, desc: 'Plano de desembolso anual' },
-  { id: 'pessoal', label: 'Pessoal', group: 'planejamento', icon: <UserPlus className="w-4 h-4" />, desc: 'Contratações previstas' },
-  { id: 'projecao-orcamentaria', label: 'Projeção Orçamentária', group: 'planejamento', icon: <DollarSign className="w-4 h-4" />, desc: 'Distribuição e consolidação' },
+  { id: 'projecao-orcamentaria', label: 'Projeção Orçamentária', group: 'planejamento', icon: <DollarSign className="w-4 h-4" />, desc: 'Investimento e metas físicas' },
 ];
 
 const GROUP_META: Record<TabGroup, { label: string; short: string; accent: string; bg: string; border: string; dot: string }> = {
@@ -897,8 +904,9 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
   );
 }
 
-export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormProps) {
+export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }: PlanoFormProps) {
   const [activeTab, setActiveTab] = useState<TabId>('dados');
+  const planosCusteioVinculados = planId ? getPlanosCusteioByExpansaoId(planId) : [];
 
   // Carregar planos e dados de custo do localStorage
   const [plans, setPlans] = useState<ExpansionPlan[]>(() => {
@@ -1202,187 +1210,10 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
 
 
 
-  // ═══ ABA 5 — PESSOAL: Estados e Funções ═══════════════════════════════════════
-
-  // Extrair salas de obras e ações com padrão de 1 turma
-  const extrairSalasPlanejadas = (salasAtuais: ConfiguracaoSala[] = []): ConfiguracaoSala[] => {
-    const salas: ConfiguracaoSala[] = [];
-    const mapExistentes = new Map(salasAtuais.map(s => [s.id, s]));
-
-    // Das obras
-    obras.forEach(obra => {
-      const isRetomada = obra.tipo === 'retomada';
-      const salasCount = obra.numeroDeSalas || 0;
-      for (let i = 1; i <= salasCount; i++) {
-        const id = `obra-${obra.id}-sala-${i}`;
-        const existente = mapExistentes.get(id);
-        salas.push({
-          id,
-          origem: 'obra',
-          origemId: obra.id,
-          nome: `${obra.nome || (isRetomada ? 'Obra de Retomada' : 'Nova Creche')} — Sala ${i}`,
-          numeroTurmas: existente ? existente.numeroTurmas : 1, // Padrão 1 turma
-          etapas: obra.etapasAtendidas ?? [],
-        });
-      }
-    });
-
-    // Das ações (ampliações)
-    acoes.filter(a => a.tipo === 'ampliacao').forEach(acao => {
-      const id = `acao-${acao.id}`;
-      const existente = mapExistentes.get(id);
-      const unidade = mockUnidades.find(u => u.id === acao.unidadeId);
-      salas.push({
-        id,
-        origem: 'acao',
-        origemId: acao.id,
-        nome: `Ampliação ${unidade?.nome || 'Unidade Escolar'} — ${acao.descricao || 'Nova Sala'}`,
-        numeroTurmas: existente ? existente.numeroTurmas : 1, // Padrão 1 turma
-        etapas: [acao.etapaDestino],
-      });
-    });
-
-    return salas;
-  };
-
-  // Gerar necessidade automática de pessoal baseado nas turmas
-  const gerarItensPessoalAuto = (salas: ConfiguracaoSala[]): ItemPessoal[] => {
-    const totalTurmas = salas.reduce((s, sala) => s + (sala.numeroTurmas || 1), 0);
-    if (totalTurmas === 0) return [];
-
-    const turmasDeAcoes = salas.filter(s => s.origem === 'acao').reduce((s, sala) => s + (sala.numeroTurmas || 1), 0);
-
-    // 1. Professores regentes: 1 por turma em funcionamento
-    const qtdProfessores = totalTurmas;
-
-    // 2. Monitores / Auxiliares de Creche: 1 por turma em funcionamento
-    const qtdMonitores = totalTurmas;
-
-    // 3. Direção escolar: 1 por obra de creche (ampliações aproveitam direção existente)
-    const qtdDiretores = obras.length;
-
-    // 4. Coordenação pedagógica: 1 por obra de creche (creches com 8+ turmas têm 2 coordenadores)
-    const qtdCoordenadores = obras.reduce((acc, o) => {
-      const turmasObra = salas.filter(s => s.origem === 'obra' && s.origemId === o.id).reduce((sum, s) => sum + (s.numeroTurmas || 1), 0);
-      return acc + (turmasObra >= 8 ? 2 : 1);
-    }, 0);
-
-    // 5. Merendeiras / Cozinheiras:
-    let qtdMerendeiras = 0;
-    obras.forEach(o => {
-      const turmasObra = salas.filter(s => s.origem === 'obra' && s.origemId === o.id).reduce((sum, s) => sum + (s.numeroTurmas || 1), 0);
-      if (turmasObra > 0) {
-        qtdMerendeiras += turmasObra <= 4 ? 1 : turmasObra <= 8 ? 2 : turmasObra <= 12 ? 3 : 4;
-      }
-    });
-    if (turmasDeAcoes >= 4) {
-      qtdMerendeiras += Math.floor(turmasDeAcoes / 4);
-    }
-
-    // 6. Auxiliares de Limpeza / Serviços Gerais:
-    let qtdLimpeza = 0;
-    obras.forEach(o => {
-      const turmasObra = salas.filter(s => s.origem === 'obra' && s.origemId === o.id).reduce((sum, s) => sum + (s.numeroTurmas || 1), 0);
-      if (turmasObra > 0) {
-        qtdLimpeza += turmasObra <= 4 ? 1 : turmasObra <= 8 ? 2 : turmasObra <= 12 ? 3 : 4;
-      }
-    });
-    if (turmasDeAcoes >= 4) {
-      qtdLimpeza += Math.floor(turmasDeAcoes / 4);
-    }
-
-    const cargosCalculados = [
-      { idRef: 'cg03', fallbackNome: 'Professor de Educação Infantil', categoria: 'pedagogico' as const, quantidade: qtdProfessores },
-      { idRef: 'cg04', fallbackNome: 'Monitor/Auxiliar de Creche', categoria: 'pedagogico' as const, quantidade: qtdMonitores },
-      { idRef: 'cg02', fallbackNome: 'Coordenador Pedagógico', categoria: 'pedagogico' as const, quantidade: qtdCoordenadores },
-      { idRef: 'cg01', fallbackNome: 'Diretor de Creche', categoria: 'administrativo' as const, quantidade: qtdDiretores },
-      { idRef: 'cg05', fallbackNome: 'Merendeira/Cozinheira', categoria: 'apoio' as const, quantidade: qtdMerendeiras },
-      { idRef: 'cg06', fallbackNome: 'Auxiliar de Limpeza', categoria: 'apoio' as const, quantidade: qtdLimpeza },
-    ];
-
-    const novosItens: ItemPessoal[] = [];
-
-    cargosCalculados.forEach(c => {
-      if (c.quantidade <= 0) return;
-      const cg = cargosRef.find(cr => cr.id === c.idRef || cr.descricao.toLowerCase().includes(c.fallbackNome.toLowerCase().split(' ')[0]));
-      novosItens.push({
-        id: `auto-${c.idRef}`,
-        funcao: cg ? cg.descricao : c.fallbackNome,
-        categoria: c.categoria,
-        quantidade: c.quantidade,
-        remuneracaoBase: cg ? cg.remuneracaoBase : 2500,
-        auxilios: cg ? cg.auxilios : 350,
-        autoCalculado: true,
-      });
-    });
-
-    return novosItens;
-  };
-
-  const [configSalas, setConfigSalas] = useState<ConfiguracaoSala[]>(() => {
-    if (planParaEditar?.configSalas && planParaEditar.configSalas.length > 0) {
-      return planParaEditar.configSalas;
-    }
-    return extrairSalasPlanejadas();
-  });
-
-  const [pessoal, setPessoal] = useState<ItemPessoal[]>(() => {
-    if (planParaEditar?.pessoal && planParaEditar.pessoal.length > 0) {
-      return planParaEditar.pessoal;
-    }
-    const initialSalas = planParaEditar?.configSalas?.length ? planParaEditar.configSalas : extrairSalasPlanejadas();
-    return gerarItensPessoalAuto(initialSalas);
-  });
-
-  // Sincronização automática das salas planejadas quando obras ou ações mudam
-  useEffect(() => {
-    setConfigSalas(prev => extrairSalasPlanejadas(prev));
-  }, [obras, acoes]);
-
-  // Recálculo automático do pessoal em tempo real conforme as salas e turmas mudam
-  useEffect(() => {
-    if (configSalas.length === 0) return;
-    const autoItens = gerarItensPessoalAuto(configSalas);
-    setPessoal(prev => {
-      const manuais = prev.filter(p => !p.autoCalculado);
-      return [...autoItens, ...manuais];
-    });
-  }, [configSalas, obras.length]);
-
-  const handleUpdateTurmasSala = (salaId: string, novoValor: number) => {
-    setConfigSalas(prev => prev.map(s => s.id === salaId ? { ...s, numeroTurmas: Math.max(1, Math.min(4, novoValor)) } : s));
-  };
-
-  const handleDefinirTodasTurmas = (numero: number) => {
-    setConfigSalas(prev => prev.map(s => ({ ...s, numeroTurmas: numero })));
-  };
-
-  const addItemPessoal = (categoria: ItemPessoal['categoria']) => {
-    setPessoal(p => [...p, {
-      id: `p${Date.now()}`,
-      funcao: '',
-      categoria,
-      quantidade: 1,
-      remuneracaoBase: 0,
-      auxilios: 0,
-      autoCalculado: false,
-    }]);
-  };
-
-  const removeItemPessoal = (id: string) => setPessoal(p => p.filter(x => x.id !== id));
-
-  const calcularCustoPessoal = (item: ItemPessoal) => {
-    const cargoConf = cargosRef.find(c => c.descricao === item.funcao);
-    const patronal = cargoConf ? cargoConf.patronal : 0;
-    const custoMensal = (item.remuneracaoBase + item.auxilios + patronal) * item.quantidade;
-    const custoAnual = custoMensal * 13.3; // 13º salário e 1/3 de férias
-    return { patronal, custoMensal, custoAnual };
-  };
-
+  // Status calculado pelas atividades físicas das obras e ações
   const calcularStatusPlano = (): ExpansionPlan['status'] => {
     if (obras.length === 0 && acoes.length === 0) return 'Planejamento';
 
-    // Buscar todas as atividades associadas às obras e ações deste plano
     const idsObrasEAcoes = new Set([...obras.map(o => o.id), ...acoes.map(a => a.id)]);
     const atividadesPlano = mockActivities.filter(a =>
       (a.planId === planId) ||
@@ -1408,26 +1239,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
   };
 
   const statusCalculado = calcularStatusPlano();
-
-  const totalSalasPlanejadas = obras.reduce((s, o) => s + o.numeroDeSalas, 0) + acoes.filter(a => a.tipo === 'ampliacao').length;
-  const totalTurmasPlanejadas = configSalas.reduce((s, sala) => s + sala.numeroTurmas, 0);
-  const totalCustoAnualPessoal = pessoal.reduce((s, p) => s + calcularCustoPessoal(p).custoAnual, 0);
-
-  const calcularCusteioOperacionalPlano = () => {
-    let totalCusteio = 0;
-    obras.forEach(obra => {
-      const model = modelos.find(m => m.tipoBase === obra.tipoProjetoFNDE);
-      if (model) {
-        // Calcular custeio unitário do modelo
-        const custeioUnitario =
-          (model.servicos || []).reduce((s, sv) => s + sv.valorAnual, 0) +
-          (model.aquisicoes || []).reduce((s, aq) => s + aq.quantidadeAnual * aq.valorUnitario, 0);
-        totalCusteio += custeioUnitario;
-      }
-    });
-    return totalCusteio;
-  };
-  const totalCusteioModelos = calcularCusteioOperacionalPlano();
 
   // Helpers para custos por obra / ação
   const autoDistribuirDesembolso = () => {
@@ -1592,12 +1403,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         valido: totalDemanda > 0 || (obras.length === 0 && acoes.length === 0),
         detalhes: totalDemanda === 0 && (obras.length > 0 || acoes.length > 0) ? 'Defina valores de desembolso para os anos' : 'Desembolso configurado',
       },
-      {
-        id: 'pessoal' as TabId,
-        nome: 'Quadro de Pessoal',
-        valido: pessoal.length > 0,
-        detalhes: pessoal.length === 0 ? 'Configure o quadro de pessoal para o plano' : `${pessoal.length} função(ões) adicionada(s)`,
-      },
     ];
 
     const todasValidas = etapasValidacao.every(e => e.valido);
@@ -1633,8 +1438,8 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
       estrategias,
       acoesUnidades: acoes,
       obras,
-      pessoal,
-      configSalas,
+      pessoal: planParaEditar?.pessoal,
+      configSalas: planParaEditar?.configSalas,
       name: nome.trim(),
       year: periodoInicio,
       description: descricao.trim(),
@@ -1695,8 +1500,8 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
       estrategias,
       acoesUnidades: acoes,
       obras,
-      pessoal,
-      configSalas,
+      pessoal: planParaEditar?.pessoal,
+      configSalas: planParaEditar?.configSalas,
       name: nome.trim(),
       year: periodoInicio,
       description: descricao.trim(),
@@ -1732,7 +1537,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
     vagas: number;
     desembolsoPorAno: { ano: number; valor: number }[];
     totalInvestimento: number;
-    custoPessoalAnual: number;
     anoConclusao: number | null;
   }
 
@@ -1750,10 +1554,7 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
           .reduce((s, d) => s + d.valor, 0)
       }));
 
-      const vagasEstimadas = obra.capacidadeAlunos || 0;
-
-      const turmas = configSalas.filter(c => c.origemId === obra.id).reduce((s, c) => s + c.numeroTurmas, 0) || (obra.numeroDeSalas * 1);
-      const custoPessoalAnual = totalTurmasPlanejadas > 0 ? (turmas / totalTurmasPlanejadas) * totalCustoAnualPessoal : 0;
+      const vagasEstimadas = calcularVagasObraPadrao(obra, modelos);
       const anoConclusao = obra.previsaoConclusao ? new Date(obra.previsaoConclusao).getFullYear() : null;
 
       itens.push({
@@ -1765,7 +1566,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         vagas: vagasEstimadas,
         desembolsoPorAno: desembolsoConsolidado,
         totalInvestimento: totalDesembolso,
-        custoPessoalAnual,
         anoConclusao,
       });
     });
@@ -1790,8 +1590,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         }
       }
 
-      const turmas = configSalas.filter(c => c.origemId === acao.id).reduce((s, c) => s + c.numeroTurmas, 0) || (acao.tipo === 'ampliacao' ? 1 : 0);
-      const custoPessoalAnual = totalTurmasPlanejadas > 0 ? (turmas / totalTurmasPlanejadas) * totalCustoAnualPessoal : 0;
       const anoConclusao = acao.previsaoConclusao ? new Date(acao.previsaoConclusao).getFullYear() : null;
 
       itens.push({
@@ -1799,11 +1597,10 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
         tipo: 'acao',
         nome: `${acao.tipo === 'adaptacao' ? 'Adaptação' : 'Ampliação'} — ${unidade?.nome || 'Unidade'}`,
         descricao: acao.descricao || '',
-        salas: acao.tipo === 'ampliacao' ? 1 : 0,
-        vagas: acao.novaCapacidade || 0,
+        salas: parseSalasFromAcao(acao.descricao, acao.capacidadeAnterior, acao.novaCapacidade),
+        vagas: calcularVagasAcaoPadrao(acao),
         desembolsoPorAno: desembolsoConsolidado,
         totalInvestimento: totalDesembolso,
-        custoPessoalAnual,
         anoConclusao,
       });
     });
@@ -3477,357 +3274,44 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                 </div>
               )}
 
-              {/* ═══ ABA 5 — PESSOAL ════════════════════════════════════ */}
-              {activeTab === 'pessoal' && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-800">Plano de Contratação de Pessoal</h2>
-                    <p className="text-slate-500">Configure turmas por sala e calcule necessidade de professores e auxiliares</p>
-                  </div>
-
-                  {/* Resumo de Salas */}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
-                    <h3 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
-                      <Building2 className="w-5 h-5" />
-                      Resumo de Salas Planejadas
-                    </h3>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <div className="text-xs text-blue-600 mb-1">De Obras (Novas/Retomadas)</div>
-                        <div className="text-3xl font-black text-blue-700">{obras.reduce((s, o) => s + o.numeroDeSalas, 0)}</div>
-                        <div className="text-xs text-blue-500">salas</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-blue-600 mb-1">De Ações (Ampliações)</div>
-                        <div className="text-3xl font-black text-blue-700">{acoes.filter(a => a.tipo === 'ampliacao').length}</div>
-                        <div className="text-xs text-blue-500">salas</div>
-                      </div>
-                      <div className="bg-blue-600 rounded-lg p-3">
-                        <div className="text-xs text-blue-100 mb-1">TOTAL DE SALAS</div>
-                        <div className="text-4xl font-black text-white">{totalSalasPlanejadas}</div>
-                        <div className="text-xs text-blue-200">salas planejadas</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {totalSalasPlanejadas === 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-800 text-sm">
-                      <strong>Nenhuma sala planejada.</strong> Adicione obras ou ações de ampliação nas abas anteriores para calcular a necessidade de pessoal.
-                    </div>
-                  )}
-
-                  {totalSalasPlanejadas > 0 && (
-                    <>
-                      {/* Configuração de Turmas por Sala */}
-                      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                        <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-slate-800 text-base">Configuração de Turmas por Sala</h3>
-                              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-800">
-                                {configSalas.length} salas planejadas
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              Salas carregadas automaticamente com o padrão de <strong>1 turma</strong> (Turno Único ou Integral). Altere para 2 turmas para atendimento em dois turnos (manhã e tarde).
-                            </p>
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleDefinirTodasTurmas(1)}
-                              className="text-xs px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors font-bold shadow-2xs"
-                              title="Configura todas as salas com 1 turma por padrão"
-                            >
-                              Todas 1 Turma
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDefinirTodasTurmas(2)}
-                              className="text-xs px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition-colors font-bold shadow-2xs"
-                              title="Configura todas as salas com 2 turmas (dois turnos)"
-                            >
-                              Todas 2 Turmas
-                            </button>
-                          </div>
-                        </div>
-
-                        {configSalas.length > 0 && (
-                          <div className="p-4 max-h-[400px] overflow-y-auto divide-y divide-slate-100">
-                            {configSalas.map(sala => {
-                              const isObra = sala.origem === 'obra';
-                              const numTurmas = sala.numeroTurmas || 1;
-                              return (
-                                <div
-                                  key={sala.id}
-                                  className="py-3 px-3 rounded-xl hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div
-                                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 ${
-                                        isObra ? 'bg-orange-500 shadow-xs' : 'bg-purple-600 shadow-xs'
-                                      }`}
-                                    >
-                                      {isObra ? <HardHat className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold text-slate-800 truncate">
-                                          {sala.nome}
-                                        </span>
-                                        <span
-                                          className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full border ${
-                                            isObra
-                                              ? 'bg-orange-50 text-orange-700 border-orange-200'
-                                              : 'bg-purple-50 text-purple-700 border-purple-200'
-                                          }`}
-                                        >
-                                          {isObra ? 'Obra' : 'Ampliação'}
-                                        </span>
-                                      </div>
-                                      <div className="text-xs text-slate-500 truncate mt-0.5">
-                                        {sala.etapas.length > 0 ? `Etapas: ${sala.etapas.join(', ')}` : 'Etapa de Educação Infantil'}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center gap-4 shrink-0 self-end sm:self-center">
-                                    {/* Stepper de turmas */}
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs font-semibold text-slate-500 mr-1">Turmas:</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateTurmasSala(sala.id, numTurmas - 1)}
-                                        disabled={numTurmas <= 1}
-                                        className="w-7 h-7 rounded-lg border border-slate-300 bg-white text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-sm"
-                                        title="Diminuir turmas"
-                                      >
-                                        -
-                                      </button>
-                                      <span className="w-8 text-center font-black text-sm text-slate-900 bg-slate-100 py-1 rounded-md">
-                                        {numTurmas}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateTurmasSala(sala.id, numTurmas + 1)}
-                                        disabled={numTurmas >= 4}
-                                        className="w-7 h-7 rounded-lg border border-slate-300 bg-white text-slate-700 font-bold hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-sm"
-                                        title="Aumentar turmas"
-                                      >
-                                        +
-                                      </button>
-                                    </div>
-
-                                    {/* Estimativa de crianças e pessoal */}
-                                    <div className="text-right min-w-[130px]">
-                                      <div className="text-xs font-bold text-blue-700">
-                                        ~{numTurmas * 16} crianças
-                                      </div>
-                                      <div className="text-[10px] text-slate-500 font-semibold">
-                                        {numTurmas} prof · {numTurmas} aux
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Barra Inferior com Totais Reativos */}
-                        <div className="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
-                            <span className="text-slate-600">Total de turmas planejadas:</span>
-                            <span className="font-black text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
-                              {totalTurmasPlanejadas} turmas
-                            </span>
-                            <span className="text-slate-500">
-                              (estimativa: <strong className="text-blue-700 font-bold">{totalTurmasPlanejadas * 16} crianças</strong> atendidas)
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-                            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>Dimensionamento de pessoal sincronizado em tempo real</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Resumo do Cálculo Automático Reativo */}
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 flex gap-3.5 items-start shadow-2xs">
-                        <div className="p-2 rounded-xl bg-blue-600 text-white shrink-0 mt-0.5">
-                          <Sparkles className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 text-xs">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
-                            <h4 className="font-bold text-blue-900 text-sm">
-                              Dimensionamento Automático de Pessoal ({totalTurmasPlanejadas} Turmas)
-                            </h4>
-                            <span className="text-[11px] font-bold text-blue-700 bg-white px-2.5 py-0.5 rounded-full border border-blue-200 self-start sm:self-auto">
-                              1 Professor e 1 Monitor por Turma
-                            </span>
-                          </div>
-                          <p className="text-slate-600 leading-relaxed">
-                            O quadro de servidores abaixo foi calculado automaticamente considerando as <strong>{totalTurmasPlanejadas} turmas</strong> planejadas.
-                            Para novas obras, inclui direção escolar, coordenação pedagógica e equipe de merendeiras e limpeza dimensionadas por porte. Qualquer alteração no número de turmas acima atualiza a folha de pessoal instantaneamente.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Grid de Pessoal por Categoria */}
-                      {['pedagogico', 'administrativo', 'apoio'].map(cat => {
-                        const categoria = cat as ItemPessoal['categoria'];
-                        const itens = pessoal.filter(p => p.categoria === categoria);
-                        const labelCat = categoria === 'pedagogico' ? 'PEDAGÓGICO' : categoria === 'administrativo' ? 'ADMINISTRATIVO' : 'APOIO';
-
-                        const headerBg = categoria === 'pedagogico' ? 'bg-blue-50' : categoria === 'administrativo' ? 'bg-purple-50' : 'bg-green-50';
-                        const headerBorder = categoria === 'pedagogico' ? 'border-blue-200' : categoria === 'administrativo' ? 'border-purple-200' : 'border-green-200';
-                        const headerText = categoria === 'pedagogico' ? 'text-blue-800' : categoria === 'administrativo' ? 'text-purple-800' : 'text-green-800';
-                        const btnBg = categoria === 'pedagogico' ? 'bg-blue-600' : categoria === 'administrativo' ? 'bg-purple-600' : 'bg-green-600';
-                        const btnHover = categoria === 'pedagogico' ? 'hover:bg-blue-700' : categoria === 'administrativo' ? 'hover:bg-purple-700' : 'hover:bg-green-700';
-
-                        return (
-                          <div key={categoria} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                            <div className={`${headerBg} px-5 py-3 border-b ${headerBorder} flex items-center justify-between`}>
-                              <h3 className={`font-bold ${headerText}`}>{labelCat}</h3>
-                              <button
-                                onClick={() => addItemPessoal(categoria)}
-                                className={`text-xs px-3 py-1.5 ${btnBg} text-white rounded-lg ${btnHover} transition-colors font-semibold flex items-center gap-1`}>
-                                <Plus className="w-3 h-3" /> Adicionar
-                              </button>
-                            </div>
-
-                            {itens.length > 0 && (
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                  <thead className="bg-slate-50 text-slate-600">
-                                    <tr>
-                                      <th className="text-left px-4 py-2.5 w-6"></th>
-                                      <th className="text-left px-4 py-2.5">Função</th>
-                                      <th className="text-right px-4 py-2.5 w-24">Qtd</th>
-                                      <th className="text-right px-4 py-2.5 w-32">Rem. Base</th>
-                                      <th className="text-right px-4 py-2.5 w-32">Auxílios</th>
-                                      <th className="text-right px-4 py-2.5 w-32">Patronal</th>
-                                      <th className="text-right px-4 py-2.5 w-32">Custo/Mês</th>
-                                      <th className="text-right px-4 py-2.5 w-36">Custo/Ano</th>
-                                      <th className="text-center px-4 py-2.5 w-16"></th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100">
-                                    {itens.map(item => {
-                                      const { patronal, custoMensal, custoAnual } = calcularCustoPessoal(item);
-                                      return (
-                                        <tr key={item.id} className={`hover:bg-slate-50 ${item.autoCalculado ? 'bg-green-50/30' : ''}`}>
-                                          <td className="px-4 py-2.5 text-center">
-                                            {item.autoCalculado && <span className="text-green-600 text-lg" title="Auto-calculado">✨</span>}
-                                          </td>
-                                          <td className="px-4 py-2.5">
-                                            <select
-                                              value={item.funcao}
-                                              onChange={e => {
-                                                const selectedCargo = cargosRef.find(c => c.descricao === e.target.value);
-                                                setPessoal(prev => prev.map(p => p.id === item.id ? { 
-                                                  ...p, 
-                                                  funcao: e.target.value,
-                                                  remuneracaoBase: selectedCargo ? selectedCargo.remuneracaoBase : p.remuneracaoBase,
-                                                  auxilios: selectedCargo ? selectedCargo.auxilios : p.auxilios
-                                                } : p));
-                                              }}
-                                              className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                                              disabled={item.autoCalculado}
-                                            >
-                                              <option value="">Selecione um cargo do catálogo...</option>
-                                              {cargosRef.map(cargo => (
-                                                <option key={cargo.id} value={cargo.descricao}>
-                                                  {cargo.descricao}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          </td>
-                                          <td className="px-4 py-2.5 text-right">
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              value={item.quantidade}
-                                              onChange={e => setPessoal(prev => prev.map(p => p.id === item.id ? { ...p, quantidade: Math.max(0, Number(e.target.value)) } : p))}
-                                              className="w-full px-2 py-1 text-sm text-right border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                          </td>
-                                          <td className="px-4 py-2.5 text-right">
-                                            <div className="w-full px-2 py-1 text-sm text-right border border-slate-200 bg-slate-50 text-slate-500 rounded">
-                                              {BRL(item.remuneracaoBase)}
-                                            </div>
-                                          </td>
-                                          <td className="px-4 py-2.5 text-right">
-                                            <div className="w-full px-2 py-1 text-sm text-right border border-slate-200 bg-slate-50 text-slate-500 rounded">
-                                              {BRL(item.auxilios)}
-                                            </div>
-                                          </td>
-                                          <td className="px-4 py-2.5 text-right text-slate-600">{BRL(patronal)}</td>
-                                          <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{BRL(custoMensal)}</td>
-                                          <td className="px-4 py-2.5 text-right font-bold text-blue-700">{BRL(custoAnual)}</td>
-                                          <td className="px-4 py-2.5 text-center">
-                                            {!item.autoCalculado && (
-                                              <button
-                                                onClick={() => removeItemPessoal(item.id)}
-                                                className="p-1 text-red-400 hover:bg-red-50 rounded transition-colors">
-                                                <Trash2 className="w-4 h-4" />
-                                              </button>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Resumo Final */}
-                      <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white">
-                        <h3 className="font-bold text-xl mb-4">Resumo de Contratações</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div>
-                            <div className="text-blue-200 text-xs mb-1">Professores</div>
-                            <div className="font-bold text-3xl">{pessoal.filter(p => p.funcao.toLowerCase().includes('professor')).reduce((s, p) => s + p.quantidade, 0)}</div>
-                          </div>
-                          <div>
-                            <div className="text-blue-200 text-xs mb-1">Auxiliares</div>
-                            <div className="font-bold text-3xl">{pessoal.filter(p => p.funcao.toLowerCase().includes('auxiliar') || p.funcao.toLowerCase().includes('cuidador')).reduce((s, p) => s + p.quantidade, 0)}</div>
-                          </div>
-                          <div>
-                            <div className="text-blue-200 text-xs mb-1">Outros Profissionais</div>
-                            <div className="font-bold text-3xl">{pessoal.filter(p => !p.funcao.toLowerCase().includes('professor') && !p.funcao.toLowerCase().includes('auxiliar') && !p.funcao.toLowerCase().includes('cuidador')).reduce((s, p) => s + p.quantidade, 0)}</div>
-                          </div>
-                          <div>
-                            <div className="text-blue-200 text-xs mb-1">Total de Profissionais</div>
-                            <div className="font-bold text-3xl">{pessoal.reduce((s, p) => s + p.quantidade, 0)}</div>
-                          </div>
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-blue-500 flex justify-between items-center">
-                          <span className="font-bold text-lg">CUSTO ANUAL TOTAL (PESSOAL)</span>
-                          <span className="font-black text-2xl">{BRL(totalCustoAnualPessoal)}</span>
-                        </div>
-                      </div>
-
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-                        <strong>💡 Dica:</strong> Itens marcados com ✨ foram calculados automaticamente com base no número de turmas. Você pode editar as quantidades manualmente se necessário.
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* ═══ ABA 7 — PROJEÇÃO ORÇAMENTÁRIA ═════════════════════ */}
+              {/* ═══ ABA — PROJEÇÃO ORÇAMENTÁRIA (INVESTIMENTO FÍSICO) ═════════════════════ */}
               {activeTab === 'projecao-orcamentaria' && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-800">Projeção Orçamentária</h2>
-                    <p className="text-slate-500">Distribuição de investimento por ano e ação planejada</p>
+                    <h2 className="text-2xl font-bold text-slate-800">Projeção Orçamentária de Infraestrutura</h2>
+                    <p className="text-slate-500">Distribuição de investimentos físicos por ano e intervenção planejada</p>
+                  </div>
+
+                  {/* Card de Consulta aos Planos de Custeio Operacional Vinculados */}
+                  <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="font-bold text-blue-900 text-sm flex items-center gap-2">
+                        <Users className="w-4 h-4 text-blue-600" />
+                        Planejamento de Funcionamento, Serviços, Aquisições e Pessoal (Plano de Custeio)
+                      </h3>
+                      <p className="text-xs text-blue-800 mt-1">
+                        O dimensionamento de pessoal e os custos operacionais são gerenciados de forma independente na funcionalidade <strong>Plano de Custeio</strong>.
+                        {planosCusteioVinculados.length > 0
+                          ? ` Este plano possui ${planosCusteioVinculados.length} Plano(s) de Custeio vinculado(s): ${planosCusteioVinculados.map(pc => `${pc.nome} (${formatYMDisplay(pc.dataInicio)}–${formatYMDisplay(pc.dataFim)})`).join('; ')}.`
+                          : ' Salve o Plano de Expansão para criar e vincular cenários de custeio operacional.'}
+                      </p>
+                    </div>
+                    {onNavigate && isEdit && planId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onNavigate('custeio-simulacao', {
+                            planoExpansaoId: planId,
+                            openCreateModal: planosCusteioVinculados.length === 0,
+                          })
+                        }
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-colors"
+                      >
+                        {planosCusteioVinculados.length > 0
+                          ? 'Consultar Planos de Custeio'
+                          : 'Criar Plano de Custeio'}
+                      </button>
+                    )}
                   </div>
 
                   {itensOrcamentarios.length === 0 && (
@@ -3885,25 +3369,6 @@ export default function PlanoForm({ onBack, isEdit = false, planId }: PlanoFormP
                                     ))}
                                     <td className="px-4 py-3 text-center font-bold text-green-700 bg-green-50">
                                       {BRL(item.totalInvestimento)}
-                                    </td>
-                                  </tr>
-
-                                  <tr className="hover:bg-slate-50">
-                                    <td className="px-4 py-3 font-semibold text-slate-700">Custeio com Pessoal</td>
-                                    {anosProjecao.map(ano => {
-                                      const isOperando = item.anoConclusao ? ano >= item.anoConclusao : true;
-                                      const valorPessoal = isOperando ? item.custoPessoalAnual : 0;
-                                      return (
-                                        <td key={ano} className="px-4 py-3 text-center font-semibold text-purple-700">
-                                          {valorPessoal > 0 ? BRL(valorPessoal) : '—'}
-                                        </td>
-                                      );
-                                    })}
-                                    <td className="px-4 py-3 text-center font-bold text-purple-700 bg-purple-50">
-                                      {BRL(anosProjecao.reduce((s, ano) => {
-                                        const isOperando = item.anoConclusao ? ano >= item.anoConclusao : true;
-                                        return s + (isOperando ? item.custoPessoalAnual : 0);
-                                      }, 0))}
                                     </td>
                                   </tr>
 

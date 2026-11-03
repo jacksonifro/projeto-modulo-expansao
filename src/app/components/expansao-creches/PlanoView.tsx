@@ -2,13 +2,15 @@ import { useState } from 'react';
 import {
   ChevronLeft, Building2, Users, Wrench, TrendingUp, DollarSign,
   Calendar, CheckCircle2, Target, AlertCircle, Kanban, Activity,
-  Baby, Info, Play, CheckCircle, Pause, RotateCcw, Edit2
+  Baby, Info, Play, CheckCircle, Pause, RotateCcw, Edit2, Calculator, FileText, Plus, X
 } from 'lucide-react';
 import { mockPlans, mockServidores, mockUnidades, mockProjecaoVagas, mockDemandaBairro } from './mockData';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import KanbanBoard from './KanbanBoard';
-import { ObraConstrucao, AcaoUnidade, ExpansionPlan, PlanStatus } from './types';
+import { ObraConstrucao, AcaoUnidade, ExpansionPlan, PlanStatus, PlanoCusteio } from './types';
 import { calculateViewMetrics } from './utils/planoViewLogic';
+import { formatYMDisplay } from './utils/custeioCalculator';
+import PlanoCusteioReportDocument from './PlanoCusteioReportDocument';
 import PlanStatusConfirmModal, { PlanModalConfig, PlanActionType } from './PlanStatusConfirmModal';
 import { toast } from 'sonner';
 
@@ -16,6 +18,7 @@ interface PlanoViewProps {
   planId?: string;
   onBack: () => void;
   onEdit?: () => void;
+  onNavigate?: (view: string, payload?: any) => void;
 }
 
 type KanbanState = {
@@ -41,7 +44,7 @@ const prioridadeColor: Record<string, string> = {
   P3: 'bg-slate-100 text-slate-600',
 };
 
-export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
+export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoViewProps) {
   const [plans, setPlans] = useState<ExpansionPlan[]>(() => {
     const cached = localStorage.getItem("exp_creches_plans");
     return cached ? JSON.parse(cached) : mockPlans;
@@ -49,6 +52,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
 
   const plan = plans.find(p => p.id === planId) ?? plans[0] ?? mockPlans[0];
   const metrics = calculateViewMetrics(plan as any);
+  const [relatorioCusteioAberto, setRelatorioCusteioAberto] = useState<PlanoCusteio | null>(null);
 
   const [modalConfig, setModalConfig] = useState<PlanModalConfig | null>(null);
 
@@ -409,7 +413,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                       <div className="flex gap-4 text-xs text-slate-500 flex-wrap">
                         <span>Etapa destino: <strong className="text-slate-700">{a.etapaDestino}</strong></span>
                         <span>Cap. {a.capacidadeAnterior} → <strong className="text-green-700">{a.novaCapacidade}</strong></span>
-                        {(() => { const it = metrics.itens.find((i:any) => i.id === a.id); return it ? <><span>Investimento: <strong className="text-blue-700">{BRL(it.totalInvestimento)}</strong></span><span>Custeio Anual: <strong className="text-blue-700">{BRL(it.custoPessoalAnual)}</strong></span></> : null; })()}
+                        {(() => { const it = metrics.itens.find((i:any) => i.id === a.id); return it ? <><span>Investimento: <strong className="text-blue-700">{BRL(it.totalInvestimento)}</strong></span>{it.custoOperacionalAnual != null && <span>Custeio Anual (Vinc.): <strong className="text-emerald-700">{BRL(it.custoOperacionalAnual)}</strong></span>}</> : null; })()}
                       </div>
                       <button
                         onClick={() => abrirKanban(a.id, 'acao-unidade', a)}
@@ -453,7 +457,7 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
                       <span><strong className="text-slate-700">{o.bairro}</strong> · {o.setor}</span>
                       <span>{o.numeroDeSalas} sala{o.numeroDeSalas !== 1 ? 's' : ''}</span>
                       <span>Etapas: {o.etapasAtendidas.join(', ')}</span>
-                      {(() => { const it = metrics.itens.find((i:any) => i.id === o.id); return it ? <><span>Investimento: <strong className="text-purple-700">{BRL(it.totalInvestimento)}</strong></span><span>Custeio Anual: <strong className="text-purple-700">{BRL(it.custoPessoalAnual)}</strong></span></> : null; })()}
+                      {(() => { const it = metrics.itens.find((i:any) => i.id === o.id); return it ? <><span>Investimento: <strong className="text-purple-700">{BRL(it.totalInvestimento)}</strong></span>{it.custoOperacionalAnual != null && <span>Custeio Anual (Vinc.): <strong className="text-emerald-700">{BRL(it.custoOperacionalAnual)}</strong></span>}</> : null; })()}
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-4">
@@ -555,6 +559,136 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
           </div>
         </div>
 
+        {/* Planos de Custeio Vinculados (Consulta e Relatórios) */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6 border border-emerald-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+                <Calculator className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-bold text-slate-800 text-lg">
+                  Planos de Custeio Vinculados ({metrics.planosCusteioVinculados.length})
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Planejamento financeiro de funcionamento, serviços, aquisições e pessoal associado a este Plano de Expansão
+                </p>
+              </div>
+            </div>
+
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() =>
+                  onNavigate('custeio-simulacao', {
+                    planoExpansaoId: plan.id,
+                    openCreateModal: true,
+                  })
+                }
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                Novo Plano de Custeio
+              </button>
+            )}
+          </div>
+
+          {metrics.planosCusteioVinculados.length === 0 ? (
+            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 text-center">
+              <p className="text-sm text-slate-600 mb-3">
+                Nenhum Plano de Custeio cadastrado ainda para este Plano de Expansão.
+              </p>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onNavigate('custeio-simulacao', {
+                      planoExpansaoId: plan.id,
+                      openCreateModal: true,
+                    })
+                  }
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+                >
+                  <Calculator className="w-4 h-4" />
+                  Elaborar Plano de Custeio Operacional
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {metrics.planosCusteioVinculados.map(pc => (
+                <div
+                  key={pc.id}
+                  className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                >
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-slate-800">{pc.nome}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                        {pc.status}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-semibold">
+                        {pc.cenarioLabel} · v{pc.versao}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-xs text-slate-600 mt-1.5">
+                      <span>
+                        Vigência Custeio:{' '}
+                        <strong>
+                          {formatYMDisplay(pc.dataInicio)} a {formatYMDisplay(pc.dataFim)}
+                        </strong>
+                      </span>
+                      <span>
+                        Regime Anual:{' '}
+                        <strong>
+                          {BRL(
+                            pc.resumoFinanceiro.custoAnualRegimePleno ||
+                              pc.resumoFinanceiro.custoMedioAnual
+                          )}
+                        </strong>
+                      </span>
+                      <span>
+                        Total no Período:{' '}
+                        <strong className="text-emerald-700">
+                          {BRL(pc.resumoFinanceiro.totalGeralPeriodo)}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setRelatorioCusteioAberto(pc)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold shadow-2xs transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-blue-600" />
+                      Consultar Relatório
+                    </button>
+
+                    {onNavigate && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onNavigate('custeio-simulacao', {
+                            planoCusteioId: pc.id,
+                            planoExpansaoId: plan.id,
+                            initialTab: 'visao-geral',
+                          })
+                        }
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                      >
+                        <Calculator className="w-3.5 h-3.5" />
+                        Abrir Plano de Custeio
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Datas */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <div className="flex items-center gap-2 mb-4"><Calendar className="w-5 h-5 text-slate-500" /><h2 className="font-bold text-slate-800">Datas do Plano</h2></div>
@@ -564,6 +698,38 @@ export default function PlanoView({ planId, onBack, onEdit }: PlanoViewProps) {
             <div><span className="text-slate-500">Aprovação:</span> <strong className="text-slate-800 ml-1">{plan.dataAprovacao || '—'}</strong></div>
           </div>
         </div>
+
+        {/* Modal de Consulta Rápida do Relatório de Custeio (sem incorporar formulário operacional) */}
+        {relatorioCusteioAberto && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-slate-100 rounded-2xl max-w-5xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-300">
+              <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between print:hidden">
+                <div>
+                  <h3 className="font-bold text-slate-800">
+                    Consulta de Relatório Vinculado — {relatorioCusteioAberto.nome}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Visualização de consulta associada ao Plano de Expansão
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRelatorioCusteioAberto(null)}
+                  className="p-2 rounded-xl hover:bg-slate-100 text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6">
+                <PlanoCusteioReportDocument
+                  planoCusteio={relatorioCusteioAberto}
+                  planoExpansao={plan}
+                  showToolbar={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal Moderno de Confirmação e Alerta de Status */}
         <PlanStatusConfirmModal

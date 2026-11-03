@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, Settings, AlertCircle, CheckCircle2, X
 } from 'lucide-react';
 import { ModeloCreche, ModeloCrecheAmbiente, ModeloAmbiente, ServicoAnual, AquisicaoAnual, CargoReferencia, ModeloCrechePessoal } from './types';
-import { calcularCustoAmbiente, calcularCustoCreche } from './mockDataCusto';
+import { calcularCustoAmbiente, calcularCustoCreche, calcularCustoAnualCargo } from './mockDataCusto';
 
 const BRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -207,7 +207,7 @@ function ServicosTab({
     const novo: ServicoAnual = {
       id: `sv-${Date.now()}`,
       descricao: refSv.descricao,
-      unidade: refSv.unidade,
+      unidade: "ANO",
       valorAnual: refSv.valorAnual,
     };
     onUpdate({ ...modelo, servicos: [...modelo.servicos, novo] });
@@ -236,7 +236,7 @@ function ServicosTab({
           <option value="">— Selecione um serviço do catálogo —</option>
           {servicosRef.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.descricao} ({s.unidade}) · {BRL(s.valorAnual)}/ano
+              {s.descricao} (ANO) · {BRL(s.valorAnual)}/ano
             </option>
           ))}
         </select>
@@ -276,9 +276,10 @@ function ServicosTab({
                   </td>
                   <td className="px-4 py-3 text-center">
                     <input
-                      value={sv.unidade}
-                      onChange={(e) => update(sv.id, "unidade", e.target.value.toUpperCase())}
-                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-white text-gray-800 font-bold uppercase"
+                      value="ANO"
+                      disabled
+                      readOnly
+                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-bold uppercase cursor-not-allowed"
                     />
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -341,7 +342,7 @@ function AquisicoesTab({
     const novo: AquisicaoAnual = {
       id: `aq-${Date.now()}`,
       descricao: refAq.descricao,
-      unidade: refAq.unidade,
+      unidade: "ANO",
       quantidadeAnual: 1,
       valorUnitario: refAq.valorUnitario,
     };
@@ -358,7 +359,7 @@ function AquisicoesTab({
   const remove = (id: string) =>
     onUpdate({ ...modelo, aquisicoes: modelo.aquisicoes.filter((a) => a.id !== id) });
 
-  const total = modelo.aquisicoes.reduce((s, a) => s + a.quantidadeAnual * a.valorUnitario, 0);
+  const total = modelo.aquisicoes.reduce((s, a) => s + a.valorUnitario, 0);
 
   return (
     <div className="space-y-4 text-left">
@@ -371,7 +372,7 @@ function AquisicoesTab({
           <option value="">— Selecione uma aquisição do catálogo —</option>
           {aquisicoesRef.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.descricao} ({a.unidade}) · {BRL(a.valorUnitario)}/un
+              {a.descricao} (ANO) · {BRL(a.valorUnitario)}/ano
             </option>
           ))}
         </select>
@@ -399,9 +400,7 @@ function AquisicoesTab({
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Descrição</th>
                 <th className="text-center px-4 py-3 font-semibold text-slate-600 w-32">Unidade</th>
-                <th className="text-center px-4 py-3 font-semibold text-slate-600 w-28">Quantidade</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Valor Unit.</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Total/Ano</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-44">Valor Anual</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -413,29 +412,18 @@ function AquisicoesTab({
                   </td>
                   <td className="px-4 py-3 text-center">
                     <input
-                      value={aq.unidade}
-                      onChange={(e) => update(aq.id, "unidade", e.target.value.toUpperCase())}
-                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-gray-800 font-bold uppercase"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <input
-                      type="number"
-                      min={1}
-                      value={aq.quantidadeAnual}
-                      onChange={(e) => update(aq.id, "quantidadeAnual", Number(e.target.value))}
-                      className="w-24 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-gray-800 font-bold"
+                      value="ANO"
+                      disabled
+                      readOnly
+                      className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-bold uppercase cursor-not-allowed"
                     />
                   </td>
                   <td className="px-4 py-3 text-right">
                     <CurrencyInput
                       value={aq.valorUnitario}
                       onChange={(v) => update(aq.id, "valorUnitario", v)}
-                      className="w-32 text-right text-sm px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-gray-800 font-bold"
+                      className="w-40 text-right text-sm px-2 py-1 border border-slate-200 rounded-lg outline-none bg-white text-gray-800 font-bold"
                     />
-                  </td>
-                  <td className="px-4 py-3 text-right font-bold text-orange-700">
-                    {BRL(aq.quantidadeAnual * aq.valorUnitario)}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => remove(aq.id)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg">
@@ -447,7 +435,7 @@ function AquisicoesTab({
             </tbody>
             <tfoot className="bg-slate-100 border-t-2 border-slate-300">
               <tr>
-                <td className="px-4 py-3 font-semibold" colSpan={4}>Total Aquisições / Ano</td>
+                <td className="px-4 py-3 font-semibold" colSpan={2}>Total Aquisições / Ano</td>
                 <td className="px-4 py-3 text-right font-black text-orange-700">{BRL(total)}</td>
                 <td />
               </tr>
@@ -506,11 +494,11 @@ function FolhaPagamentoTab({
   const safePessoal = Array.isArray(modelo?.pessoal) ? modelo.pessoal.filter(p => p && p.cargoId) : [];
   const safeCargosRef = Array.isArray(cargosRef) ? cargosRef.filter(c => c && c.id) : [];
 
-  const totalMensal = safePessoal.reduce((s, p) => {
+  const totalAnual = safePessoal.reduce((s, p) => {
     const cg = safeCargosRef.find((c) => c.id === p.cargoId);
     if (!cg) return s;
-    const custoCargo = (cg.remuneracaoBase || 0) + (cg.auxilios || 0) + (cg.patronal || 0);
-    return s + custoCargo * (p.quantidade || 0);
+    const custoAnualCargo = calcularCustoAnualCargo(cg);
+    return s + custoAnualCargo * (p.quantidade || 0);
   }, 0);
 
   return (
@@ -524,7 +512,7 @@ function FolhaPagamentoTab({
           <option value="">— Selecione um cargo do catálogo —</option>
           {safeCargosRef.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.descricao || 'Sem descrição'} · {BRL((c.remuneracaoBase || 0) + (c.auxilios || 0) + (c.patronal || 0))}/mês total
+              {c.descricao || 'Sem descrição'} (ANO) · {BRL(calcularCustoAnualCargo(c))}/ano
             </option>
           ))}
         </select>
@@ -551,9 +539,10 @@ function FolhaPagamentoTab({
             <thead className="bg-slate-50 border-b border-slate-200 text-xs">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Cargo/Função</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600">Custo Unit. (mês)</th>
+                <th className="text-center px-4 py-3 font-semibold text-slate-600 w-32">Unidade</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600">Custo Unit. (Ano)</th>
                 <th className="text-center px-4 py-3 font-semibold text-slate-600 w-28">Quantidade</th>
-                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-36">Total (mês)</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600 w-40">Total/Ano</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -561,14 +550,22 @@ function FolhaPagamentoTab({
               {safePessoal.map((p) => {
                 const cg = safeCargosRef.find((c) => c.id === p.cargoId);
                 if (!cg) return null;
-                const unitMensal = (cg.remuneracaoBase || 0) + (cg.auxilios || 0) + (cg.patronal || 0);
+                const unitAnual = calcularCustoAnualCargo(cg);
                 return (
                   <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-3 font-semibold text-slate-800">
                       {cg.descricao || 'Sem descrição'}
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <input
+                        value="ANO"
+                        disabled
+                        readOnly
+                        className="w-28 text-center text-sm px-2 py-1 border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-bold uppercase cursor-not-allowed"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-right text-slate-600">
-                      {BRL(unitMensal)}
+                      {BRL(unitAnual)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <input
@@ -580,7 +577,7 @@ function FolhaPagamentoTab({
                       />
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-blue-700">
-                      {BRL(unitMensal * (p.quantidade || 1))}
+                      {BRL(unitAnual * (p.quantidade || 1))}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button onClick={() => remove(p.id)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg">
@@ -593,8 +590,8 @@ function FolhaPagamentoTab({
             </tbody>
             <tfoot className="bg-slate-100 border-t-2 border-slate-300">
               <tr>
-                <td className="px-4 py-3 font-semibold" colSpan={3}>Custo Mensal da Equipe</td>
-                <td className="px-4 py-3 text-right font-black text-blue-700">{BRL(totalMensal)}</td>
+                <td className="px-4 py-3 font-semibold" colSpan={4}>Total Folha de Pagamento / Ano</td>
+                <td className="px-4 py-3 text-right font-black text-blue-700">{BRL(totalAnual)}</td>
                 <td />
               </tr>
             </tfoot>
@@ -635,7 +632,7 @@ function ModeloCard({
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<ModeloTab>('ambientes');
 
-  const custo = calcularCustoCreche(modelo, ambientes);
+  const custo = calcularCustoCreche(modelo, ambientes, cargosRef);
 
   const tabBtns: { id: ModeloTab; label: string; icon: React.ReactNode }[] = [
     { id: 'ambientes', label: 'Ambientes', icon: <Building2 className="w-3.5 h-3.5" /> },
@@ -795,7 +792,7 @@ function ResumoModelo({ modelo, ambientes, custo }: {
   }, 0);
 
   const custeioServicos = modelo.servicos.reduce((s, sv) => s + sv.valorAnual, 0);
-  const custeioAquisicoes = modelo.aquisicoes.reduce((s, aq) => s + aq.quantidadeAnual * aq.valorUnitario, 0);
+  const custeioAquisicoes = modelo.aquisicoes.reduce((s, aq) => s + aq.valorUnitario, 0);
 
   return (
     <div className="space-y-6 text-left">
@@ -823,10 +820,14 @@ function ResumoModelo({ modelo, ambientes, custo }: {
           <div className="text-right">
             <div className="text-blue-200 text-xs font-bold">CUSTEIO ANUAL</div>
             <div className="text-2xl font-bold">{BRL(custo.custeioAnual)}</div>
-            <div className="text-blue-200 text-xs">Serv. + Aquisições</div>
+            <div className="text-blue-200 text-xs">Folha + Serv. + Aquisições</div>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4 border-t border-blue-500 pt-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-blue-500 pt-4">
+          <div className="text-center">
+            <div className="text-blue-200 text-xs font-semibold">Folha/Ano</div>
+            <div className="font-bold">{BRL(custo.detalheCusteio?.pessoal || 0)}</div>
+          </div>
           <div className="text-center">
             <div className="text-blue-200 text-xs font-semibold">Serviços/Ano</div>
             <div className="font-bold">{BRL(custeioServicos)}</div>
@@ -945,7 +946,7 @@ export default function ModeloCrecheBuilder({
       <div className="flex items-center justify-between gap-4 pb-3 border-b border-slate-100">
         <div className="text-left">
           <h2 className="text-xl font-bold text-slate-800 tracking-tight">
-            Consultar Modelos de Creches
+            Modelos de Creche
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             Modelos de creche cadastrados com composições de ambientes, custos e capacidade.

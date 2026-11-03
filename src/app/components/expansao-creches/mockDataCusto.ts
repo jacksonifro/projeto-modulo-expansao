@@ -312,11 +312,11 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'sv07', descricao: 'MANUTENÇÃO PREDIAL', unidade: 'ANO', valorAnual: 36000 },
     ],
     aquisicoes: [
-      { id: 'aq01', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ALUNO/ANO', quantidadeAnual: 228, valorUnitario: 1260 },
-      { id: 'aq02', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ALUNO/ANO', quantidadeAnual: 228, valorUnitario: 480 },
-      { id: 'aq03', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 2800 },
+      { id: 'aq01', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 287280 },
+      { id: 'aq02', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 109440 },
+      { id: 'aq03', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 33600 },
       { id: 'aq04', descricao: 'UNIFORME E EPI (FUNCIONÁRIOS)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 18000 },
-      { id: 'aq05', descricao: 'GÁS DE COZINHA', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 1200 },
+      { id: 'aq05', descricao: 'GÁS DE COZINHA', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 14400 },
     ],
     pessoal: [
       { id: 'mp01', cargoId: 'cg01', quantidade: 1 }, // Diretor
@@ -363,11 +363,11 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'sv16', descricao: 'MANUTENÇÃO PREDIAL', unidade: 'ANO', valorAnual: 24000 },
     ],
     aquisicoes: [
-      { id: 'aq10', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 1260 },
-      { id: 'aq11', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 480 },
-      { id: 'aq12', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 1800 },
+      { id: 'aq10', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 151200 },
+      { id: 'aq11', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 57600 },
+      { id: 'aq12', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 21600 },
       { id: 'aq13', descricao: 'UNIFORME E EPI (FUNCIONÁRIOS)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 12000 },
-      { id: 'aq14', descricao: 'GÁS DE COZINHA', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 800 },
+      { id: 'aq14', descricao: 'GÁS DE COZINHA', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 9600 },
     ],
     pessoal: [
       { id: 'mp11', cargoId: 'cg01', quantidade: 1 }, // Diretor
@@ -398,13 +398,18 @@ export function calcularCustoAmbiente(ambiente: ModeloAmbiente): {
 }
 
 export const mockCargosReferencia: CargoReferencia[] = [
-  { id: 'cg01', descricao: 'DIRETOR ESCOLAR', remuneracaoBase: 6500, auxilios: 500, patronal: 1300 },
-  { id: 'cg02', descricao: 'COORDENADOR PEDAGÓGICO', remuneracaoBase: 5800, auxilios: 500, patronal: 1160 },
-  { id: 'cg03', descricao: 'PROFESSOR EDUCAÇÃO INFANTIL (40H)', remuneracaoBase: 4420, auxilios: 500, patronal: 884 },
-  { id: 'cg04', descricao: 'MONITOR/AUXILIAR DE CRECHE', remuneracaoBase: 2200, auxilios: 350, patronal: 440 },
-  { id: 'cg05', descricao: 'MERENDEIRA/COZINHEIRA', remuneracaoBase: 1800, auxilios: 350, patronal: 360 },
-  { id: 'cg06', descricao: 'AUXILIAR DE LIMPEZA', remuneracaoBase: 1500, auxilios: 350, patronal: 300 },
+  { id: 'cg01', descricao: 'DIRETOR ESCOLAR', unidade: 'ANO', remuneracaoBase: 6500, auxilios: 500, patronal: 1300 },
+  { id: 'cg02', descricao: 'COORDENADOR PEDAGÓGICO', unidade: 'ANO', remuneracaoBase: 5800, auxilios: 500, patronal: 1160 },
+  { id: 'cg03', descricao: 'PROFESSOR EDUCAÇÃO INFANTIL (40H)', unidade: 'ANO', remuneracaoBase: 4420, auxilios: 500, patronal: 884 },
+  { id: 'cg04', descricao: 'MONITOR/AUXILIAR DE CRECHE', unidade: 'ANO', remuneracaoBase: 2200, auxilios: 350, patronal: 440 },
+  { id: 'cg05', descricao: 'MERENDEIRA/COZINHEIRA', unidade: 'ANO', remuneracaoBase: 1800, auxilios: 350, patronal: 360 },
+  { id: 'cg06', descricao: 'AUXILIAR DE LIMPEZA', unidade: 'ANO', remuneracaoBase: 1500, auxilios: 350, patronal: 300 },
 ];
+
+export function calcularCustoAnualCargo(cargo: CargoReferencia): number {
+  const custoMensal = (cargo.remuneracaoBase || 0) + (cargo.auxilios || 0) + (cargo.patronal || 0);
+  return custoMensal * 13.33; // 12 meses + 13º + 1/3 férias
+}
 
 export function calcularCustoCreche(
   modelo: ModeloCreche,
@@ -432,12 +437,11 @@ export function calcularCustoCreche(
   const custoPessoal = (modelo.pessoal || []).reduce((sum, p) => {
     const cargo = cargosRef.find(c => c.id === p.cargoId);
     if (!cargo) return sum;
-    const custoMensal = cargo.remuneracaoBase + cargo.auxilios + cargo.patronal;
-    return sum + (custoMensal * 13.33 * p.quantidade); // 13.33 = 12 meses + 13º + 1/3 férias
+    return sum + calcularCustoAnualCargo(cargo) * p.quantidade;
   }, 0);
 
   const custoServicos = modelo.servicos.reduce((s, sv) => s + sv.valorAnual, 0);
-  const custoAquisicoes = modelo.aquisicoes.reduce((s, aq) => s + aq.quantidadeAnual * aq.valorUnitario, 0);
+  const custoAquisicoes = modelo.aquisicoes.reduce((s, aq) => s + aq.valorUnitario, 0);
 
   const custeioAnual = custoPessoal + custoServicos + custoAquisicoes;
 
@@ -458,10 +462,10 @@ export const mockServicosReferencia: ServicoAnual[] = [
 ];
 
 export const mockAquisicoesReferencia: AquisicaoAnual[] = [
-  { id: 'ref-aq01', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 1260 },
-  { id: 'ref-aq02', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ALUNO/ANO', quantidadeAnual: 120, valorUnitario: 480 },
-  { id: 'ref-aq03', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 1800 },
+  { id: 'ref-aq01', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 151200 },
+  { id: 'ref-aq02', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 57600 },
+  { id: 'ref-aq03', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 21600 },
   { id: 'ref-aq04', descricao: 'UNIFORME E EPI (FUNCIONÁRIOS)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 12000 },
-  { id: 'ref-aq05', descricao: 'GÁS DE COZINHA', unidade: 'MÊS', quantidadeAnual: 12, valorUnitario: 800 },
+  { id: 'ref-aq05', descricao: 'GÁS DE COZINHA', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 9600 },
 ];
 

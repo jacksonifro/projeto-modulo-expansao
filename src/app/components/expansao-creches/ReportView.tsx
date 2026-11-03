@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { ChevronLeft, Download, Printer, FileText, Mail, Users, TrendingUp, PieChart, Building2, LayoutDashboard, FileBarChart } from 'lucide-react';
 import { mockPlans, mockSchools, mockActivities, mockDemandaEtapa, mockUnidades, mockDemandaBairro } from './mockData';
 import { mockCargosReferencia } from './mockDataCusto';
-import { ExpansionPlan, MembroEquipe, ObraConstrucao, AcaoUnidade, CargoReferencia } from './types';
+import { ExpansionPlan, MembroEquipe, ObraConstrucao, AcaoUnidade, CargoReferencia, PlanoCusteio } from './types';
 import { getActivities } from './Kanban';
+import { loadPlanosCusteio } from './utils/custeioMigration';
+import PlanoCusteioReportDocument from './PlanoCusteioReportDocument';
 
 interface ReportViewProps {
   reportType: string;
@@ -13,6 +15,7 @@ interface ReportViewProps {
 
 export default function ReportView({ reportType, filters, onBack }: ReportViewProps) {
   const reportTitles: { [key: string]: string } = {
+    'plano-custeio': 'Relatório Consolidado do Plano de Custeio',
     'diagnostico-demanda': 'Relatório Diagnóstico de Demanda Escolar',
     'expansao-vagas-obras': 'Relatório de Expansão de Vagas e Obras',
     'orcamentario-financeiro': 'Relatório Orçamentário e Financeiro',
@@ -93,11 +96,27 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
   const sumAcoes = acoes.reduce((sum, a) => sum + (a.custoPorSala * 1), 0);
   const totalGeral = sumObras + sumAcoes;
 
-  // Pessoal
+  // Pessoal (integrado com o novo Plano de Custeio vinculado, com fallback legado)
+  const planosCusteio = loadPlanosCusteio();
+  const activePlanoCusteio: PlanoCusteio | undefined = filters.planoCusteioId
+    ? planosCusteio.find(pc => pc.id === filters.planoCusteioId)
+    : planosCusteio.find(pc => pc.planoExpansaoId === activePlan?.id) || planosCusteio[0];
+
   const novasSalasPrevistas = obras.reduce((sum, o) => sum + (o.numeroDeSalas || 0), 0) + acoes.length;
   
-  const pessoal = activePlan?.pessoal || [];
-  const configSalas = activePlan?.configSalas || [];
+  const pessoal = activePlanoCusteio
+    ? activePlanoCusteio.pessoal
+        .filter(p => p.quantidade > 0)
+        .map(p => ({
+          id: p.id,
+          funcao: p.funcao,
+          categoria: p.categoriaCargo,
+          quantidade: p.quantidade,
+          remuneracaoBase: p.remuneracaoBase,
+          auxilios: p.auxilios,
+        }))
+    : (activePlan?.pessoal || []);
+  const configSalas = activePlanoCusteio?.configSalas || activePlan?.configSalas || [];
 
   const calcularCustoPessoal = (item: any) => {
     const cargoConf = cargosRef.find((c: any) => c.descricao === item.funcao);
@@ -709,6 +728,14 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                   </div>
                 </div>
               </div>
+            )}
+
+            {reportType === 'plano-custeio' && activePlanoCusteio && (
+              <PlanoCusteioReportDocument
+                planoCusteio={activePlanoCusteio}
+                planoExpansao={plans.find(p => p.id === activePlanoCusteio.planoExpansaoId) || activePlan}
+                showToolbar={false}
+              />
             )}
 
           </div>
