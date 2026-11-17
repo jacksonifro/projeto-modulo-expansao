@@ -378,6 +378,53 @@ export const mockModelosCreche: ModeloCreche[] = [
       { id: 'mp16', cargoId: 'cg06', quantidade: 2 }, // Aux Limpeza
     ],
   },
+
+  // ── PROJETO PRÓPRIO MUNICIPAL — PADRÃO COMPACTO (4 SALAS) ────────────────
+  // Capacidade: 80 crianças | Área total aprox.: 520 m²
+  {
+    id: 'mc03',
+    nome: 'CRECHE PROJETO PRÓPRIO MUNICIPAL (4 SALAS)',
+    tipoBase: 'proprio',
+    descricao: 'MODELO MUNICIPAL COMPACTO / CONVÊNIO CALHA NORTE. CAPACIDADE BASE PARA 80 CRIANÇAS (4 SALAS DE ATIVIDADES). ESCALÁVEL CONFORME Nº DE SALAS DA OBRA.',
+    reservaPct: 10,
+    capacidadeAlunos: 80,
+    ambientes: [
+      { id: 'mca40', modeloAmbienteId: 'ma01', nomeOverride: 'SALA DE ATIVIDADES (CRECHE) (×4)', quantidade: 4 },
+      { id: 'mca41', modeloAmbienteId: 'ma03', quantidade: 1 },
+      { id: 'mca42', modeloAmbienteId: 'ma04', quantidade: 2 },
+      { id: 'mca43', modeloAmbienteId: 'ma06', quantidade: 1 },
+      { id: 'mca44', modeloAmbienteId: 'ma07', quantidade: 1 },
+      { id: 'mca45', modeloAmbienteId: 'ma08', quantidade: 1 },
+      { id: 'mca46', modeloAmbienteId: 'ma09', quantidade: 1 },
+      { id: 'mca47', modeloAmbienteId: 'ma10', quantidade: 1 },
+      { id: 'mca48', modeloAmbienteId: 'ma13', quantidade: 4 },
+      { id: 'mca49', modeloAmbienteId: 'ma14', quantidade: 2 },
+      { id: 'mca50', modeloAmbienteId: 'ma15', quantidade: 1 },
+    ],
+    servicos: [
+      { id: 'sv21', descricao: 'ENERGIA ELÉTRICA', unidade: 'ANO', valorAnual: 21600 },
+      { id: 'sv22', descricao: 'ÁGUA E ESGOTO', unidade: 'ANO', valorAnual: 7200 },
+      { id: 'sv23', descricao: 'INTERNET E TELEFONIA', unidade: 'ANO', valorAnual: 5400 },
+      { id: 'sv24', descricao: 'VIGILÂNCIA E SEGURANÇA', unidade: 'ANO', valorAnual: 48600 },
+      { id: 'sv25', descricao: 'LIMPEZA E HIGIENE (TERCEIRIZADO)', unidade: 'ANO', valorAnual: 36000 },
+      { id: 'sv26', descricao: 'MANUTENÇÃO PREDIAL', unidade: 'ANO', valorAnual: 18000 },
+    ],
+    aquisicoes: [
+      { id: 'aq20', descricao: 'MERENDA ESCOLAR (PNAE)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 100800 },
+      { id: 'aq21', descricao: 'MATERIAL PEDAGÓGICO', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 38400 },
+      { id: 'aq22', descricao: 'MATERIAL DE LIMPEZA E HIGIENE', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 14400 },
+      { id: 'aq23', descricao: 'UNIFORME E EPI (FUNCIONÁRIOS)', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 9000 },
+      { id: 'aq24', descricao: 'GÁS DE COZINHA', unidade: 'ANO', quantidadeAnual: 1, valorUnitario: 7200 },
+    ],
+    pessoal: [
+      { id: 'mp21', cargoId: 'cg01', quantidade: 1 }, // Diretor
+      { id: 'mp22', cargoId: 'cg02', quantidade: 1 }, // Coordenador
+      { id: 'mp23', cargoId: 'cg03', quantidade: 8 }, // Professor
+      { id: 'mp24', cargoId: 'cg04', quantidade: 4 }, // Monitor
+      { id: 'mp25', cargoId: 'cg05', quantidade: 2 }, // Merendeira
+      { id: 'mp26', cargoId: 'cg06', quantidade: 2 }, // Aux Limpeza
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

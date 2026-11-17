@@ -10,14 +10,17 @@ import {
   Users,
   Package,
   Wrench,
+  ShieldCheck,
 } from 'lucide-react';
 import { ExpansionPlan, PlanoCusteio } from './types';
 import {
   calcularProjecaoPlanoCusteio,
   calcularBaselineAutomaticoPeriodo,
+  calcularSustentabilidadeFiscalCusteio,
   formatProporcaoResumo,
   CRITERIO_LABELS,
   formatYMDisplay,
+  obterPeriodoExpansaoYM,
 } from './utils/custeioCalculator';
 
 interface PlanoCusteioReportDocumentProps {
@@ -53,10 +56,16 @@ export default function PlanoCusteioReportDocument({
     planoCusteio.aquisicoes,
     planoCusteio.pessoal,
     planoCusteio.parametrosSimulacao,
-    baselineAutomatico
+    baselineAutomatico,
+    planoCusteio.mobiliario
   );
 
   const { resumoFinanceiro, cronogramaAnual, cronogramaMensal, resumoPorIntervencao } = projecao;
+  const sustentabilidadeFiscal = calcularSustentabilidadeFiscalCusteio(
+    planoCusteio,
+    projecao,
+    planoExpansao
+  );
   const mapInterv = new Map(planoCusteio.intervencoes.map(i => [i.id, i]));
   const mapIntervNome = new Map(
     planoCusteio.intervencoes.map(i => [i.id, i.nomeUnidadeOuObra])
@@ -107,7 +116,7 @@ export default function PlanoCusteioReportDocument({
   return (
     <div className="space-y-6">
       {showToolbar && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-sm print:hidden">
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 print:hidden">
           <div>
             <h3 className="font-bold text-slate-800 text-base">
               Emissão Oficial — Relatório Consolidado do Plano de Custeio
@@ -120,7 +129,7 @@ export default function PlanoCusteioReportDocument({
             <button
               type="button"
               onClick={() => window.print()}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-sm font-semibold transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition-colors"
             >
               <Printer className="w-4 h-4" />
               Imprimir
@@ -128,7 +137,7 @@ export default function PlanoCusteioReportDocument({
             <button
               type="button"
               onClick={() => window.print()}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
             >
               <Download className="w-4 h-4" />
               Salvar PDF
@@ -138,7 +147,7 @@ export default function PlanoCusteioReportDocument({
       )}
 
       {/* Documento Imprimível */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-lg overflow-hidden print:shadow-none print:border-0">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden print:shadow-none print:border-0">
         {/* Cabeçalho Institucional */}
         <div className="bg-gradient-to-r from-[#1a3a5c] to-[#2563eb] text-white p-8 print:bg-white print:text-slate-900 print:border-b-2 print:border-slate-900">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -200,9 +209,9 @@ export default function PlanoCusteioReportDocument({
                 {planoExpansao && (
                   <>
                     <div className="text-xs text-slate-600 mt-1">
-                      Execução Física:{' '}
+                      Período da Expansão:{' '}
                       <strong>
-                        {planoExpansao.periodoInicio}–{planoExpansao.periodoFim}
+                        {obterPeriodoExpansaoYM(planoExpansao).labelComMeses}
                       </strong>{' '}
                       ({planoExpansao.status})
                     </div>
@@ -271,6 +280,11 @@ export default function PlanoCusteioReportDocument({
                             ? 'Unidade Completa'
                             : 'Expansão Incremental'}
                         </span>
+                        {iv.subtipoIntervencao === 'retomada' && (
+                          <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                            Retomada ({iv.percentualConclusaoObra || 0}%)
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-slate-600 max-w-xs">
                         {iv.ambientesPrevistos
@@ -310,12 +324,11 @@ export default function PlanoCusteioReportDocument({
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
                     <th className="text-left px-3 py-2.5 font-bold">Unidade Escolar / Obra</th>
-                    <th className="text-center px-2.5 py-2.5 font-bold">Meses</th>
-                    <th className="text-right px-2.5 py-2.5 font-bold">Regime / Ano</th>
-                    <th className="text-right px-2.5 py-2.5 font-bold">Serviços</th>
-                    <th className="text-right px-2.5 py-2.5 font-bold">Aq. Implantação</th>
-                    <th className="text-right px-2.5 py-2.5 font-bold">Aq. Recorrentes</th>
-                    <th className="text-right px-2.5 py-2.5 font-bold">Pessoal / Folha</th>
+                    <th className="text-center px-2 py-2.5 font-bold">Meses</th>
+                    <th className="text-right px-2.5 py-2.5 font-bold">1. Mobiliário</th>
+                    <th className="text-right px-2.5 py-2.5 font-bold">2. Serviços</th>
+                    <th className="text-right px-2.5 py-2.5 font-bold">3. Aquisições</th>
+                    <th className="text-right px-2.5 py-2.5 font-bold">4. Pessoal</th>
                     <th className="text-right px-3 py-2.5 font-bold bg-slate-200/70">
                       Total no Período
                     </th>
@@ -325,12 +338,9 @@ export default function PlanoCusteioReportDocument({
                   {resumoPorIntervencao.map(r => (
                     <tr key={r.intervencaoId}>
                       <td className="px-3 py-2.5 font-semibold text-slate-800">{r.nome}</td>
-                      <td className="px-2.5 py-2.5 text-center">{r.mesesOperacaoNoPeriodo}m</td>
-                      <td className="px-2.5 py-2.5 text-right text-emerald-800 font-medium">
-                        {BRL(r.custoAnualizadoRegime)}
-                      </td>
+                      <td className="px-2 py-2.5 text-center">{r.mesesOperacaoNoPeriodo}m</td>
+                      <td className="px-2.5 py-2.5 text-right">{BRL(r.mobiliario)}</td>
                       <td className="px-2.5 py-2.5 text-right">{BRL(r.servicos)}</td>
-                      <td className="px-2.5 py-2.5 text-right">{BRL(r.aquisicoesPontuais)}</td>
                       <td className="px-2.5 py-2.5 text-right">{BRL(r.aquisicoesRecorrentes)}</td>
                       <td className="px-2.5 py-2.5 text-right">{BRL(r.pessoal)}</td>
                       <td className="px-3 py-2.5 text-right font-bold text-blue-800 bg-slate-50">
@@ -342,15 +352,12 @@ export default function PlanoCusteioReportDocument({
                 <tfoot className="bg-slate-100 border-t-2 border-slate-300 text-slate-900 font-bold">
                   <tr>
                     <td className="px-3 py-2.5">TOTAL GERAL CONSOLIDADO</td>
-                    <td className="px-2.5 py-2.5 text-center">—</td>
-                    <td className="px-2.5 py-2.5 text-right text-emerald-800">
-                      {BRL(resumoFinanceiro.custoAnualRegimePleno)}
+                    <td className="px-2 py-2.5 text-center">{cronogramaMensal.length}m</td>
+                    <td className="px-2.5 py-2.5 text-right">
+                      {BRL(resumoFinanceiro.totalMobiliarioPeriodo)}
                     </td>
                     <td className="px-2.5 py-2.5 text-right">
                       {BRL(resumoFinanceiro.totalServicosPeriodo)}
-                    </td>
-                    <td className="px-2.5 py-2.5 text-right">
-                      {BRL(resumoFinanceiro.totalAquisicoesPontuaisPeriodo)}
                     </td>
                     <td className="px-2.5 py-2.5 text-right">
                       {BRL(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo)}
@@ -367,11 +374,55 @@ export default function PlanoCusteioReportDocument({
             </div>
           </section>
 
+          {/* 3.1. Detalhamento — Seção 1: Mobiliário & Equipamentos dos Ambientes */}
+          <section>
+            <h2 className="text-lg font-extrabold text-slate-800 border-b-2 border-blue-600 pb-2 mb-4 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-amber-600" />
+              4. Detalhamento — Seção 1: Mobiliário & Equipamentos (Ambientes do Modelo)
+            </h2>
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-xs">
+                <thead className="bg-amber-50 text-amber-900">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-bold">Unidade / Intervenção</th>
+                    <th className="text-left px-3 py-2 font-bold">Ambiente do Modelo</th>
+                    <th className="text-center px-3 py-2 font-bold">Qtd Amb.</th>
+                    <th className="text-right px-3 py-2 font-bold">Custo Unit. (Mob.+Eq.)</th>
+                    <th className="text-right px-3 py-2 font-bold">Total Implantação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {projecao.mobiliario.map(m => (
+                    <tr key={m.id}>
+                      <td className="px-3 py-2 text-slate-600">
+                        {mapIntervNome.get(m.intervencaoCusteioId) || 'Global'}
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-slate-800">{m.descricao}</td>
+                      <td className="px-3 py-2 text-center font-bold">{m.quantidade}</td>
+                      <td className="px-3 py-2 text-right">{BRL(m.valorUnitario)}</td>
+                      <td className="px-3 py-2 text-right font-bold">{BRL(m.valorTotalProjetado)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-amber-50/70 border-t-2 border-amber-200 font-bold text-amber-950">
+                  <tr>
+                    <td className="px-3 py-2" colSpan={4}>
+                      SUBTOTAL SEÇÃO 1 — MOBILIÁRIO & EQUIPAMENTOS (AMBIENTES)
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {BRL(resumoFinanceiro.totalMobiliarioPeriodo)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+
           {/* 4. Detalhamento — Categoria A: Serviços Operacionais */}
           <section>
             <h2 className="text-lg font-extrabold text-slate-800 border-b-2 border-blue-600 pb-2 mb-4 flex items-center gap-2">
               <Wrench className="w-5 h-5 text-blue-600" />
-              4. Detalhamento — Categoria A: Serviços Operacionais (Base Anual)
+              4. Detalhamento — Categoria A: Serviços Operacionais (Base Anual do Modelo)
             </h2>
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
               <table className="w-full text-xs">
@@ -379,10 +430,10 @@ export default function PlanoCusteioReportDocument({
                   <tr>
                     <th className="text-left px-3 py-2 font-bold">Unidade / Intervenção</th>
                     <th className="text-left px-3 py-2 font-bold">Serviço</th>
-                    <th className="text-left px-3 py-2 font-bold">Critério & Proporção</th>
-                    <th className="text-right px-3 py-2 font-bold">Valor Anualizado</th>
+                    <th className="text-left px-3 py-2 font-bold">Base do Modelo</th>
+                    <th className="text-right px-3 py-2 font-bold">Custo Anual da Unidade</th>
                     <th className="text-center px-3 py-2 font-bold">Meses</th>
-                    <th className="text-right px-3 py-2 font-bold">Total Projetado</th>
+                    <th className="text-right px-3 py-2 font-bold">Total no Período</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -393,7 +444,6 @@ export default function PlanoCusteioReportDocument({
                       </td>
                       <td className="px-3 py-2 font-semibold text-slate-800">{s.descricao}</td>
                       <td className="px-3 py-2 text-slate-600">
-                        {CRITERIO_LABELS[s.criterioCalculo]} ·{' '}
                         <strong>{formatProporcaoResumo(s)}</strong> (
                         {s.naturezaCusto === 'compartilhado_rede' ? 'Compartilhado' : 'Exclusivo'})
                       </td>
@@ -421,113 +471,55 @@ export default function PlanoCusteioReportDocument({
             </div>
           </section>
 
-          {/* 5. Detalhamento — Categoria B: Aquisições */}
+          {/* 5. Detalhamento — Categoria B: Aquisições de Consumo Anual */}
           <section>
             <h2 className="text-lg font-extrabold text-slate-800 border-b-2 border-blue-600 pb-2 mb-4 flex items-center gap-2">
               <Package className="w-5 h-5 text-blue-600" />
-              5. Detalhamento — Categoria B: Aquisições (Pontuais de Implantação vs. Recorrentes Anuais)
+              5. Detalhamento — Categoria B: Aquisições de Funcionamento (Base Anual do Modelo)
             </h2>
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-800 mb-2">
-                  5.1. Aquisições Pontuais de Implantação (Despesa Única — Sem Multiplicação Mensal)
-                </h3>
-                <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                  <table className="w-full text-xs">
-                    <thead className="bg-amber-50 text-amber-900">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-bold">Unidade / Intervenção</th>
-                        <th className="text-left px-3 py-2 font-bold">Item / Kit</th>
-                        <th className="text-center px-3 py-2 font-bold">Qtd</th>
-                        <th className="text-right px-3 py-2 font-bold">Valor Unit.</th>
-                        <th className="text-center px-3 py-2 font-bold">Competência</th>
-                        <th className="text-right px-3 py-2 font-bold">Total Único</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {aquisicoesPontuais.map(a => (
-                        <tr key={a.id}>
-                          <td className="px-3 py-2 text-slate-600">
-                            {mapIntervNome.get(a.intervencaoCusteioId) || 'Global'}
-                          </td>
-                          <td className="px-3 py-2 font-semibold text-slate-800">{a.descricao}</td>
-                          <td className="px-3 py-2 text-center">
-                            {a.quantidade} {a.unidadeMedida || 'KIT'}
-                          </td>
-                          <td className="px-3 py-2 text-right">{BRL(a.valorUnitario)}</td>
-                          <td className="px-3 py-2 text-center">
-                            {formatYMDisplay(a.dataInicio)}
-                          </td>
-                          <td className="px-3 py-2 text-right font-bold">
-                            {BRL(a.valorTotalProjetado)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-amber-50/70 border-t-2 border-amber-200 font-bold text-amber-950">
-                      <tr>
-                        <td className="px-3 py-2" colSpan={5}>
-                          SUBTOTAL 5.1 — AQUISIÇÕES PONTUAIS DE IMPLANTAÇÃO
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {BRL(resumoFinanceiro.totalAquisicoesPontuaisPeriodo)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-2">
-                  5.2. Aquisições Recorrentes de Manutenção e Consumo (Base Anual Proporcional)
-                </h3>
-                <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                  <table className="w-full text-xs">
-                    <thead className="bg-emerald-50 text-emerald-900">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-bold">Unidade / Intervenção</th>
-                        <th className="text-left px-3 py-2 font-bold">Insumo / Aquisição</th>
-                        <th className="text-left px-3 py-2 font-bold">Critério & Proporção</th>
-                        <th className="text-right px-3 py-2 font-bold">Valor Anualizado</th>
-                        <th className="text-center px-3 py-2 font-bold">Meses</th>
-                        <th className="text-right px-3 py-2 font-bold">Total no Período</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {aquisicoesRecorrentes.map(a => (
-                        <tr key={a.id}>
-                          <td className="px-3 py-2 text-slate-600">
-                            {mapIntervNome.get(a.intervencaoCusteioId) || 'Global'}
-                          </td>
-                          <td className="px-3 py-2 font-semibold text-slate-800">{a.descricao}</td>
-                          <td className="px-3 py-2 text-slate-600">
-                            {CRITERIO_LABELS[a.criterioCalculo]} ·{' '}
-                            <strong>{formatProporcaoResumo(a)}</strong>
-                          </td>
-                          <td className="px-3 py-2 text-right">{BRL(a.valorAnualizado)}</td>
-                          <td className="px-3 py-2 text-center">{a.ocorrenciasNoPeriodo}m</td>
-                          <td className="px-3 py-2 text-right font-bold">
-                            {BRL(a.valorTotalProjetado)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-emerald-50/70 border-t-2 border-emerald-200 font-bold text-emerald-950">
-                      <tr>
-                        <td className="px-3 py-2" colSpan={3}>
-                          SUBTOTAL 5.2 — AQUISIÇÕES RECORRENTES DE CONSUMO
-                        </td>
-                        <td className="px-3 py-2 text-right">{BRL(anualAqRecAtivas)}/ano</td>
-                        <td className="px-3 py-2 text-center">—</td>
-                        <td className="px-3 py-2 text-right">
-                          {BRL(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-xs">
+                <thead className="bg-emerald-50 text-emerald-900">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-bold">Unidade / Intervenção</th>
+                    <th className="text-left px-3 py-2 font-bold">Insumo / Aquisição</th>
+                    <th className="text-left px-3 py-2 font-bold">Base do Modelo</th>
+                    <th className="text-right px-3 py-2 font-bold">Custo Anual da Unidade</th>
+                    <th className="text-center px-3 py-2 font-bold">Meses</th>
+                    <th className="text-right px-3 py-2 font-bold">Total no Período</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {aquisicoesRecorrentes.map(a => (
+                    <tr key={a.id}>
+                      <td className="px-3 py-2 text-slate-600">
+                        {mapIntervNome.get(a.intervencaoCusteioId) || 'Global'}
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-slate-800">{a.descricao}</td>
+                      <td className="px-3 py-2 text-slate-600">
+                        <strong>{formatProporcaoResumo(a)}</strong>
+                      </td>
+                      <td className="px-3 py-2 text-right">{BRL(a.valorAnualizado)}</td>
+                      <td className="px-3 py-2 text-center">{a.ocorrenciasNoPeriodo}m</td>
+                      <td className="px-3 py-2 text-right font-bold">
+                        {BRL(a.valorTotalProjetado)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-emerald-50/70 border-t-2 border-emerald-200 font-bold text-emerald-950">
+                  <tr>
+                    <td className="px-3 py-2" colSpan={3}>
+                      SUBTOTAL CATEGORIA B — AQUISIÇÕES DE CONSUMO
+                    </td>
+                    <td className="px-3 py-2 text-right">{BRL(anualAqRecAtivas)}/ano</td>
+                    <td className="px-3 py-2 text-center">—</td>
+                    <td className="px-3 py-2 text-right">
+                      {BRL(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </section>
 
@@ -606,10 +598,10 @@ export default function PlanoCusteioReportDocument({
                   <tr>
                     <th className="text-left px-3 py-2.5 font-bold">Exercício</th>
                     <th className="text-center px-3 py-2.5 font-bold">Meses no Plano</th>
-                    <th className="text-right px-3 py-2.5 font-bold">Serviços</th>
-                    <th className="text-right px-3 py-2.5 font-bold">Aq. Pontuais</th>
-                    <th className="text-right px-3 py-2.5 font-bold">Aq. Recorrentes</th>
-                    <th className="text-right px-3 py-2.5 font-bold">Pessoal e Folha</th>
+                    <th className="text-right px-3 py-2.5 font-bold">1. Mobiliário</th>
+                    <th className="text-right px-3 py-2.5 font-bold">2. Serviços</th>
+                    <th className="text-right px-3 py-2.5 font-bold">3. Aquisições</th>
+                    <th className="text-right px-3 py-2.5 font-bold">4. Pessoal e Folha</th>
                     <th className="text-right px-3 py-2.5 font-bold bg-blue-50 text-blue-900">
                       Total Anual
                     </th>
@@ -620,8 +612,8 @@ export default function PlanoCusteioReportDocument({
                     <tr key={a.ano}>
                       <td className="px-3 py-2.5 font-black text-slate-800">{a.ano}</td>
                       <td className="px-3 py-2.5 text-center">{a.mesesNoPlano} meses</td>
-                      <td className="px-3 py-2.5 text-right">{BRL(a.servicos)}</td>
                       <td className="px-3 py-2.5 text-right">{BRL(a.aquisicoesPontuais)}</td>
+                      <td className="px-3 py-2.5 text-right">{BRL(a.servicos)}</td>
                       <td className="px-3 py-2.5 text-right">{BRL(a.aquisicoesRecorrentes)}</td>
                       <td className="px-3 py-2.5 text-right">{BRL(a.pessoal)}</td>
                       <td className="px-3 py-2.5 text-right font-bold bg-blue-50/40 text-blue-800">
@@ -635,10 +627,10 @@ export default function PlanoCusteioReportDocument({
                     <td className="px-3 py-2.5">TOTAL ACUMULADO</td>
                     <td className="px-3 py-2.5 text-center">{cronogramaMensal.length} meses</td>
                     <td className="px-3 py-2.5 text-right">
-                      {BRL(resumoFinanceiro.totalServicosPeriodo)}
+                      {BRL(resumoFinanceiro.totalMobiliarioPeriodo)}
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      {BRL(resumoFinanceiro.totalAquisicoesPontuaisPeriodo)}
+                      {BRL(resumoFinanceiro.totalServicosPeriodo)}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {BRL(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo)}
@@ -655,7 +647,113 @@ export default function PlanoCusteioReportDocument({
             </div>
           </section>
 
-          {/* 8. Rastreabilidade de Ajustes Manuais */}
+          {/* 8. Sustentabilidade Fiscal (FUNDEB / PNAE / MDE) e Visão Consolidada TCO (CAPEX + OPEX) */}
+          <section>
+            <h2 className="text-lg font-extrabold text-slate-800 border-b-2 border-blue-600 pb-2 mb-4 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              8. Sustentabilidade Fiscal (FUNDEB / PNAE / MDE) & Orçamento Global TCO (CAPEX + OPEX)
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 text-xs">
+              <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                <div className="font-bold uppercase text-[10px] text-emerald-800">
+                  Receita Incremental FUNDEB + PNAE (Regime)
+                </div>
+                <div className="text-base font-black text-emerald-900 mt-0.5">
+                  {BRL(sustentabilidadeFiscal.receitaVinculadaAnualRegime)}/ano
+                </div>
+                <div className="text-[11px] text-emerald-700 mt-0.5">
+                  Cobre <strong>{sustentabilidadeFiscal.coberturaVinculadaRegimePct.toFixed(1)}%</strong> do custeio em regime pleno
+                </div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200">
+                <div className="font-bold uppercase text-[10px] text-amber-800">
+                  Esforço Líquido Tesouro MDE (Regime)
+                </div>
+                <div className="text-base font-black text-amber-900 mt-0.5">
+                  {BRL(sustentabilidadeFiscal.esforcoLiquidoTesouroMdeRegime)}/ano
+                </div>
+                <div className="text-[11px] text-amber-700 mt-0.5">
+                  Complementação municipal além do FUNDEB/PNAE
+                </div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-purple-50/70 border border-purple-200">
+                <div className="font-bold uppercase text-[10px] text-purple-800">
+                  Índice FUNDEB Magistério (Mín. 70%)
+                </div>
+                <div className="text-base font-black text-purple-900 mt-0.5">
+                  {sustentabilidadeFiscal.indiceMagisterioFundebPct.toFixed(1)}%
+                </div>
+                <div className="text-[11px] text-purple-700 mt-0.5">
+                  Folha Pedagógica: {BRL(sustentabilidadeFiscal.folhaMagisterioAnualRegime)}/ano
+                </div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200">
+                <div className="font-bold uppercase text-[10px] text-blue-800">
+                  Custo Total de Propriedade (TCO Global)
+                </div>
+                <div className="text-base font-black text-blue-900 mt-0.5">
+                  {BRL(sustentabilidadeFiscal.totalTcoGlobal)}
+                </div>
+                <div className="text-[11px] text-blue-700 mt-0.5">
+                  CAPEX Obras ({BRL(sustentabilidadeFiscal.totalCapexPlanoExpansao)}) + OPEX ({BRL(sustentabilidadeFiscal.totalOpexPeriodoCusteio)})
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-100 text-slate-700">
+                  <tr>
+                    <th className="text-left px-3 py-2.5 font-bold">Exercício</th>
+                    <th className="text-right px-3 py-2.5 font-bold">Obras e Ampliações (CAPEX)</th>
+                    <th className="text-right px-3 py-2.5 font-bold">Operação (Serv + Aq + Folha)</th>
+                    <th className="text-right px-3 py-2.5 font-bold bg-blue-50 text-blue-900">
+                      Total TCO (CAPEX + OPEX)
+                    </th>
+                    <th className="text-right px-3 py-2.5 font-bold text-emerald-800">
+                      Repasse Est. FUNDEB+PNAE
+                    </th>
+                    <th className="text-right px-3 py-2.5 font-bold bg-amber-50/70 text-amber-900">
+                      Esforço Líquido MDE (OPEX)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {sustentabilidadeFiscal.fluxoIntegradoAnual.map(row => (
+                    <tr key={row.ano}>
+                      <td className="px-3 py-2.5 font-black text-slate-800">
+                        {row.ano}{' '}
+                        <span className="text-[10px] font-normal text-slate-500">
+                          ({row.vagasEmOperacaoMediaAno} vg méd.)
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {row.capexObrasAcoes > 0 ? BRL(row.capexObrasAcoes) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {row.opexServicos + row.opexAquisicoesRecorrentes + row.opexPessoal > 0
+                          ? BRL(row.opexServicos + row.opexAquisicoesRecorrentes + row.opexPessoal)
+                          : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-bold bg-blue-50/40 text-blue-900">
+                        {BRL(row.totalTcoMunicipal)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-semibold text-emerald-700">
+                        {row.receitaVinculadaTotal > 0 ? `+${BRL(row.receitaVinculadaTotal)}` : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-bold bg-amber-50/30 text-amber-900">
+                        {row.esforcoLiquidoTesouroMde > 0
+                          ? BRL(row.esforcoLiquidoTesouroMde)
+                          : 'R$ 0,00'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* 9. Rastreabilidade de Ajustes Manuais */}
           <section>
             <h2 className="text-lg font-extrabold text-slate-800 border-b-2 border-blue-600 pb-2 mb-4 flex items-center gap-2">
               {itensAjustadosManualmente.length > 0 ? (
@@ -663,7 +761,7 @@ export default function PlanoCusteioReportDocument({
               ) : (
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               )}
-              8. Rastreabilidade de Simulação e Ajustes Manuais
+              9. Rastreabilidade de Simulação e Ajustes Manuais
             </h2>
             {itensAjustadosManualmente.length === 0 ? (
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-800">

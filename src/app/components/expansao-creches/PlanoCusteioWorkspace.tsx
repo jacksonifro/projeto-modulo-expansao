@@ -19,6 +19,10 @@ import {
   Layers,
   DollarSign,
   TrendingUp,
+  AlertTriangle,
+  RefreshCw,
+  ShieldCheck,
+  Clock,
 } from 'lucide-react';
 import {
   BarChart,
@@ -37,6 +41,7 @@ import {
   StatusPlanoCusteio,
   CriterioProporcionalidade,
   IntervencaoCusteioVinculada,
+  ItemCusteioMobiliario,
   ItemCusteioServico,
   ItemCusteioAquisicao,
   ItemCusteioPessoal,
@@ -51,7 +56,16 @@ import {
   CRITERIO_LABELS,
   CRITERIO_DESCRIPTIONS,
   formatYMDisplay,
+  obterPeriodoExpansaoYM,
+  detectarDivergenciasExpansaoCusteio,
+  sincronizarPlanoCusteioComExpansao,
+  calcularSustentabilidadeFiscalCusteio,
+  parseYM,
+  formatYM,
+  nextMonthAfterDate,
 } from './utils/custeioCalculator';
+import { sincronizarCusteioParaExpansao } from './utils/custeioMigration';
+import { getActivities } from './Kanban';
 import PlanoCusteioReportDocument from './PlanoCusteioReportDocument';
 import {
   FieldTooltip,
@@ -61,6 +75,7 @@ import {
 
 export type WorkspaceTabId =
   | 'visao-geral'
+  | 'mobiliario'
   | 'servicos'
   | 'aquisicoes'
   | 'pessoal'
@@ -162,12 +177,14 @@ export default function PlanoCusteioWorkspace({
         plano.aquisicoes,
         plano.pessoal,
         plano.parametrosSimulacao,
-        baselineAutomaticoAtual
+        baselineAutomaticoAtual,
+        plano.mobiliario
       ),
     [
       plano.dataInicio,
       plano.dataFim,
       plano.intervencoes,
+      plano.mobiliario,
       plano.servicos,
       plano.aquisicoes,
       plano.pessoal,
@@ -182,6 +199,96 @@ export default function PlanoCusteioWorkspace({
     [plano.intervencoes]
   );
 
+  // Detecção reativa de divergências entre o Plano de Expansão atual e o Plano de Custeio
+  const divergenciasExpansao = useMemo(
+    () => detectarDivergenciasExpansaoCusteio(planoExpansao, plano, catalogos),
+    [planoExpansao, plano, catalogos]
+  );
+
+  // Sustentabilidade Fiscal (FUNDEB / PNAE / MDE) e Fluxo Consolidado TCO (CAPEX + OPEX)
+  const sustentabilidadeFiscal = useMemo(
+    () => calcularSustentabilidadeFiscalCusteio(plano, projecao, planoExpansao),
+    [plano, projecao, planoExpansao]
+  );
+
+  // Cruzamento com progresso físico e prazos do Kanban de obras/ações
+  const progressoKanbanPorInterv = useMemo(() => {
+    const allActs = getActivities();
+    const m = new Map<
+      string,
+      { total: number; feito: number; pct: number; maxDeadline?: string; suggestedStartYM?: string; atrasoKanban: boolean }
+    >();
+    plano.intervencoes.forEach(iv => {
+      const itemType = iv.origemTipo === 'obra' ? 'obra' : 'acao-unidade';
+      const acts = allActs.filter(a => a.itemId === iv.origemId && a.itemType === itemType);
+      if (acts.length > 0) {
+        const feito = acts.filter(a => a.status === 'FEITO').length;
+        const pendentes = acts.filter(a => a.status !== 'FEITO' && a.deadline);
+        const maxDeadline =
+          pendentes.length > 0
+            ? pendentes.map(a => a.deadline).reduce((a, b) => (a > b ? a : b))
+            : undefined;
+        const suggestedStartYM = maxDeadline
+          ? nextMonthAfterDate(maxDeadline, iv.dataInicioOperacao)
+          : undefined;
+        const atrasoKanban = Boolean(
+          suggestedStartYM && suggestedStartYM > iv.dataInicioOperacao
+        );
+        m.set(iv.id, {
+          total: acts.length,
+          feito,
+          pct: Math.round((feito / acts.length) * 100),
+          maxDeadline,
+          suggestedStartYM,
+          atrasoKanban,
+        });
+      }
+    });
+    return m;
+  }, [plano.intervencoes]);
+
+  const handleAplicarNoPlanoExpansao = (aplicarDatasCronograma: boolean = false) => {
+    const updatedExp = sincronizarCusteioParaExpansao(plano, { aplicarDatasCronograma });
+    if (updatedExp) {
+      toast.success(
+        aplicarDatasCronograma
+          ? 'Escopo de enxoval (CAPEX/OPEX), turmas e datas de conclusão foram atualizados no Plano de Expansão!'
+          : 'Escopo de enxoval (CAPEX/OPEX) e configuração de turmas sincronizados com o Plano de Expansão!'
+      );
+    }
+  };
+
+  const handleSincronizarComExpansao = (ajustarInicio: boolean = false) => {
+    if (!planoExpansao) return;
+    const sincronizado = sincronizarPlanoCusteioComExpansao(
+      plano,
+      planoExpansao,
+      catalogos,
+      ajustarInicio
+    );
+    setPlano(sincronizado);
+    setIsDirty(true);
+    toast.success(
+      ajustarInicio
+        ? `Plano sincronizado com o Plano de Expansão e início ajustado para ${formatYMDisplay(sincronizado.dataInicio)}!`
+        : 'Intervenções e itens automáticos sincronizados com o Plano de Expansão (ajustes manuais preservados)!'
+    );
+  };
+
+  const postergarInicioIntervencao = (intervId: string, meses: number) => {
+    const iv = mapInterv.get(intervId);
+    if (!iv) return;
+    const { year, month } = parseYM(iv.dataInicioOperacao);
+    const totalMonths = year * 12 + (month - 1) + meses;
+    const newY = Math.floor(totalMonths / 12);
+    const newM = (totalMonths % 12) + 1;
+    const novoYM = formatYM(newY, newM);
+    updateIntervencao(intervId, { dataInicioOperacao: novoYM }, true);
+    toast.info(
+      `Início de operação de "${iv.nomeUnidadeOuObra}" simulado para ${formatYMDisplay(novoYM)} (+${meses} meses).`
+    );
+  };
+
   const qtdProfPorInterv = useMemo(() => {
     const m = new Map<string, number>();
     projecao.pessoal.forEach(p => {
@@ -191,11 +298,12 @@ export default function PlanoCusteioWorkspace({
   }, [projecao.pessoal]);
 
   const totalItensManuais = useMemo(() => {
+    const m = (plano.mobiliario || []).filter(i => i.origemCalculo !== 'automatico').length;
     const s = plano.servicos.filter(i => i.origemCalculo !== 'automatico').length;
     const a = plano.aquisicoes.filter(i => i.origemCalculo !== 'automatico').length;
     const p = plano.pessoal.filter(i => i.origemCalculo !== 'automatico').length;
-    return s + a + p;
-  }, [plano.servicos, plano.aquisicoes, plano.pessoal]);
+    return m + s + a + p;
+  }, [plano.mobiliario, plano.servicos, plano.aquisicoes, plano.pessoal]);
 
   const mutatePlano = (updater: (prev: PlanoCusteio) => PlanoCusteio) => {
     setPlano(updater);
@@ -209,20 +317,33 @@ export default function PlanoCusteioWorkspace({
     overrideDataInicio = plano.dataInicio,
     overrideDataFim = plano.dataFim,
     overrideExisting?: {
+      mobiliario?: ItemCusteioMobiliario[];
       servicos: ItemCusteioServico[];
       aquisicoes: ItemCusteioAquisicao[];
       pessoal: ItemCusteioPessoal[];
     },
     showFeedback = false
   ) => {
+    const intervAlinhadas = overrideIntervencoes.map(iv => ({
+      ...iv,
+      dataInicioOperacao:
+        overrideDataInicio !== plano.dataInicio ||
+        iv.dataInicioOperacao < overrideDataInicio ||
+        iv.dataInicioOperacao > overrideDataFim
+          ? overrideDataInicio
+          : iv.dataInicioOperacao,
+      dataFimOperacao: overrideDataFim,
+    }));
+
     const baseExisting = overrideExisting || {
+      mobiliario: plano.mobiliario,
       servicos: plano.servicos,
       aquisicoes: plano.aquisicoes,
       pessoal: plano.pessoal,
     };
 
     const regenerados = gerarEstimativaItensProporcionais(
-      overrideIntervencoes,
+      intervAlinhadas,
       catalogos,
       overrideDataInicio,
       overrideDataFim,
@@ -236,7 +357,8 @@ export default function PlanoCusteioWorkspace({
       dataFim: overrideDataFim,
       anoInicio: Number(overrideDataInicio.split('-')[0]) || prev.anoInicio,
       anoFim: Number(overrideDataFim.split('-')[0]) || prev.anoFim,
-      intervencoes: overrideIntervencoes,
+      intervencoes: intervAlinhadas,
+      mobiliario: regenerados.mobiliario,
       servicos: regenerados.servicos,
       aquisicoes: regenerados.aquisicoes,
       pessoal: regenerados.pessoal,
@@ -252,8 +374,15 @@ export default function PlanoCusteioWorkspace({
   };
 
   const executeRestaurarPadraoAutomatico = () => {
+    const intervAlinhadas = plano.intervencoes.map(iv => ({
+      ...iv,
+      dataInicioOperacao: plano.dataInicio,
+      dataFimOperacao: plano.dataFim,
+      escopoImplantacaoMobiliario: 'incluido_no_custeio' as const,
+    }));
+
     const regenerados = gerarEstimativaItensProporcionais(
-      plano.intervencoes,
+      intervAlinhadas,
       catalogos,
       plano.dataInicio,
       plano.dataFim,
@@ -264,7 +393,7 @@ export default function PlanoCusteioWorkspace({
     const novaProj = calcularProjecaoPlanoCusteio(
       plano.dataInicio,
       plano.dataFim,
-      plano.intervencoes,
+      intervAlinhadas,
       regenerados.servicos,
       regenerados.aquisicoes,
       regenerados.pessoal,
@@ -274,11 +403,14 @@ export default function PlanoCusteioWorkspace({
         taxaReajusteAnualPessoal: 0,
         observacoesCenario: plano.parametrosSimulacao.observacoesCenario,
       },
-      0
+      0,
+      regenerados.mobiliario
     );
 
     mutatePlano(prev => ({
       ...prev,
+      intervencoes: intervAlinhadas,
+      mobiliario: novaProj.mobiliario,
       servicos: novaProj.servicos,
       aquisicoes: novaProj.aquisicoes,
       pessoal: novaProj.pessoal,
@@ -291,7 +423,7 @@ export default function PlanoCusteioWorkspace({
       resumoFinanceiro: novaProj.resumoFinanceiro,
     }));
     setIsRestoreModalOpen(false);
-    toast.success('Estimativa automática restaurada com base nos catálogos oficiais.');
+    toast.success('Estimativa automática restaurada com base nos Modelos de Creche oficiais.');
   };
 
   const handleRequestRestaurarPadrao = () => {
@@ -322,6 +454,7 @@ export default function PlanoCusteioWorkspace({
       dataAtualizacao: new Date().toISOString().split('T')[0],
       anoInicio: Number(plano.dataInicio.split('-')[0]),
       anoFim: Number(plano.dataFim.split('-')[0]),
+      mobiliario: projecao.mobiliario,
       servicos: projecao.servicos,
       aquisicoes: projecao.aquisicoes,
       pessoal: projecao.pessoal,
@@ -330,8 +463,9 @@ export default function PlanoCusteioWorkspace({
 
     setPlano(atualizado);
     setIsDirty(false);
+    sincronizarCusteioParaExpansao(atualizado, { aplicarDatasCronograma: false });
     onSave(atualizado);
-    toast.success(`Plano de Custeio salvo com sucesso (Versão ${atualizado.versao})!`);
+    toast.success(`Plano de Custeio salvo e sincronizado com o Plano de Expansão (Versão ${atualizado.versao})!`);
   };
 
   const handleBackClick = () => {
@@ -357,16 +491,22 @@ export default function PlanoCusteioWorkspace({
     // Sincronizar dataInicio dos itens vinculados (inclusive manuais) ao alterar dataInicioOperacao
     let existingOverride:
       | {
-          servicos: ItemCusteioServico[];
-          aquisicoes: ItemCusteioAquisicao[];
-          pessoal: ItemCusteioPessoal[];
-        }
+        mobiliario?: ItemCusteioMobiliario[];
+        servicos: ItemCusteioServico[];
+        aquisicoes: ItemCusteioAquisicao[];
+        pessoal: ItemCusteioPessoal[];
+      }
       | undefined;
 
     if (currentIv && patch.dataInicioOperacao && patch.dataInicioOperacao !== currentIv.dataInicioOperacao) {
       const oldOp = currentIv.dataInicioOperacao;
       const newOp = patch.dataInicioOperacao;
       existingOverride = {
+        mobiliario: (plano.mobiliario || []).map(m =>
+          m.intervencaoCusteioId === intervId
+            ? { ...m, dataInicio: newOp, dataFim: newOp }
+            : m
+        ),
         servicos: plano.servicos.map(s =>
           s.intervencaoCusteioId === intervId && (s.dataInicio === oldOp || s.dataInicio < newOp)
             ? { ...s, dataInicio: newOp }
@@ -375,10 +515,10 @@ export default function PlanoCusteioWorkspace({
         aquisicoes: plano.aquisicoes.map(a =>
           a.intervencaoCusteioId === intervId && (a.dataInicio === oldOp || a.dataInicio < newOp)
             ? {
-                ...a,
-                dataInicio: newOp,
-                dataFim: a.tipoAquisicao === 'pontual_implantacao' ? newOp : a.dataFim,
-              }
+              ...a,
+              dataInicio: newOp,
+              dataFim: a.tipoAquisicao === 'pontual_implantacao' ? newOp : a.dataFim,
+            }
             : a
         ),
         pessoal: plano.pessoal.map(p =>
@@ -488,11 +628,58 @@ export default function PlanoCusteioWorkspace({
     toast.info('Item de aquisição adicionado ao Plano de Custeio.');
   };
 
-  const handleAddPessoalManual = (catCargo: ItemCusteioPessoal['categoriaCargo']) => {
+  const handleAddMobiliarioManual = (targetIntervId?: string) => {
     const defaultInterv =
-      filtroIntervencao !== 'todas'
+      targetIntervId ||
+      (filtroIntervencao !== 'todas'
         ? filtroIntervencao
-        : plano.intervencoes[0]?.id || 'global';
+        : plano.intervencoes[0]?.id || 'global');
+    const iv = mapInterv.get(defaultInterv);
+    const startRef = iv?.dataInicioOperacao || plano.dataInicio;
+
+    const novo: ItemCusteioMobiliario = {
+      id: `mob-man-${Date.now()}`,
+      categoria: 'mobiliario',
+      intervencaoCusteioId: defaultInterv,
+      descricao: 'AMBIENTE / KIT DE MOBILIÁRIO COMPLEMENTAR',
+      valorMobiliarioUnitario: 8000,
+      valorEquipamentosUnitario: 4000,
+      resumoItensAmbiente: 'Itens de mobiliário e equipamentos adicionais incluídos manualmente',
+      incluidoNoCusteio: true,
+      criterioCalculo: 'por_ambiente',
+      fatorProporcional: 1,
+      numeradorProporcao: 1,
+      denominadorProporcao: 1,
+      unidadeProporcao: 'amb.',
+      memoriaCalculo: 'Ambiente ou kit de mobiliário incluído manualmente (implantação única)',
+      naturezaCusto: 'exclusivo_intervencao',
+      periodicidade: 'unica',
+      unidadeMedida: 'AMB',
+      quantidade: 1,
+      valorUnitario: 12000,
+      dataInicio: startRef,
+      dataFim: startRef,
+      ocorrenciasNoPeriodo: 1,
+      valorAnualizado: 12000,
+      valorTotalProjetado: 12000,
+      origemCalculo: 'incluido_manualmente',
+    };
+    mutatePlano(prev => ({
+      ...prev,
+      mobiliario: [novo, ...(prev.mobiliario || projecao.mobiliario)],
+    }));
+    toast.info('Ambiente / Mobiliário adicionado ao Plano de Custeio.');
+  };
+
+  const handleAddPessoalManual = (
+    catCargo: ItemCusteioPessoal['categoriaCargo'] = 'pedagogico',
+    targetIntervId?: string
+  ) => {
+    const defaultInterv =
+      targetIntervId ||
+      (filtroIntervencao !== 'todas'
+        ? filtroIntervencao
+        : plano.intervencoes[0]?.id || 'global');
     const iv = mapInterv.get(defaultInterv);
     const cg = catalogos.cargosRef[0];
     const mensal = (cg?.remuneracaoBase || 3000) + (cg?.auxilios || 400) + (cg?.patronal || 600);
@@ -535,6 +722,9 @@ export default function PlanoCusteioWorkspace({
   };
 
   // Listas filtradas por unidade/intervenção selecionada
+  const mobiliarioFiltrado = projecao.mobiliario.filter(
+    m => filtroIntervencao === 'todas' || m.intervencaoCusteioId === filtroIntervencao
+  );
   const servicosFiltrados = projecao.servicos.filter(
     s => filtroIntervencao === 'todas' || s.intervencaoCusteioId === filtroIntervencao
   );
@@ -547,7 +737,33 @@ export default function PlanoCusteioWorkspace({
     p => filtroIntervencao === 'todas' || p.intervencaoCusteioId === filtroIntervencao
   );
 
-  // Agrupamento por Unidade Escolar / Intervenção para visualização limpa e sem corte horizontal
+  // Agrupamento por Unidade Escolar / Intervenção para todas as 4 abas (Mobiliário, Serviços, Aquisições, Pessoal)
+  const gruposMobiliario = useMemo(() => {
+    const grupos: {
+      id: string;
+      intervencao?: IntervencaoCusteioVinculada;
+      itens: ItemCusteioMobiliario[];
+    }[] = [];
+    const porId = new Map<string, ItemCusteioMobiliario[]>();
+    for (const item of mobiliarioFiltrado) {
+      const key = item.intervencaoCusteioId || 'global';
+      const arr = porId.get(key) || [];
+      arr.push(item);
+      porId.set(key, arr);
+    }
+    for (const iv of plano.intervencoes) {
+      const itens = porId.get(iv.id);
+      if (itens && itens.length > 0) {
+        grupos.push({ id: iv.id, intervencao: iv, itens });
+        porId.delete(iv.id);
+      }
+    }
+    for (const [key, itens] of porId.entries()) {
+      grupos.push({ id: key, intervencao: mapInterv.get(key), itens });
+    }
+    return grupos;
+  }, [mobiliarioFiltrado, plano.intervencoes, mapInterv]);
+
   const gruposServicos = useMemo(() => {
     const grupos: {
       id: string;
@@ -600,6 +816,32 @@ export default function PlanoCusteioWorkspace({
     return grupos;
   }, [aquisicoesFiltradas, plano.intervencoes, mapInterv]);
 
+  const gruposPessoal = useMemo(() => {
+    const grupos: {
+      id: string;
+      intervencao?: IntervencaoCusteioVinculada;
+      itens: ItemCusteioPessoal[];
+    }[] = [];
+    const porId = new Map<string, ItemCusteioPessoal[]>();
+    for (const item of pessoalFiltrado) {
+      const key = item.intervencaoCusteioId || 'global';
+      const arr = porId.get(key) || [];
+      arr.push(item);
+      porId.set(key, arr);
+    }
+    for (const iv of plano.intervencoes) {
+      const itens = porId.get(iv.id);
+      if (itens && itens.length > 0) {
+        grupos.push({ id: iv.id, intervencao: iv, itens });
+        porId.delete(iv.id);
+      }
+    }
+    for (const [key, itens] of porId.entries()) {
+      grupos.push({ id: key, intervencao: mapInterv.get(key), itens });
+    }
+    return grupos;
+  }, [pessoalFiltrado, plano.intervencoes, mapInterv]);
+
   const TABS: {
     id: WorkspaceTabId;
     group: NavGroupKey;
@@ -607,52 +849,56 @@ export default function PlanoCusteioWorkspace({
     desc: string;
     icon: React.ReactNode;
   }[] = [
-    {
-      id: 'visao-geral',
-      group: 'estrutura',
-      label: 'Visão Geral',
-      desc: `${plano.intervencoes.filter(i => i.ativoNoCusteio).length} unid. · +${resumoFinanceiro.totalVagasContempladas} vagas`,
-      icon: <LayoutDashboard className="w-4 h-4" />,
-    },
-    {
-      id: 'servicos',
-      group: 'categorias',
-      label: 'Serviços',
-      desc: BRL0(resumoFinanceiro.totalServicosPeriodo),
-      icon: <Wrench className="w-4 h-4" />,
-    },
-    {
-      id: 'aquisicoes',
-      group: 'categorias',
-      label: 'Aquisições',
-      desc: BRL0(
-        resumoFinanceiro.totalAquisicoesPontuaisPeriodo +
-          resumoFinanceiro.totalAquisicoesRecorrentesPeriodo
-      ),
-      icon: <Package className="w-4 h-4" />,
-    },
-    {
-      id: 'pessoal',
-      group: 'categorias',
-      label: 'Pessoal e Folha',
-      desc: `${BRL0(resumoFinanceiro.totalPessoalPeriodo)} (${resumoFinanceiro.totalProfissionais} prof.)`,
-      icon: <Users className="w-4 h-4" />,
-    },
-    {
-      id: 'cronograma',
-      group: 'analise',
-      label: 'Cronograma & Simulação',
-      desc: `${cronogramaMensal.length} meses · Reajustes`,
-      icon: <Calendar className="w-4 h-4" />,
-    },
-    {
-      id: 'relatorio',
-      group: 'analise',
-      label: 'Relatório Oficial',
-      desc: 'Demonstrativo e PDF',
-      icon: <FileText className="w-4 h-4" />,
-    },
-  ];
+      {
+        id: 'visao-geral',
+        group: 'estrutura',
+        label: 'Visão Geral',
+        desc: `${plano.intervencoes.filter(i => i.ativoNoCusteio).length} unid. · +${resumoFinanceiro.totalVagasContempladas} vagas`,
+        icon: <LayoutDashboard className="w-4 h-4" />,
+      },
+      {
+        id: 'mobiliario',
+        group: 'categorias',
+        label: 'Mobiliário & Equip.',
+        desc: BRL0(resumoFinanceiro.totalMobiliarioPeriodo),
+        icon: <Layers className="w-4 h-4" />,
+      },
+      {
+        id: 'servicos',
+        group: 'categorias',
+        label: 'Serviços',
+        desc: BRL0(resumoFinanceiro.totalServicosPeriodo),
+        icon: <Wrench className="w-4 h-4" />,
+      },
+      {
+        id: 'aquisicoes',
+        group: 'categorias',
+        label: 'Aquisições',
+        desc: BRL0(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo),
+        icon: <Package className="w-4 h-4" />,
+      },
+      {
+        id: 'pessoal',
+        group: 'categorias',
+        label: 'Pessoal e Folha',
+        desc: `${BRL0(resumoFinanceiro.totalPessoalPeriodo)} (${resumoFinanceiro.totalProfissionais} prof.)`,
+        icon: <Users className="w-4 h-4" />,
+      },
+      {
+        id: 'cronograma',
+        group: 'analise',
+        label: 'Cronograma & Simulação',
+        desc: `${cronogramaMensal.length} meses · Evolução`,
+        icon: <Calendar className="w-4 h-4" />,
+      },
+      {
+        id: 'relatorio',
+        group: 'analise',
+        label: 'Relatório Oficial',
+        desc: 'Demonstrativo e PDF',
+        icon: <FileText className="w-4 h-4" />,
+      },
+    ];
 
   const currentTabIdx = Math.max(
     0,
@@ -664,6 +910,15 @@ export default function PlanoCusteioWorkspace({
   const deltaSimulacao = resumoFinanceiro.totalGeralPeriodo - baselineAutomaticoAtual;
 
   // Subtotais filtrados para rodapés das tabelas
+  const totalBaseMobFiltrado = mobiliarioFiltrado.reduce((acc, m) => {
+    const iv = mapInterv.get(m.intervencaoCusteioId);
+    return iv && !iv.ativoNoCusteio ? acc : acc + m.valorAnualizado;
+  }, 0);
+  const totalPeriodoMobFiltrado = mobiliarioFiltrado.reduce(
+    (acc, m) => acc + m.valorTotalProjetado,
+    0
+  );
+
   const totalAnualServicosFiltrados = servicosFiltrados.reduce((acc, s) => {
     const iv = mapInterv.get(s.intervencaoCusteioId);
     return iv && !iv.ativoNoCusteio ? acc : acc + s.valorAnualizado;
@@ -687,58 +942,68 @@ export default function PlanoCusteioWorkspace({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="p-4 md:p-6 max-w-[1600px] mx-auto space-y-5">
-        {/* Topo / Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
-          <div>
-            <button
-              type="button"
-              onClick={handleBackClick}
-              className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 mb-2 transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              Voltar aos Planos de Custeio
-            </button>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-800">{plano.nome}</h1>
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                {plano.cenarioLabel} · v{plano.versao}
-              </span>
-              <select
-                value={plano.status}
-                onChange={e =>
-                  mutatePlano(prev => ({ ...prev, status: e.target.value as StatusPlanoCusteio }))
-                }
-                aria-label="Status do Plano de Custeio"
-                className="px-3 py-1 rounded-full text-xs font-bold border border-slate-300 bg-white text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Rascunho">Rascunho</option>
-                <option value="Em Análise">Em Análise</option>
-                <option value="Aprovado">Aprovado</option>
-                <option value="Arquivado">Arquivado</option>
-              </select>
-              {isDirty && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                  Alterações não salvas
-                </span>
-              )}
-            </div>
-            <p className="text-xs md:text-sm text-slate-500 mt-1">
-              Vinculado ao Plano de Expansão:{' '}
-              <strong className="text-slate-700">
-                {planoExpansao
-                  ? `${planoExpansao.nome || planoExpansao.name} (${planoExpansao.periodoInicio}–${planoExpansao.periodoFim})`
-                  : plano.planoExpansaoId}
-              </strong>{' '}
-              · Vigência do Custeio:{' '}
-              <strong className="text-blue-700">
-                {formatYMDisplay(plano.dataInicio)} a {formatYMDisplay(plano.dataFim)} ({cronogramaMensal.length} meses)
-              </strong>
-            </p>
-          </div>
+      <div className="p-6">
+        {/* Cabeçalho discreto idêntico ao PlanoForm */}
+        <div className="mb-5 print:hidden">
+          <button
+            type="button"
+            onClick={handleBackClick}
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-3 transition-colors text-sm"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Voltar aos Planos de Custeio
+          </button>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="inline-flex items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap mb-0.5">
+                <h1 className="text-3xl font-bold text-slate-800">{plano.nome}</h1>
+                <span className="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                  {plano.cenarioLabel} · v{plano.versao}
+                </span>
+                <select
+                  value={plano.status}
+                  onChange={e =>
+                    mutatePlano(prev => ({ ...prev, status: e.target.value as StatusPlanoCusteio }))
+                  }
+                  aria-label="Status do Plano de Custeio"
+                  className="px-2.5 py-0.5 rounded-md text-xs font-semibold border border-slate-300 bg-white text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Rascunho">Rascunho</option>
+                  <option value="Em Análise">Em Análise</option>
+                  <option value="Aprovado">Aprovado</option>
+                  <option value="Arquivado">Arquivado</option>
+                </select>
+                {isDirty && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                    Alterações não salvas
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-500 text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>
+                  Plano de Expansão:{' '}
+                  <strong className="text-slate-700">
+                    {planoExpansao
+                      ? planoExpansao.nome || planoExpansao.name
+                      : plano.planoExpansaoId}
+                  </strong>
+                </span>
+                {planoExpansao && (
+                  <span>
+                    · Período da Expansão: <strong className="text-slate-700">{obterPeriodoExpansaoYM(planoExpansao).label}</strong>
+                  </span>
+                )}
+                <span>
+                  · Vigência do Custeio:{' '}
+                  <strong className="text-blue-700">
+                    {formatYMDisplay(plano.dataInicio)} a {formatYMDisplay(plano.dataFim)} ({cronogramaMensal.length} meses)
+                  </strong>
+                </span>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() =>
@@ -750,197 +1015,53 @@ export default function PlanoCusteioWorkspace({
                     true
                   )
                 }
-                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors shadow-2xs"
+                className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
+                title="Atualiza itens automáticos conforme catálogos e salas/turmas, preservando ajustes manuais"
               >
-                <Sparkles className="w-4 h-4 text-blue-600" />
-                Recalcular (Preservar Manuais)
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                Recalcular
               </button>
-              <FieldTooltip
-                title="Recálculo Inteligente com Proteção"
-                text="Atualiza todos os itens automáticos conforme os catálogos de referência e o número atual de salas/turmas, mas NÃO sobrescreve nenhum item editado ou adicionado manualmente por você."
-              />
-            </div>
 
-            <div className="inline-flex items-center gap-1">
               <button
                 type="button"
                 onClick={handleRequestRestaurarPadrao}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white border border-slate-300 hover:bg-amber-50 text-slate-600 hover:text-amber-800 rounded-xl text-xs font-semibold transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-semibold transition-colors"
+                title="Desfaz ajustes manuais e restaura 100% do padrão dos catálogos"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Restaurar Padrão
               </button>
-              <FieldTooltip
-                title="Restaurar Padrão dos Catálogos"
-                text="Desfaz ajustes manuais e reajustes inflacionários, restaurando 100% da estimativa proporcional padrão dos Modelos de Creche."
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSavePlano}
-              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md transition-colors"
-            >
-              <Save className="w-4 h-4" />
-              Salvar Plano de Custeio
-            </button>
-          </div>
-        </div>
-
-        {/* Barra de KPIs Padronizada (Cards brancos com ícones coloridos + Tooltips) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3.5 print:hidden">
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-blue-700">
-                <span>Total no Período ({cronogramaMensal.length}m)</span>
-                <FieldTooltip
-                  title="Desembolso Total Projetado"
-                  text="Soma efetiva de Serviços, Aquisições (Únicas + Recorrentes) e Folha de Pessoal ao longo dos meses ativos de operação dentro da vigência do plano."
-                  formula="Σ Desembolsos Mensais (Mês Início até Mês Fim)"
-                />
-              </div>
-              <div className="text-xl font-black text-slate-900 mt-1">
-                {BRL0(resumoFinanceiro.totalGeralPeriodo)}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                Média no período: {BRL0(resumoFinanceiro.custoMedioAnual)}/ano
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <DollarSign className="w-4 h-4" />
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-                <span>Regime Pleno (ANO)</span>
-                <FieldTooltip
-                  title="Custo Anual em Regime Pleno"
-                  text="Custo anual recorrente quando todas as intervenções ativas estão operando simultaneamente por 12 meses completos (sem contar aquisições únicas de obra/implantação)."
-                  formula={`Custo/Vaga/Ano = Regime Pleno ÷ ${resumoFinanceiro.totalVagasContempladas} vagas`}
-                />
-              </div>
-              <div className="text-xl font-black text-emerald-700 mt-1">
-                {BRL0(resumoFinanceiro.custoAnualRegimePleno)}
-              </div>
-              <div className="text-[11px] text-slate-600 font-semibold mt-0.5">
-                {BRL0(resumoFinanceiro.custoPorVagaAdicionalAno)} / vaga / ano
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-amber-700">
-                <span>Serviços + Aquisições</span>
-                <FieldTooltip
-                  title="Manutenção, Contratos e Kits"
-                  text="Reúne os Serviços operacionais anuais, as Aquisições Pontuais de Implantação (pagas uma única vez na abertura) e as Aquisições Recorrentes de consumo anual."
-                />
-              </div>
-              <div className="text-xl font-black text-slate-800 mt-1">
-                {BRL0(
-                  resumoFinanceiro.totalServicosPeriodo +
-                    resumoFinanceiro.totalAquisicoesPontuaisPeriodo +
-                    resumoFinanceiro.totalAquisicoesRecorrentesPeriodo
-                )}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                Serv.: {BRL0(resumoFinanceiro.totalServicosPeriodo)} · Únicas:{' '}
-                {BRL0(resumoFinanceiro.totalAquisicoesPontuaisPeriodo)}
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <Package className="w-4 h-4" />
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-purple-700">
-                <span>Pessoal e Folha</span>
-                <FieldTooltip
-                  title="Folha de Pagamento Anualizada"
-                  text="Inclui Remuneração Base + Auxílios + Encargos Patronais multiplicados por 13,33 salários/ano (12 meses + 13º salário + 1/3 constitucional de férias)."
-                  formula="(Base + Auxílios + Encargos) × 13,33 × Qtd"
-                />
-              </div>
-              <div className="text-xl font-black text-purple-800 mt-1">
-                {BRL0(resumoFinanceiro.totalPessoalPeriodo)}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                {resumoFinanceiro.totalProfissionais} prof. · +{resumoFinanceiro.totalVagasContempladas} vagas
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <Users className="w-4 h-4" />
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <span>Variação Simulada</span>
-                <FieldTooltip
-                  title="Comparativo vs. Base Automática"
-                  text="Diferença financeira entre o cenário simulado atual (com seus ajustes manuais e taxas de reajuste) e a estimativa 100% automática dos catálogos para o mesmo período."
-                  formula={`Base Automática: ${BRL0(baselineAutomaticoAtual)}`}
-                />
-              </div>
-              <div
-                className={`text-xl font-black mt-1 ${
-                  Math.abs(deltaSimulacao) < 1
-                    ? 'text-slate-700'
-                    : deltaSimulacao > 0
-                    ? 'text-amber-600'
-                    : 'text-emerald-600'
-                }`}
-              >
-                {deltaSimulacao >= 0 ? '+' : ''}
-                {BRL0(deltaSimulacao)}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                {totalItensManuais} ajuste(s) manual(is) protegido(s)
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-              <Sliders className="w-4 h-4" />
             </div>
           </div>
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            LAYOUT PADRÃO DO SISTEMA: SIDEBAR LATERAL NUMERADA + CONTEÚDO
+            LAYOUT IDÊNTICO AO PLANO DE EXPANSÃO: SIDEBAR LATERAL + CARD PRINCIPAL
            ═══════════════════════════════════════════════════════════════════════ */}
-        <div className="flex flex-col lg:flex-row gap-4 items-start print:block">
-          {/* ── LEFT STICKY SIDEBAR NAV (Padrão PlanoForm / ConfiguracoesCusto) ── */}
-          <aside className="w-full lg:w-56 shrink-0 bg-white rounded-2xl shadow-lg overflow-hidden lg:sticky lg:top-6 print:hidden">
+        <div className="flex gap-5 items-start print:block">
+          {/* ── LEFT SIDEBAR NAV (Padrão PlanoForm) ── */}
+          <aside className="w-56 shrink-0 bg-white rounded-2xl shadow-lg overflow-hidden sticky top-6 print:hidden">
             <div className="bg-gradient-to-br from-[#1a3a5c] to-[#2563eb] p-4">
               <p className="text-white font-bold text-sm">Seções do Custeio</p>
-              <p className="text-blue-200 text-xs mt-0.5">6 etapas do planejamento</p>
+              <p className="text-blue-200 text-xs mt-0.5">7 etapas do planejamento</p>
             </div>
 
-            <nav className="p-2.5">
+            <nav className="p-2">
               {navGroups.map(group => {
                 const gm = GROUP_META[group];
                 const gTabs = TABS.filter(t => t.group === group);
                 const isActiveGroup = activeGroup === group;
                 return (
-                  <div key={group} className="mb-3 last:mb-1">
+                  <div key={group} className="mb-3">
                     <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
                       <div
                         className={`w-5 h-5 rounded-full ${gm.bg} flex items-center justify-center shrink-0`}
                       >
-                        <span className="text-white text-[11px] font-black">{gm.short}</span>
+                        <span className="text-white text-xs font-black">{gm.short}</span>
                       </div>
                       <span
-                        className={`text-[11px] font-bold uppercase tracking-wide ${
-                          isActiveGroup ? gm.accent : 'text-slate-400'
-                        }`}
+                        className={`text-xs font-bold uppercase tracking-wide ${isActiveGroup ? gm.accent : 'text-slate-400'
+                          }`}
                       >
                         {gm.label}
                       </span>
@@ -954,33 +1075,29 @@ export default function PlanoCusteioWorkspace({
                           key={tab.id}
                           type="button"
                           onClick={() => setActiveTab(tab.id)}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all mb-0.5 group ${
-                            isActive
+                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all mb-0.5 group ${isActive
                               ? 'bg-blue-600 text-white shadow-md'
                               : 'text-slate-600 hover:bg-slate-100'
-                          }`}
+                            }`}
                         >
                           <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-black transition-all ${
-                              isActive
+                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-black transition-all ${isActive
                                 ? 'bg-white/25 text-white'
-                                : 'bg-slate-200 text-slate-600 group-hover:bg-slate-300'
-                            }`}
+                                : 'bg-slate-200 text-slate-500 group-hover:bg-slate-300'
+                              }`}
                           >
                             {globalIdx + 1}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div
-                              className={`text-xs font-semibold leading-tight truncate ${
-                                isActive ? 'text-white' : 'text-slate-700'
-                              }`}
+                              className={`text-xs font-semibold leading-tight truncate ${isActive ? 'text-white' : 'text-slate-700'
+                                }`}
                             >
                               {tab.label}
                             </div>
                             <div
-                              className={`text-[11px] leading-tight truncate mt-0.5 ${
-                                isActive ? 'text-white/80' : 'text-slate-400'
-                              }`}
+                              className={`text-xs leading-tight truncate ${isActive ? 'text-white/70' : 'text-slate-400'
+                                }`}
                             >
                               {tab.desc}
                             </div>
@@ -995,380 +1112,963 @@ export default function PlanoCusteioWorkspace({
               })}
             </nav>
 
-            {/* Barra de Progresso */}
+            {/* Progress */}
             <div className="px-4 pb-4">
-              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                <span>Progresso da revisão</span>
-                <span className="font-bold text-slate-700">
-                  {currentTabIdx + 1} / {TABS.length}
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div className="text-xs text-slate-500 mb-1">Progresso</div>
+              <div className="w-full bg-slate-100 rounded-full h-1.5">
                 <div
-                  className="h-full bg-gradient-to-r from-[#1a3a5c] to-[#2563eb] rounded-full transition-all duration-300"
+                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
                   style={{ width: `${((currentTabIdx + 1) / TABS.length) * 100}%` }}
                 />
+              </div>
+              <div className="text-xs text-slate-400 mt-1">
+                {currentTabIdx + 1} de {TABS.length}
               </div>
             </div>
           </aside>
 
-          {/* ── PAINEL PRINCIPAL DA ETAPA ATIVA ── */}
-          <div className="flex-1 min-w-0 space-y-5">
-            {/* Filtro Rápido por Unidade Escolar / Intervenção (nas abas operacionais 2, 3 e 4) */}
-            {(activeTab === 'servicos' || activeTab === 'aquisicoes' || activeTab === 'pessoal') && (
-              <div className="bg-white border border-slate-200 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm print:hidden">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                  <Building2 className="w-4 h-4 text-blue-600" />
-                  <span>Filtrar itens por Unidade Escolar / Intervenção:</span>
-                  <FieldTooltip
-                    title="Filtro por Intervenção"
-                    text="Permite inspecionar ou incluir despesas para uma creche ou ampliação específica. Novos itens adicionados manualmente herdam a unidade selecionada aqui."
-                  />
-                </div>
-                <select
-                  value={filtroIntervencao}
-                  onChange={e => setFiltroIntervencao(e.target.value)}
-                  className="px-3.5 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 min-w-[280px]"
-                >
-                  <option value="todas">
-                    Todas as unidades / intervenções ({plano.intervencoes.length})
-                  </option>
-                  {plano.intervencoes.map(iv => (
-                    <option key={iv.id} value={iv.id}>
-                      [{iv.escopo === 'unidade_completa' ? 'Creche Completa' : 'Incremental'}] {iv.nomeUnidadeOuObra}
-                    </option>
-                  ))}
-                </select>
+          {/* ── MAIN CONTENT (Card único branco idêntico ao PlanoForm) ── */}
+          <div className="flex-1 min-w-0 bg-white rounded-2xl shadow-lg overflow-hidden">
+            {/* Faixa Superior Discreta de Resumo Orçamentário (100% reconciliada com Visão Geral e Menu Lateral) */}
+            <div className="bg-slate-50 border-b border-slate-200 px-7 py-3 flex flex-wrap items-center justify-between gap-4 text-xs print:hidden">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-600">
+                <span>
+                  Total no Período ({cronogramaMensal.length}m):{' '}
+                  <strong className="text-blue-900 font-black">{BRL0(resumoFinanceiro.totalGeralPeriodo)}</strong>
+                </span>
+                <span>
+                  1. Mobiliário:{' '}
+                  <strong className="text-amber-800 font-semibold">{BRL0(resumoFinanceiro.totalMobiliarioPeriodo)}</strong>
+                </span>
+                <span>
+                  2. Serviços:{' '}
+                  <strong className="text-slate-800 font-semibold">{BRL0(resumoFinanceiro.totalServicosPeriodo)}</strong>
+                </span>
+                <span>
+                  3. Aquisições:{' '}
+                  <strong className="text-emerald-800 font-semibold">{BRL0(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo)}</strong>
+                </span>
+                <span>
+                  4. Pessoal ({resumoFinanceiro.totalProfissionais} prof.):{' '}
+                  <strong className="text-purple-800 font-semibold">{BRL0(resumoFinanceiro.totalPessoalPeriodo)}</strong>
+                </span>
               </div>
-            )}
+              <div className="text-slate-500">
+                Operação (ANO): <strong className="text-emerald-700">{BRL0(resumoFinanceiro.custoAnualRegimePleno)}/ano</strong> · +{resumoFinanceiro.totalVagasContempladas} vagas
+              </div>
+            </div>
 
-            {/* ═══════════════════════════════════════════════════════════════════
+            <div className="p-7 space-y-6">
+              {/* Banner Reativo de Sincronização com o Plano de Expansão (Construção) */}
+              {divergenciasExpansao.length > 0 && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 print:hidden">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                          Atenção: Divergências Detectadas entre Plano de Expansão (Construção) e Custeio ({divergenciasExpansao.length})
+                        </h3>
+                        <ul className="mt-1.5 space-y-1 text-xs text-amber-900 list-disc pl-4">
+                          {divergenciasExpansao.map((div, idx) => (
+                            <li key={idx}>
+                              <strong>{div.nome}:</strong> {div.detalhe}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {divergenciasExpansao.some(d => d.tipo === 'operacao_anterior_vigencia') && (
+                        <button
+                          type="button"
+                          onClick={() => handleSincronizarComExpansao(true)}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          Sincronizar + Ajustar Início p/ 1ª Entrega
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleSincronizarComExpansao(false)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-400 rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Sincronizar Escopo Físico (Preservar Manuais)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Filtro Rápido por Unidade Escolar / Intervenção (nas abas 2, 3, 4 e 5) */}
+              {(activeTab === 'mobiliario' ||
+                activeTab === 'servicos' ||
+                activeTab === 'aquisicoes' ||
+                activeTab === 'pessoal') && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                    <Building2 className="w-4 h-4 text-blue-600" />
+                    <span>Filtrar itens por Unidade Escolar / Intervenção:</span>
+                    <FieldTooltip
+                      title="Filtro por Intervenção"
+                      text="Permite inspecionar ou incluir despesas para uma creche ou ampliação específica. Novos itens adicionados manualmente herdam a unidade selecionada aqui."
+                    />
+                  </div>
+                  <select
+                    value={filtroIntervencao}
+                    onChange={e => setFiltroIntervencao(e.target.value)}
+                    className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-blue-500 min-w-[280px]"
+                  >
+                    <option value="todas">
+                      Todas as unidades / intervenções ({plano.intervencoes.length})
+                    </option>
+                    {plano.intervencoes.map(iv => (
+                      <option key={iv.id} value={iv.id}>
+                        [{iv.escopo === 'unidade_completa' ? 'Creche Completa' : 'Incremental'}] {iv.nomeUnidadeOuObra}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* ═══════════════════════════════════════════════════════════════════
                 ABA 1 — VISÃO GERAL & INTERVENÇÕES VINCULADAS
                ═══════════════════════════════════════════════════════════════════ */}
-            {activeTab === 'visao-geral' && (
-              <div className="space-y-6">
-                {/* Dados de Cadastro e Período Independente */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-800">
-                        1. Parâmetros Gerais e Período Próprio do Plano de Custeio
-                      </h2>
-                      <p className="text-xs text-slate-500">
-                        O período do Plano de Custeio é independente do cronograma físico de obras do Plano de Expansão.
-                      </p>
+              {activeTab === 'visao-geral' && (
+                <div className="space-y-6">
+                  {/* Dados de Cadastro e Período Independente */}
+                  <div className="space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-800">
+                          Parâmetros Gerais e Período Próprio do Plano de Custeio
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                          O período do Plano de Custeio é independente do cronograma físico de obras do Plano de Expansão.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Card informativo do Período do Plano de Expansão Vinculado */}
+                    {planoExpansao && (() => {
+                      const perExp = obterPeriodoExpansaoYM(planoExpansao);
+                      return (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-start sm:items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                              <Building2 className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Plano de Expansão Vinculado (Cronograma de Obras/Ações)
+                              </div>
+                              <div className="text-xs sm:text-sm font-bold text-slate-800 flex flex-wrap items-center gap-2 mt-0.5">
+                                <span>{planoExpansao.nome || planoExpansao.name}</span>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                                  <Calendar className="w-3 h-3" />
+                                  Período da Expansão: {perExp.labelComMeses}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          {(plano.dataInicio !== perExp.dataInicio || plano.dataFim !== perExp.dataFim) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRecalcularPreservandoManuais(
+                                  plano.intervencoes,
+                                  perExp.dataInicio,
+                                  perExp.dataFim
+                                )
+                              }
+                              className="px-3 py-1.5 bg-white hover:bg-blue-50 text-blue-700 border border-slate-300 rounded-lg text-xs font-semibold transition-colors shrink-0"
+                              title="Definir a vigência do Custeio igual ao período de início e fim do Plano de Expansão"
+                            >
+                              Igualar ao Período da Expansão ({perExp.label})
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="lg:col-span-2">
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1">
+                          <span>Nome do Plano de Custeio</span>
+                          <FieldTooltip text="Título oficial utilizado nas listagens e relatórios institucionais." />
+                        </label>
+                        <input
+                          type="text"
+                          value={plano.nome}
+                          onChange={e => mutatePlano(prev => ({ ...prev, nome: e.target.value }))}
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1">
+                          <span>Identificação do Cenário</span>
+                          <FieldTooltip text="Diferencia simulações alternativas de um mesmo Plano de Expansão (ex.: Cenário Base, Turno Integral, Operação Gradual)." />
+                        </label>
+                        <input
+                          type="text"
+                          value={plano.cenarioLabel}
+                          onChange={e =>
+                            mutatePlano(prev => ({ ...prev, cenarioLabel: e.target.value }))
+                          }
+                          placeholder="Ex.: Cenário Base"
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1">
+                          <span>Responsável Técnico</span>
+                          <FieldTooltip text="Servidor, setor ou equipe responsável pela elaboração e validação orçamentária." />
+                        </label>
+                        <input
+                          type="text"
+                          value={plano.responsavelNome}
+                          onChange={e =>
+                            mutatePlano(prev => ({ ...prev, responsavelNome: e.target.value }))
+                          }
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1">
+                          <span>Início do Custeio (Mês/Ano)</span>
+                          <FieldTooltip
+                            title="Competência Inicial do Horizonte"
+                            text="Primeiro mês do horizonte financeiro. Nenhuma despesa anterior a este mês será contabilizada."
+                          />
+                        </label>
+                        <input
+                          type="month"
+                          value={plano.dataInicio}
+                          onChange={e =>
+                            handleRecalcularPreservandoManuais(
+                              plano.intervencoes,
+                              e.target.value,
+                              plano.dataFim
+                            )
+                          }
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1">
+                          <span>Término do Custeio (Mês/Ano)</span>
+                          <FieldTooltip
+                            title="Competência Final do Horizonte"
+                            text="Último mês projetado no cronograma financeiro do Plano de Custeio."
+                          />
+                        </label>
+                        <input
+                          type="month"
+                          value={plano.dataFim}
+                          onChange={e =>
+                            handleRecalcularPreservandoManuais(
+                              plano.intervencoes,
+                              plano.dataInicio,
+                              e.target.value
+                            )
+                          }
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1">
+                          <span>Descrição / Premissas Gerais</span>
+                          <FieldTooltip text="Resumo executivo do objetivo financeiro deste cenário." />
+                        </label>
+                        <input
+                          type="text"
+                          value={plano.descricao}
+                          onChange={e =>
+                            mutatePlano(prev => ({ ...prev, descricao: e.target.value }))
+                          }
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="lg:col-span-2">
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1">
-                        <span>Nome do Plano de Custeio</span>
-                        <FieldTooltip text="Título oficial utilizado nas listagens e relatórios institucionais." />
-                      </label>
-                      <input
-                        type="text"
-                        value={plano.nome}
-                        onChange={e => mutatePlano(prev => ({ ...prev, nome: e.target.value }))}
-                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                  {/* Quadro Mestre de Unidades Escolares — 100% Reconciliado com as Abas 2, 3, 4 e 5 */}
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
+                      <div>
+                        <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                          <Layers className="w-5 h-5 text-blue-600" />
+                          Quadro Consolidado por Unidade Escolar (Modelo de Creche × Período de {cronogramaMensal.length} Meses)
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Cada linha soma exatamente <strong>1. Mobiliário (Ambientes) + 2. Serviços + 3. Aquisições + 4. Pessoal = Total no Período</strong>. Abaixo de cada valor consta o custo anual configurado no <strong>Modelo de Creche</strong> (<code>Valor/Ano ÷ 12 × Meses Ativos</code>).
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleAplicarNoPlanoExpansao(false)}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold transition-colors"
+                          title="Atualiza as turmas e o escopo de mobiliário no Plano de Expansão"
+                        >
+                          Sincronizar c/ Plano de Expansão
+                        </button>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1">
-                        <span>Identificação do Cenário</span>
-                        <FieldTooltip text="Diferencia simulações alternativas de um mesmo Plano de Expansão (ex.: Cenário Base, Turno Integral, Operação Gradual)." />
-                      </label>
-                      <input
-                        type="text"
-                        value={plano.cenarioLabel}
-                        onChange={e =>
-                          mutatePlano(prev => ({ ...prev, cenarioLabel: e.target.value }))
-                        }
-                        placeholder="Ex.: Cenário Base"
-                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1">
-                        <span>Responsável Técnico</span>
-                        <FieldTooltip text="Servidor, setor ou equipe responsável pela elaboração e validação orçamentária." />
-                      </label>
-                      <input
-                        type="text"
-                        value={plano.responsavelNome}
-                        onChange={e =>
-                          mutatePlano(prev => ({ ...prev, responsavelNome: e.target.value }))
-                        }
-                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1">
-                        <span>Início do Custeio (Mês/Ano)</span>
-                        <FieldTooltip
-                          title="Competência Inicial do Horizonte"
-                          text="Primeiro mês do horizonte financeiro. Nenhuma despesa anterior a este mês será contabilizada."
-                        />
-                      </label>
-                      <input
-                        type="month"
-                        value={plano.dataInicio}
-                        onChange={e =>
-                          handleRecalcularPreservandoManuais(
-                            plano.intervencoes,
-                            e.target.value,
-                            plano.dataFim
-                          )
-                        }
-                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1">
-                        <span>Término do Custeio (Mês/Ano)</span>
-                        <FieldTooltip
-                          title="Competência Final do Horizonte"
-                          text="Último mês projetado no cronograma financeiro do Plano de Custeio."
-                        />
-                      </label>
-                      <input
-                        type="month"
-                        value={plano.dataFim}
-                        onChange={e =>
-                          handleRecalcularPreservandoManuais(
-                            plano.intervencoes,
-                            plano.dataInicio,
-                            e.target.value
-                          )
-                        }
-                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div className="lg:col-span-2">
-                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-1">
-                        <span>Descrição / Premissas Gerais</span>
-                        <FieldTooltip text="Resumo executivo do objetivo financeiro deste cenário." />
-                      </label>
-                      <input
-                        type="text"
-                        value={plano.descricao}
-                        onChange={e =>
-                          mutatePlano(prev => ({ ...prev, descricao: e.target.value }))
-                        }
-                        className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[960px] text-xs">
+                        <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                          <tr>
+                            <th className="text-center px-2.5 py-3 font-bold w-10">
+                              <span className="inline-flex items-center gap-1">
+                                Ativa
+                                <FieldTooltip text="Permite ativar ou desativar uma unidade na simulação orçamentária." />
+                              </span>
+                            </th>
+                            <th className="text-left px-3 py-3 font-bold min-w-[190px]">
+                              Unidade Escolar / Modelo de Creche
+                            </th>
+                            <th className="text-left px-2.5 py-3 font-bold w-[135px]">
+                              <span className="inline-flex items-center gap-1">
+                                Escopo & Vagas
+                                <FieldTooltip
+                                  title="Base Fixa do Modelo"
+                                  text="Unidade Completa: aplica 100% dos ambientes, serviços, aquisições e pessoal do Modelo de Creche. Incremental: aplica a proporção das novas salas/vagas."
+                                />
+                              </span>
+                            </th>
+                            <th className="text-center px-2 py-3 font-bold w-[62px]">
+                              <span className="inline-flex items-center gap-1">
+                                Turmas
+                                <FieldTooltip text="Quantidade de turmas previstas. Alterar o número de turmas ajusta proporcionalmente Professores e Monitores da unidade." />
+                              </span>
+                            </th>
+                            <th className="text-center px-2 py-3 font-bold w-[88px]">
+                              <span className="inline-flex items-center gap-1">
+                                Período
+                                <FieldTooltip
+                                  title="Meses no Plano de Custeio"
+                                  text="Quantidade de meses considerada no cálculo das despesas mensais/anuais desta unidade dentro do período do Plano de Custeio."
+                                />
+                              </span>
+                            </th>
+                            <th className="text-right px-2.5 py-3 font-bold text-amber-800 w-[108px]">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('mobiliario')}
+                                className="inline-flex items-center gap-1 justify-end hover:underline cursor-pointer"
+                                title="Clique para abrir a seção 2. Mobiliário & Equipamentos"
+                              >
+                                1. Mobiliário
+                              </button>
+                            </th>
+                            <th className="text-right px-2.5 py-3 font-bold text-blue-800 w-[108px]">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('servicos')}
+                                className="inline-flex items-center gap-1 justify-end hover:underline cursor-pointer"
+                                title="Clique para abrir a seção 3. Serviços"
+                              >
+                                2. Serviços
+                              </button>
+                            </th>
+                            <th className="text-right px-2.5 py-3 font-bold text-emerald-800 w-[108px]">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('aquisicoes')}
+                                className="inline-flex items-center gap-1 justify-end hover:underline cursor-pointer"
+                                title="Clique para abrir a seção 4. Aquisições"
+                              >
+                                3. Aquisições
+                              </button>
+                            </th>
+                            <th className="text-right px-2.5 py-3 font-bold text-purple-800 w-[114px]">
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('pessoal')}
+                                className="inline-flex items-center gap-1 justify-end hover:underline cursor-pointer"
+                                title="Clique para abrir a seção 5. Pessoal e Folha"
+                              >
+                                4. Pessoal
+                              </button>
+                            </th>
+                            <th className="text-right px-3 py-3 font-bold text-blue-900 bg-blue-50/60 w-[124px] whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1 justify-end">
+                                Total no Período
+                                <FieldTooltip
+                                  title="Fechamento da Linha"
+                                  text="Soma exata de 1. Mobiliário + 2. Serviços + 3. Aquisições + 4. Pessoal desta unidade no período do Plano de Custeio."
+                                  formula="1. Mobiliário + 2. Serviços + 3. Aquisições + 4. Pessoal"
+                                />
+                              </span>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {plano.intervencoes.map(iv => {
+                            const resumoIv = resumoPorIntervencao.find(
+                              r => r.intervencaoId === iv.id
+                            );
+                            const mesesAtivos = resumoIv?.mesesOperacaoNoPeriodo || 0;
+                            const anosEquiv = (mesesAtivos / 12).toLocaleString('pt-BR', {
+                              minimumFractionDigits: mesesAtivos % 12 === 0 ? 0 : 1,
+                              maximumFractionDigits: 1,
+                            });
+                            return (
+                              <tr
+                                key={iv.id}
+                                className={`hover:bg-slate-50 transition-colors ${
+                                  !iv.ativoNoCusteio ? 'opacity-50 bg-slate-50' : ''
+                                }`}
+                              >
+                                <td className="px-2.5 py-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={iv.ativoNoCusteio}
+                                    onChange={e =>
+                                      updateIntervencao(
+                                        iv.id,
+                                        { ativoNoCusteio: e.target.checked },
+                                        false
+                                      )
+                                    }
+                                    className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                                  />
+                                </td>
+                                <td className="px-3 py-3 min-w-[190px]">
+                                  <div className="font-bold text-slate-800 text-xs leading-snug">
+                                    {iv.nomeUnidadeOuObra}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 mt-0.5">
+                                    {iv.modeloCrecheNome}
+                                  </div>
+                                  {(() => {
+                                    const kb = progressoKanbanPorInterv.get(iv.id);
+                                    const isParalisada =
+                                      (iv.statusObraOrigem as string) === 'paralisada';
+                                    return (
+                                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                        {isParalisada && (
+                                          <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold">
+                                            Obra Paralisada
+                                          </span>
+                                        )}
+                                        {kb && (
+                                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-semibold">
+                                            Kanban: {kb.pct}% ({kb.feito}/{kb.total})
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </td>
+                                <td className="px-2.5 py-3">
+                                  <div>
+                                    {iv.escopo === 'unidade_completa' ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-50 text-purple-800 border border-purple-200 whitespace-nowrap">
+                                        100% do Modelo
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap">
+                                        Proporcional (
+                                        {iv.subtipoIntervencao === 'adaptacao'
+                                          ? 'Adaptação'
+                                          : 'Ampliação'}
+                                        )
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] font-semibold text-slate-600 mt-1 whitespace-nowrap">
+                                    +{iv.salasAdicionais} salas · +{iv.vagasAdicionais} vagas
+                                  </div>
+                                </td>
+                                <td className="px-2 py-3 text-center">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={40}
+                                    value={iv.turmasPrevistas}
+                                    onChange={e =>
+                                      updateIntervencao(iv.id, {
+                                        turmasPrevistas: Math.max(1, Number(e.target.value)),
+                                      })
+                                    }
+                                    className="w-14 px-1.5 py-1 text-center font-bold border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                                  />
+                                </td>
+                                <td className="px-2 py-3 text-center whitespace-nowrap">
+                                  <span className="inline-block px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-bold text-[11px]">
+                                    {mesesAtivos} meses
+                                  </span>
+                                  <div className="text-[10px] text-slate-500 mt-0.5">
+                                    ({anosEquiv} {Number(mesesAtivos) === 12 ? 'ano' : 'anos'})
+                                  </div>
+                                </td>
+                                <td className="px-2.5 py-3 text-right whitespace-nowrap">
+                                  <div className="font-bold text-amber-800">
+                                    {BRL0(resumoIv?.mobiliario || 0)}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {iv.escopoImplantacaoMobiliario === 'contemplado_no_capex_obra'
+                                      ? 'No CAPEX da Obra'
+                                      : 'Implantação (1×)'}
+                                  </div>
+                                </td>
+                                <td className="px-2.5 py-3 text-right whitespace-nowrap">
+                                  <div className="font-bold text-slate-800">
+                                    {BRL0(resumoIv?.servicos || 0)}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {BRL0(resumoIv?.custoAnualServicos || 0)}/ano
+                                  </div>
+                                </td>
+                                <td className="px-2.5 py-3 text-right whitespace-nowrap">
+                                  <div className="font-bold text-emerald-800">
+                                    {BRL0(resumoIv?.aquisicoesRecorrentes || 0)}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {BRL0(resumoIv?.custoAnualAquisicoes || 0)}/ano
+                                  </div>
+                                </td>
+                                <td className="px-2.5 py-3 text-right whitespace-nowrap">
+                                  <div className="font-bold text-purple-800">
+                                    {BRL0(resumoIv?.pessoal || 0)}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {BRL0(resumoIv?.custoAnualPessoal || 0)}/ano
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-right bg-blue-50/40 whitespace-nowrap">
+                                  <div className="font-black text-blue-900">
+                                    {BRL0(resumoIv?.totalPeriodo || 0)}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Op.: {BRL0(resumoIv?.custoAnualizadoRegime || 0)}/ano
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-slate-100 border-t-2 border-slate-300 text-slate-800 font-bold">
+                          <tr>
+                            <td className="px-2.5 py-3 text-center text-[11px] uppercase text-slate-500">
+                              Total
+                            </td>
+                            <td className="px-3 py-3">
+                              {plano.intervencoes.filter(i => i.ativoNoCusteio).length} de{' '}
+                              {plano.intervencoes.length} unidades ativas
+                            </td>
+                            <td className="px-2.5 py-3 whitespace-nowrap">
+                              +{resumoFinanceiro.totalSalasContempladas} salas · +
+                              {resumoFinanceiro.totalVagasContempladas} vagas
+                            </td>
+                            <td className="px-2 py-3 text-center">{totalTurmasAtivas} tr</td>
+                            <td className="px-2 py-3 text-center whitespace-nowrap">
+                              {cronogramaMensal.length} meses
+                            </td>
+                            <td className="px-2.5 py-3 text-right text-amber-800 whitespace-nowrap">
+                              <div>{BRL0(resumoFinanceiro.totalMobiliarioPeriodo)}</div>
+                              <div className="text-[10px] font-normal text-slate-500">
+                                Implantação (1×)
+                              </div>
+                            </td>
+                            <td className="px-2.5 py-3 text-right text-slate-800 whitespace-nowrap">
+                              <div>{BRL0(resumoFinanceiro.totalServicosPeriodo)}</div>
+                              <div className="text-[10px] font-normal text-slate-500">
+                                {BRL0(
+                                  resumoPorIntervencao.reduce((s, r) => s + r.custoAnualServicos, 0)
+                                )}
+                                /ano
+                              </div>
+                            </td>
+                            <td className="px-2.5 py-3 text-right text-emerald-800 whitespace-nowrap">
+                              <div>{BRL0(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo)}</div>
+                              <div className="text-[10px] font-normal text-slate-500">
+                                {BRL0(
+                                  resumoPorIntervencao.reduce(
+                                    (s, r) => s + r.custoAnualAquisicoes,
+                                    0
+                                  )
+                                )}
+                                /ano
+                              </div>
+                            </td>
+                            <td className="px-2.5 py-3 text-right text-purple-800 whitespace-nowrap">
+                              <div>{BRL0(resumoFinanceiro.totalPessoalPeriodo)}</div>
+                              <div className="text-[10px] font-normal text-slate-500">
+                                {BRL0(
+                                  resumoPorIntervencao.reduce((s, r) => s + r.custoAnualPessoal, 0)
+                                )}
+                                /ano
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-right text-blue-900 bg-blue-100/60 font-black whitespace-nowrap">
+                              <div>{BRL0(resumoFinanceiro.totalGeralPeriodo)}</div>
+                              <div className="text-[10px] font-semibold text-emerald-800">
+                                Op.: {BRL0(resumoFinanceiro.custoAnualRegimePleno)}/ano
+                              </div>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
                   </div>
                 </div>
+              )}
 
-                {/* Quadro de Intervenções, Escopo Proporcional e Entrada em Funcionamento */}
-                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                  <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/70">
-                    <div>
-                      <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                        <Layers className="w-5 h-5 text-blue-600" />
-                        Unidades Escolares, Escopo Proporcional e Entrada em Operação
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Custos recorrentes iniciam apenas a partir do mês de <strong>Início de Operação</strong> de cada intervenção.
-                      </p>
+              {/* ═══════════════════════════════════════════════════════════════════
+                  ABA 2 — SEÇÃO 1: MOBILIÁRIO & EQUIPAMENTOS DOS AMBIENTES (MODELO)
+                 ═══════════════════════════════════════════════════════════════════ */}
+              {activeTab === 'mobiliario' && (
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <Layers className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                      <div className="text-xs text-amber-900 leading-relaxed">
+                        <strong>Mobiliário e Equipamentos por Ambiente do Modelo de Creche (Implantação Única):</strong> Cada unidade carrega automaticamente os ambientes configurados no seu <strong>Modelo de Creche</strong> (Salas de Atividades, Berçário, Copa, Fraldário, Refeitório e Playground) com seus respectivos itens de mobiliário e equipamentos permanentes. Por ser aquisição permanente para equipar a creche construída, o custo é contabilizado <strong>1 única vez (implantação)</strong> e separado das Aquisições de consumo anual.
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAddMobiliarioManual()}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shrink-0 shadow-2xs"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Incluir Ambiente / Kit
+                    </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-xs">
-                      <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
-                        <tr>
-                          <th className="text-center px-2.5 py-3 font-bold w-12">
-                            <span className="inline-flex items-center gap-1">
-                              Ativa
-                              <FieldTooltip text="Permite simular a ativação ou postergação de uma obra específica sem excluí-la do plano." />
-                            </span>
-                          </th>
-                          <th className="text-left px-3 py-3 font-bold min-w-[200px]">
-                            Unidade Escolar / Intervenção
-                          </th>
-                          <th className="text-left px-3 py-3 font-bold w-[170px]">
-                            <span className="inline-flex items-center gap-1">
-                              Escopo & Capacidade
-                              <FieldTooltip
-                                title="Creche Completa vs. Incremental"
-                                text="Creche Completa: custeia 100% dos ambientes, contratos e equipe do modelo. Incremental: custeia apenas as novas salas, vagas e professores da ampliação, evitando duplicar direção ou contratos existentes."
-                              />
-                            </span>
-                          </th>
-                          <th className="text-center px-2.5 py-3 font-bold w-[72px]">
-                            <span className="inline-flex items-center gap-1">
-                              Turmas
-                              <FieldTooltip text="Quantidade de turmas em funcionamento. Alterar o número de turmas redimensiona automaticamente o quadro pedagógico da unidade." />
-                            </span>
-                          </th>
-                          <th className="text-center px-3 py-3 font-bold w-[150px]">
-                            <span className="inline-flex items-center gap-1">
-                              Início Operação
-                              <FieldTooltip
-                                title="Entrada em Funcionamento"
-                                text="Mês em que a escola ou ampliação efetivamente recebe alunos. Kits únicos ocorrem neste mês e despesas anuais contam pro rata (1/12 por mês ativo) a partir daqui."
-                              />
-                            </span>
-                          </th>
-                          <th className="text-right px-3 py-3 font-bold w-[112px]">
-                            <span className="inline-flex items-center gap-1 justify-end">
-                              Regime / Ano
-                              <FieldTooltip text="Custo anual recorrente da unidade operando por 12 meses cheios." />
-                            </span>
-                          </th>
-                          <th className="text-right px-3 py-3 font-bold w-[118px] whitespace-nowrap">
-                            Total no Período
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {plano.intervencoes.map(iv => {
-                          const resumoIv = resumoPorIntervencao.find(
-                            r => r.intervencaoId === iv.id
-                          );
-                          return (
-                            <tr
-                              key={iv.id}
-                              className={`hover:bg-slate-50 transition-colors ${
-                                !iv.ativoNoCusteio ? 'opacity-50 bg-slate-50' : ''
-                              }`}
-                            >
-                              <td className="px-2.5 py-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={iv.ativoNoCusteio}
+                  {gruposMobiliario.length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
+                      Nenhum ambiente com mobiliário/equipamentos encontrado para o filtro selecionado.
+                    </div>
+                  ) : (
+                    gruposMobiliario.map(grupo => {
+                      const iv = grupo.intervencao;
+                      const noCapex =
+                        iv?.escopoImplantacaoMobiliario === 'contemplado_no_capex_obra';
+                      const subtotalBaseGrupo = grupo.itens.reduce(
+                        (acc, m) => acc + m.valorAnualizado,
+                        0
+                      );
+                      const subtotalPeriodoGrupo = grupo.itens.reduce(
+                        (acc, m) => acc + m.valorTotalProjetado,
+                        0
+                      );
+
+                      return (
+                        <div
+                          key={grupo.id}
+                          className={`bg-white border border-slate-200 rounded-xl overflow-hidden ${
+                            iv && !iv.ativoNoCusteio ? 'opacity-60' : ''
+                          }`}
+                        >
+                          {/* Cabeçalho da Unidade Escolar / Intervenção */}
+                          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              <Building2 className="w-4 h-4 text-amber-600 shrink-0" />
+                              <h3 className="font-bold text-slate-800 text-sm">
+                                {iv?.nomeUnidadeOuObra || 'Mobiliário Global'}
+                              </h3>
+                              {iv && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 whitespace-nowrap">
+                                  {iv.modeloCrecheNome}
+                                </span>
+                              )}
+                              {iv && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white text-slate-600 border border-slate-200 whitespace-nowrap">
+                                  +{iv.salasAdicionais} salas · +{iv.vagasAdicionais} vagas
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3 flex-wrap shrink-0 self-end sm:self-auto">
+                              {iv && (
+                                <select
+                                  value={
+                                    iv.escopoImplantacaoMobiliario || 'incluido_no_custeio'
+                                  }
                                   onChange={e =>
                                     updateIntervencao(
                                       iv.id,
-                                      { ativoNoCusteio: e.target.checked },
-                                      false
+                                      {
+                                        escopoImplantacaoMobiliario: e.target.value as
+                                          | 'incluido_no_custeio'
+                                          | 'contemplado_no_capex_obra',
+                                      },
+                                      true
                                     )
                                   }
-                                  className="w-4 h-4 rounded text-blue-600 cursor-pointer"
-                                />
-                              </td>
-                              <td className="px-3 py-3 min-w-[200px]">
-                                <div className="font-bold text-slate-800 text-sm leading-snug">
-                                  {iv.nomeUnidadeOuObra}
-                                </div>
-                                <div className="text-[11px] text-slate-500 mt-0.5">
-                                  {iv.modeloCrecheNome} · {iv.localizacaoResumo}
-                                </div>
-                              </td>
-                              <td className="px-3 py-3">
-                                <div>
-                                  {iv.escopo === 'unidade_completa' ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
-                                      Creche Completa (100%)
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
-                                      Incremental ({iv.subtipoIntervencao === 'adaptacao' ? 'Adaptação' : 'Ampliação'})
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-[11px] font-semibold text-slate-600 mt-1 whitespace-nowrap">
-                                  +{iv.salasAdicionais} salas · +{iv.vagasAdicionais} vagas
-                                </div>
-                              </td>
-                              <td className="px-2.5 py-3 text-center">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={40}
-                                  value={iv.turmasPrevistas}
-                                  onChange={e =>
-                                    updateIntervencao(iv.id, {
-                                      turmasPrevistas: Math.max(1, Number(e.target.value)),
-                                    })
-                                  }
-                                  className="w-14 px-1.5 py-1 text-center font-bold border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
-                              </td>
-                              <td className="px-3 py-3 text-center">
-                                <input
-                                  type="month"
-                                  value={iv.dataInicioOperacao}
-                                  onChange={e =>
-                                    updateIntervencao(iv.id, {
-                                      dataInicioOperacao: e.target.value,
-                                    })
-                                  }
-                                  className="w-[126px] px-2 py-1 border border-blue-300 bg-blue-50/40 rounded-lg text-xs font-bold text-blue-800 outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                                <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">
-                                  {resumoIv?.mesesOperacaoNoPeriodo || 0}m ativos
-                                  {iv.dataConclusaoObra ? ` · Obra: ${iv.dataConclusaoObra}` : ''}
-                                </div>
-                              </td>
-                              <td className="px-3 py-3 text-right font-semibold text-emerald-800 whitespace-nowrap">
-                                {BRL(resumoIv?.custoAnualizadoRegime || 0)}
-                              </td>
-                              <td className="px-3 py-3 text-right font-extrabold text-slate-900 text-xs whitespace-nowrap">
-                                {BRL(resumoIv?.totalPeriodo || 0)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-slate-100 border-t-2 border-slate-300 text-slate-800 font-bold">
-                        <tr>
-                          <td className="px-2.5 py-3 text-center text-[11px] uppercase text-slate-500">
-                            Total
-                          </td>
-                          <td className="px-3 py-3">
-                            {plano.intervencoes.filter(i => i.ativoNoCusteio).length} de{' '}
-                            {plano.intervencoes.length} intervenções ativas no cenário
-                          </td>
-                          <td className="px-3 py-3 whitespace-nowrap">
-                            +{resumoFinanceiro.totalSalasContempladas} salas · +
-                            {resumoFinanceiro.totalVagasContempladas} vagas
-                          </td>
-                          <td className="px-2.5 py-3 text-center">{totalTurmasAtivas} tr</td>
-                          <td className="px-3 py-3 text-center whitespace-nowrap">
-                            Vigência: {cronogramaMensal.length} meses
-                          </td>
-                          <td className="px-3 py-3 text-right text-emerald-800 whitespace-nowrap">
-                            {BRL(resumoFinanceiro.custoAnualRegimePleno)}
-                          </td>
-                          <td className="px-3 py-3 text-right text-blue-800 font-black whitespace-nowrap">
-                            {BRL(resumoFinanceiro.totalGeralPeriodo)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border outline-none cursor-pointer ${
+                                    noCapex
+                                      ? 'bg-slate-100 text-slate-600 border-slate-300'
+                                      : 'bg-amber-50 text-amber-900 border-amber-300'
+                                  }`}
+                                >
+                                  <option value="incluido_no_custeio">
+                                    Orçar Mobiliário neste Plano de Custeio
+                                  </option>
+                                  <option value="contemplado_no_capex_obra">
+                                    Já Contemplado no CAPEX da Obra (R$ 0 aqui)
+                                  </option>
+                                </select>
+                              )}
+
+                              <div className="text-right text-[11px] text-slate-500">
+                                <span>Total Mobiliário da Unidade: </span>
+                                <strong className="text-amber-800 font-bold">
+                                  {BRL(subtotalPeriodoGrupo)}
+                                </strong>
+                                {noCapex && (
+                                  <span className="ml-1 text-slate-400">
+                                    (Ref. Modelo: {BRL(subtotalBaseGrupo)})
+                                  </span>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAddMobiliarioManual(
+                                    grupo.id !== 'global' ? grupo.id : undefined
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold transition-colors whitespace-nowrap"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                Ambiente
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[740px] text-xs">
+                              <thead className="bg-slate-100/80 text-slate-700 border-b border-slate-200">
+                                <tr>
+                                  <th className="text-left px-3.5 py-2.5 font-bold min-w-[260px]">
+                                    Ambiente do Modelo & Composição de Mobiliário/Equipamentos
+                                  </th>
+                                  <th className="text-center px-2.5 py-2.5 font-bold w-[90px]">
+                                    Qtd Ambientes
+                                  </th>
+                                  <th className="text-right px-2.5 py-2.5 font-bold w-[110px]">
+                                    Mobiliário / Amb.
+                                  </th>
+                                  <th className="text-right px-2.5 py-2.5 font-bold w-[110px]">
+                                    Equipamentos / Amb.
+                                  </th>
+                                  <th className="text-right px-3 py-2.5 font-bold w-[125px]">
+                                    Custo Unit. Ambiente
+                                  </th>
+                                  <th className="text-right px-3 py-2.5 font-bold w-[125px]">
+                                    Total Implantação
+                                  </th>
+                                  <th className="text-center px-2 py-2.5 font-bold w-[34px]"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {grupo.itens.map(item => {
+                                  const isManual = item.origemCalculo !== 'automatico';
+                                  return (
+                                    <tr
+                                      key={item.id}
+                                      className={`hover:bg-slate-50/80 transition-colors ${
+                                        isManual ? 'bg-amber-50/30' : ''
+                                      }`}
+                                    >
+                                      <td className="px-3.5 py-2.5 align-top min-w-[260px]">
+                                        <input
+                                          type="text"
+                                          value={item.descricao}
+                                          onChange={e =>
+                                            mutatePlano(prev => ({
+                                              ...prev,
+                                              mobiliario: (
+                                                prev.mobiliario || projecao.mobiliario
+                                              ).map(m =>
+                                                m.id === item.id
+                                                  ? {
+                                                      ...m,
+                                                      descricao: e.target.value,
+                                                      origemCalculo:
+                                                        m.origemCalculo === 'incluido_manualmente'
+                                                          ? 'incluido_manualmente'
+                                                          : 'ajustado_manualmente',
+                                                    }
+                                                  : m
+                                              ),
+                                            }))
+                                          }
+                                          className="w-full text-xs font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-300 focus:border-amber-500 focus:bg-white rounded-lg px-2 py-1 -ml-2 outline-none transition-colors"
+                                        />
+                                        <div className="mt-0.5 text-[11px] text-slate-500 leading-snug">
+                                          {item.resumoItensAmbiente || item.memoriaCalculo}
+                                        </div>
+                                      </td>
+
+                                      <td className="px-2.5 py-2.5 align-top text-center w-[90px]">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={item.quantidade}
+                                          onChange={e =>
+                                            mutatePlano(prev => ({
+                                              ...prev,
+                                              mobiliario: (
+                                                prev.mobiliario || projecao.mobiliario
+                                              ).map(m =>
+                                                m.id === item.id
+                                                  ? {
+                                                      ...m,
+                                                      quantidade: Math.max(
+                                                        0,
+                                                        Number(e.target.value)
+                                                      ),
+                                                      origemCalculo:
+                                                        m.origemCalculo === 'incluido_manualmente'
+                                                          ? 'incluido_manualmente'
+                                                          : 'ajustado_manualmente',
+                                                    }
+                                                  : m
+                                              ),
+                                            }))
+                                          }
+                                          className="w-16 px-2 py-1 text-center font-bold border border-slate-300 rounded-lg text-slate-800 bg-white outline-none focus:ring-2 focus:ring-amber-500"
+                                        />
+                                      </td>
+
+                                      <td className="px-2.5 py-2.5 align-top text-right text-slate-600 w-[110px]">
+                                        <div className="py-1">
+                                          {BRL(item.valorMobiliarioUnitario)}
+                                        </div>
+                                      </td>
+
+                                      <td className="px-2.5 py-2.5 align-top text-right text-slate-600 w-[110px]">
+                                        <div className="py-1">
+                                          {BRL(item.valorEquipamentosUnitario)}
+                                        </div>
+                                      </td>
+
+                                      <td className="px-3 py-2.5 align-top text-right w-[125px]">
+                                        <CusteioCurrencyInput
+                                          value={item.valorUnitario}
+                                          onChange={val =>
+                                            mutatePlano(prev => ({
+                                              ...prev,
+                                              mobiliario: (
+                                                prev.mobiliario || projecao.mobiliario
+                                              ).map(m =>
+                                                m.id === item.id
+                                                  ? {
+                                                      ...m,
+                                                      valorUnitario: Math.max(0, val),
+                                                      origemCalculo:
+                                                        m.origemCalculo === 'incluido_manualmente'
+                                                          ? 'incluido_manualmente'
+                                                          : 'ajustado_manualmente',
+                                                    }
+                                                  : m
+                                              ),
+                                            }))
+                                          }
+                                          className="w-[112px] px-2 py-1 text-right text-xs border border-slate-300 rounded-lg font-semibold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-amber-500"
+                                        />
+                                      </td>
+
+                                      <td className="px-3 py-2.5 align-top text-right font-bold text-amber-800 whitespace-nowrap w-[125px]">
+                                        <div className="py-1">{BRL(item.valorTotalProjetado)}</div>
+                                      </td>
+
+                                      <td className="px-2 py-2.5 align-top text-center w-[34px]">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            mutatePlano(prev => ({
+                                              ...prev,
+                                              mobiliario: (
+                                                prev.mobiliario || projecao.mobiliario
+                                              ).filter(m => m.id !== item.id),
+                                            }))
+                                          }
+                                          className="p-1 mt-0.5 text-slate-400 hover:text-red-600 rounded transition-colors"
+                                          title="Remover ambiente"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {/* Card Totalizador Consolidado de Mobiliário & Equipamentos */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                        Consolidação da Seção 1 — Mobiliário & Equipamentos (Ambientes do Modelo)
+                      </div>
+                      <div className="text-sm text-slate-600 mt-0.5">
+                        Total de{' '}
+                        <strong>
+                          {mobiliarioFiltrado.reduce((s, m) => s + m.quantidade, 0)} ambientes equipados
+                        </strong>{' '}
+                        em <strong>{gruposMobiliario.length} unidade(s)</strong> exibida(s)
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-6">
+                      <div className="text-right">
+                        <div className="text-[11px] font-bold uppercase text-slate-500">
+                          Valor Base nos Modelos
+                        </div>
+                        <div className="text-lg font-extrabold text-slate-700 whitespace-nowrap">
+                          {BRL(totalBaseMobFiltrado)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[11px] font-bold uppercase text-amber-800">
+                          Total Incluído no Período
+                        </div>
+                        <div className="text-xl font-black text-amber-800 whitespace-nowrap">
+                          {BRL(totalPeriodoMobFiltrado)}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* ═══════════════════════════════════════════════════════════════════
                 ABA 2 — CATEGORIA A: SERVIÇOS OPERACIONAIS
                ═══════════════════════════════════════════════════════════════════ */}
             {activeTab === 'servicos' && (
               <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-start gap-3">
                     <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                     <div className="text-xs text-blue-900 leading-relaxed">
-                      <strong>Regra Proporcional em Serviços (Base Anual Fixa):</strong> Em{' '}
-                      <em>Novas Creches</em>, contratos indivisíveis são aplicados em <strong>100%</strong>. Em{' '}
-                      <em>Ampliações/Adaptações</em>, contratos já suportados pela escola iniciam em{' '}
-                      <strong>Rateio 0%</strong> (Compartilhado) e contratos de área/limpeza usam a{' '}
-                      <strong>fração exata de salas</strong> (ex.: 2/5 salas = 40%), sem arredondamentos que distorçam centavos.
+                      <strong>Cálculo Fixo pelo Modelo da Creche + Período do Custeio:</strong> Os valores de referência vêm diretamente dos serviços anuais cadastrados no <strong>Modelo da Creche</strong> de cada unidade (100% em Novas Creches; proporcional ao nº de salas em Ampliações). O <strong>Total no Período</strong> multiplica o valor mensal (<code>Custo Anual ÷ 12</code>) pelos meses de operação da unidade dentro deste Plano de Custeio.
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleAddServicoManual()}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-2xs"
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shrink-0 shadow-2xs"
                   >
                     <Plus className="w-4 h-4" />
                     Incluir Serviço
@@ -1376,7 +2076,7 @@ export default function PlanoCusteioWorkspace({
                 </div>
 
                 {gruposServicos.length === 0 ? (
-                  <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-500 shadow-sm">
+                  <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
                     Nenhum item de serviço operacional encontrado para o filtro selecionado.
                   </div>
                 ) : (
@@ -1397,7 +2097,7 @@ export default function PlanoCusteioWorkspace({
                     return (
                       <div
                         key={grupo.id}
-                        className={`bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm ${
+                        className={`bg-white border border-slate-200 rounded-xl overflow-hidden ${
                           iv && !iv.ativoNoCusteio ? 'opacity-60' : ''
                         }`}
                       >
@@ -1408,24 +2108,19 @@ export default function PlanoCusteioWorkspace({
                             <h3 className="font-bold text-slate-800 text-sm">
                               {iv?.nomeUnidadeOuObra || 'Despesas Operacionais Globais'}
                             </h3>
-                            {iv &&
-                              (iv.escopo === 'unidade_completa' ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
-                                  Creche Completa (100%)
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
-                                  Incremental ({iv.subtipoIntervencao === 'adaptacao' ? 'Adaptação' : 'Ampliação'})
-                                </span>
-                              ))}
                             {iv && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white text-slate-600 border border-slate-200 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap">
+                                {iv.modeloCrecheNome}
+                              </span>
+                            )}
+                            {iv && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white text-slate-600 border border-slate-200 whitespace-nowrap">
                                 +{iv.salasAdicionais} salas · +{iv.vagasAdicionais} vagas ·{' '}
-                                {resumoIv?.mesesOperacaoNoPeriodo ?? 0}m ativos
+                                {resumoIv?.mesesOperacaoNoPeriodo ?? 0}m ativos no período
                               </span>
                             )}
                             {iv && !iv.ativoNoCusteio && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-200 text-slate-700 whitespace-nowrap">
                                 Inativa na simulação
                               </span>
                             )}
@@ -1433,10 +2128,10 @@ export default function PlanoCusteioWorkspace({
 
                           <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                             <div className="text-right text-[11px] text-slate-500">
-                              <span>Anual: </span>
+                              <span>Custo Anual: </span>
                               <strong className="text-emerald-700">{BRL(subtotalAnualGrupo)}</strong>
                               <span className="mx-1.5 text-slate-300">|</span>
-                              <span>Período: </span>
+                              <span>No Período: </span>
                               <strong className="text-blue-700">{BRL(subtotalPeriodoGrupo)}</strong>
                             </div>
                             <button
@@ -1457,51 +2152,23 @@ export default function PlanoCusteioWorkspace({
                           <table className="w-full min-w-[720px] text-xs">
                             <thead className="bg-slate-100/80 text-slate-700 border-b border-slate-200">
                               <tr>
-                                <th className="text-left px-3.5 py-2.5 font-bold min-w-[215px]">
-                                  <span className="inline-flex items-center gap-1">
-                                    Serviço Operacional & Natureza
-                                    <FieldTooltip
-                                      title="Serviço & Natureza da Despesa"
-                                      text="Clique no nome do serviço para editar a descrição. A etiqueta indica se a despesa é Exclusiva da Intervenção ou Compartilhada com a escola existente."
-                                    />
-                                  </span>
+                                <th className="text-left px-3.5 py-2.5 font-bold min-w-[230px]">
+                                  Serviço Operacional (Configurado no Modelo)
                                 </th>
-                                <th className="text-left px-3 py-2.5 font-bold w-[195px]">
-                                  <span className="inline-flex items-center gap-1">
-                                    Critério & Proporção
-                                    <FieldTooltip
-                                      title="Critério Proporcional & Fração Exata"
-                                      text="Selecione o critério de dimensionamento (Por Sala, Por Vaga, Por Unidade, Rateio % ou Valor Fixo). A fração física exata aplicada ao contrato é exibida logo abaixo."
-                                    />
-                                  </span>
+                                <th className="text-left px-3 py-2.5 font-bold w-[165px]">
+                                  Base Fixa do Modelo
                                 </th>
-                                <th className="text-right px-3 py-2.5 font-bold w-[122px]">
-                                  <span className="inline-flex items-center gap-1 justify-end">
-                                    Ref. Anual (ANO)
-                                    <FieldTooltip
-                                      title="Valor Anual de Referência"
-                                      text="Valor anual integral (12 meses) do contrato para uma unidade padrão, conforme cadastrado em Configurações de Custo."
-                                    />
-                                  </span>
+                                <th className="text-right px-3 py-2.5 font-bold w-[125px]">
+                                  Valor no Modelo (ANO)
                                 </th>
-                                <th className="text-right px-3 py-2.5 font-bold w-[108px]">
-                                  <span className="inline-flex items-center gap-1 justify-end">
-                                    Anual Aplicado
-                                    <FieldTooltip
-                                      title="Custo Anual Efetivo"
-                                      text="Resultado de Ref. Anual × Proporção exata da intervenção."
-                                      formula="Anual Aplicado = Ref. Anual × Proporção"
-                                    />
-                                  </span>
+                                <th className="text-right px-3 py-2.5 font-bold w-[120px]">
+                                  Custo Anual da Unidade
                                 </th>
-                                <th className="text-right px-3 py-2.5 font-bold w-[118px]">
-                                  <span className="inline-flex items-center gap-1 justify-end">
-                                    Total no Período
-                                    <FieldTooltip
-                                      title="Total Projetado no Período"
-                                      text="Soma mensal pro rata (Anual Aplicado ÷ 12) nos meses ativos da unidade dentro do plano, acrescida de eventual reajuste anual simulado."
-                                    />
-                                  </span>
+                                <th className="text-center px-2.5 py-2.5 font-bold w-[90px]">
+                                  Meses no Período
+                                </th>
+                                <th className="text-right px-3 py-2.5 font-bold w-[120px]">
+                                  Total no Período
                                 </th>
                                 <th className="text-center px-2 py-2.5 font-bold w-[34px]"></th>
                               </tr>
@@ -1516,7 +2183,7 @@ export default function PlanoCusteioWorkspace({
                                       isManual ? 'bg-amber-50/30' : ''
                                     }`}
                                   >
-                                    <td className="px-3.5 py-2.5 align-top min-w-[215px]">
+                                    <td className="px-3.5 py-2.5 align-top min-w-[230px]">
                                       <input
                                         type="text"
                                         value={item.descricao}
@@ -1539,23 +2206,12 @@ export default function PlanoCusteioWorkspace({
                                         }
                                         className="w-full min-w-[185px] text-xs font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white rounded-lg px-2 py-1 -ml-2 outline-none transition-colors"
                                       />
-                                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                        <span
-                                          className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
-                                            item.naturezaCusto === 'compartilhado_rede'
-                                              ? 'bg-slate-100 text-slate-600'
-                                              : 'bg-blue-50 text-blue-700'
-                                          }`}
-                                        >
-                                          {item.naturezaCusto === 'compartilhado_rede'
-                                            ? 'Compartilhado c/ Escola'
-                                            : 'Exclusivo da Intervenção'}
-                                        </span>
+                                      <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                                         {isManual && (
                                           <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold whitespace-nowrap">
                                             {item.origemCalculo === 'incluido_manualmente'
                                               ? 'Incluído Manual'
-                                              : 'Ajuste Manual'}
+                                              : 'Valor Ajustado'}
                                           </span>
                                         )}
                                         <span className="text-[11px] text-slate-500 leading-snug">
@@ -1564,116 +2220,25 @@ export default function PlanoCusteioWorkspace({
                                       </div>
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top w-[195px]">
-                                      <div className="flex items-center gap-1">
-                                        <select
-                                          value={item.criterioCalculo}
-                                          onChange={e => {
-                                            const novoCrit = e.target
-                                              .value as CriterioProporcionalidade;
-                                            const qtdProf =
-                                              qtdProfPorInterv.get(item.intervencaoCusteioId) || 0;
-                                            const calcProp = calcularProporcaoPorCriterio(
-                                              novoCrit,
-                                              iv,
-                                              catalogos,
-                                              qtdProf,
-                                              novoCrit === 'percentual_utilizacao'
-                                                ? item.percentualRateio ?? 20
-                                                : item.percentualRateio
-                                            );
-                                            mutatePlano(prev => ({
-                                              ...prev,
-                                              servicos: prev.servicos.map(s =>
-                                                s.id === item.id
-                                                  ? {
-                                                      ...s,
-                                                      criterioCalculo: novoCrit,
-                                                      fatorProporcional: calcProp.fatorProporcional,
-                                                      numeradorProporcao:
-                                                        calcProp.numeradorProporcao,
-                                                      denominadorProporcao:
-                                                        calcProp.denominadorProporcao,
-                                                      unidadeProporcao: calcProp.unidadeProporcao,
-                                                      percentualRateio: calcProp.percentualRateio,
-                                                      naturezaCusto: calcProp.naturezaCusto,
-                                                      memoriaCalculo: calcProp.memoriaCalculo,
-                                                      origemCalculo:
-                                                        s.origemCalculo === 'incluido_manualmente'
-                                                          ? 'incluido_manualmente'
-                                                          : 'ajustado_manualmente',
-                                                    }
-                                                  : s
-                                              ),
-                                            }));
-                                          }}
-                                          className="w-full min-w-0 px-2 py-1 border border-slate-200 rounded-lg bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                                        >
-                                          {Object.entries(CRITERIO_LABELS).map(([k, lbl]) => (
-                                            <option key={k} value={k}>
-                                              {lbl}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <FieldTooltip
-                                          title={CRITERIO_LABELS[item.criterioCalculo]}
-                                          text={CRITERIO_DESCRIPTIONS[item.criterioCalculo]}
-                                        />
-                                      </div>
-
-                                      <div className="mt-1.5 flex items-center justify-between gap-1.5">
-                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                          Fator:
-                                        </span>
-                                        {item.criterioCalculo === 'percentual_utilizacao' ? (
-                                          <div className="inline-flex items-center gap-1">
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              max={200}
-                                              step={5}
-                                              value={item.percentualRateio ?? 0}
-                                              onChange={e => {
-                                                const pct = Math.max(0, Number(e.target.value));
-                                                mutatePlano(prev => ({
-                                                  ...prev,
-                                                  servicos: prev.servicos.map(s =>
-                                                    s.id === item.id
-                                                      ? {
-                                                          ...s,
-                                                          percentualRateio: pct,
-                                                          fatorProporcional: pct / 100,
-                                                          naturezaCusto:
-                                                            pct === 0
-                                                              ? 'compartilhado_rede'
-                                                              : 'exclusivo_intervencao',
-                                                          memoriaCalculo:
-                                                            pct === 0
-                                                              ? 'Despesa compartilhada suportada pela escola existente (0% incremental)'
-                                                              : `Aditivo/rateio contratual de ${pct}% sobre a referência anual`,
-                                                          origemCalculo:
-                                                            s.origemCalculo ===
-                                                            'incluido_manualmente'
-                                                              ? 'incluido_manualmente'
-                                                              : 'ajustado_manualmente',
-                                                        }
-                                                      : s
-                                                  ),
-                                                }));
-                                              }}
-                                              className="w-16 px-2 py-0.5 text-right border border-blue-300 bg-blue-50/40 rounded-md text-xs font-bold text-blue-900 outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                            <span className="font-bold text-slate-600">%</span>
-                                          </div>
-                                        ) : (
-                                          <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-700 whitespace-nowrap">
-                                            {formatProporcaoResumo(item)}
-                                          </span>
-                                        )}
-                                      </div>
+                                    <td className="px-3 py-2.5 align-top w-[165px]">
+                                      <span
+                                        className={`inline-block px-2 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap ${
+                                          item.fatorProporcional === 0
+                                            ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                            : item.fatorProporcional === 1
+                                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                            : 'bg-amber-50 text-amber-900 border-amber-200'
+                                        }`}
+                                      >
+                                        {item.fatorProporcional === 0
+                                          ? 'Compartilhado c/ Escola (0%)'
+                                          : item.fatorProporcional === 1
+                                          ? '100% do Modelo (ANO)'
+                                          : formatProporcaoResumo(item)}
+                                      </span>
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top text-right w-[122px]">
+                                    <td className="px-3 py-2.5 align-top text-right w-[125px]">
                                       <CusteioCurrencyInput
                                         value={item.valorUnitario}
                                         onChange={val =>
@@ -1697,8 +2262,8 @@ export default function PlanoCusteioWorkspace({
                                       />
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top text-right w-[108px]">
-                                      <div className="font-semibold text-slate-800 whitespace-nowrap py-1">
+                                    <td className="px-3 py-2.5 align-top text-right w-[120px]">
+                                      <div className="font-semibold text-slate-800 whitespace-nowrap py-0.5">
                                         {BRL(item.valorAnualizado)}
                                       </div>
                                       <div className="text-[10px] text-slate-400 whitespace-nowrap">
@@ -1706,12 +2271,15 @@ export default function PlanoCusteioWorkspace({
                                       </div>
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top text-right w-[118px]">
-                                      <div className="font-bold text-blue-700 whitespace-nowrap py-1">
+                                    <td className="px-2.5 py-2.5 align-top text-center w-[90px]">
+                                      <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px] whitespace-nowrap mt-0.5">
+                                        {item.ocorrenciasNoPeriodo} meses
+                                      </span>
+                                    </td>
+
+                                    <td className="px-3 py-2.5 align-top text-right w-[120px]">
+                                      <div className="font-bold text-blue-700 whitespace-nowrap py-0.5">
                                         {BRL(item.valorTotalProjetado)}
-                                      </div>
-                                      <div className="text-[10px] font-medium text-slate-500 whitespace-nowrap">
-                                        {item.ocorrenciasNoPeriodo}m ativos
                                       </div>
                                     </td>
 
@@ -1742,7 +2310,7 @@ export default function PlanoCusteioWorkspace({
                 )}
 
                 {/* Card Totalizador Consolidado de Serviços */}
-                <div className="bg-white border-2 border-blue-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-blue-700">
                       Consolidação da Categoria A — Serviços Operacionais
@@ -1755,7 +2323,7 @@ export default function PlanoCusteioWorkspace({
                   <div className="flex items-center gap-6">
                     <div className="text-right">
                       <div className="text-[11px] font-bold uppercase text-slate-500">
-                        Anual Aplicado (Regime)
+                        Custo Anual (Regime)
                       </div>
                       <div className="text-lg font-extrabold text-emerald-700 whitespace-nowrap">
                         {BRL(totalAnualServicosFiltrados)}/ano
@@ -1775,90 +2343,51 @@ export default function PlanoCusteioWorkspace({
             )}
 
             {/* ═══════════════════════════════════════════════════════════════════
-                ABA 3 — CATEGORIA B: AQUISIÇÕES (PONTUAIS VS. RECORRENTES)
+                ABA 3 — CATEGORIA B: AQUISIÇÕES DE CONSUMO ANUAL (MODELO)
                ═══════════════════════════════════════════════════════════════════ */}
             {activeTab === 'aquisicoes' && (
               <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setFiltroTipoAquisicao('todas')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                        filtroTipoAquisicao === 'todas'
-                          ? 'bg-amber-700 text-white'
-                          : 'bg-white text-amber-900 border border-amber-200'
-                      }`}
-                    >
-                      Todas ({projecao.aquisicoes.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFiltroTipoAquisicao('pontual_implantacao')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                        filtroTipoAquisicao === 'pontual_implantacao'
-                          ? 'bg-amber-700 text-white'
-                          : 'bg-white text-amber-900 border border-amber-200'
-                      }`}
-                    >
-                      Pontuais de Implantação (Despesa Única)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFiltroTipoAquisicao('recorrente_manutencao')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                        filtroTipoAquisicao === 'recorrente_manutencao'
-                          ? 'bg-emerald-700 text-white'
-                          : 'bg-white text-emerald-900 border border-emerald-200'
-                      }`}
-                    >
-                      Recorrentes de Manutenção (ANO)
-                    </button>
-                    <FieldTooltip
-                      title="Pontual (Única) vs. Recorrente (ANO)"
-                      text="Aquisições Pontuais (mobiliário e equipamentos iniciais) são contabilizadas UMA ÚNICA VEZ no mês de abertura (Qtd × Valor Unitário). Aquisições Recorrentes (merenda, material pedagógico, higiene, EPI) têm base ANUAL e são rateadas nos meses ativos."
-                    />
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-amber-900 leading-relaxed">
+                      <strong>Aquisições de Funcionamento (Separadas do Mobiliário da Obra):</strong> Esta seção contempla exclusivamente os materiais e insumos operacionais anuais configurados no <strong>Modelo da Creche</strong> (<em>Merenda Escolar, Material Pedagógico, Material de Limpeza/Higiene, Uniformes/EPI e Gás de Cozinha</em>). O mobiliário e equipamentos dos ambientes pertencem à implantação física da Obra/Construção.
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleAddAquisicaoManual('pontual_implantacao')}
-                      className="flex items-center gap-1 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-2xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      + Aq. Pontual (Única)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddAquisicaoManual('recorrente_manutencao')}
-                      className="flex items-center gap-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      + Aq. Recorrente (ANO)
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAddAquisicaoManual('recorrente_manutencao')}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shrink-0 shadow-2xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Incluir Aquisição
+                  </button>
                 </div>
 
                 {gruposAquisicoes.length === 0 ? (
-                  <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-500 shadow-sm">
+                  <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
                     Nenhum item de aquisição encontrado para o filtro selecionado.
                   </div>
                 ) : (
                   gruposAquisicoes.map(grupo => {
                     const iv = grupo.intervencao;
-                    const subtotalPontualGrupo = grupo.itens
-                      .filter(a => a.tipoAquisicao === 'pontual_implantacao')
-                      .reduce((acc, a) => acc + a.valorTotalProjetado, 0);
-                    const subtotalRecorrenteGrupo = grupo.itens
-                      .filter(a => a.tipoAquisicao === 'recorrente_manutencao')
-                      .reduce((acc, a) => acc + a.valorTotalProjetado, 0);
-                    const subtotalTotalGrupo = subtotalPontualGrupo + subtotalRecorrenteGrupo;
+                    const resumoIv = iv
+                      ? resumoPorIntervencao.find(r => r.intervencaoId === iv.id)
+                      : undefined;
+                    const subtotalAnualGrupo = grupo.itens.reduce(
+                      (acc, a) => acc + a.valorAnualizado,
+                      0
+                    );
+                    const subtotalPeriodoGrupo = grupo.itens.reduce(
+                      (acc, a) => acc + a.valorTotalProjetado,
+                      0
+                    );
 
                     return (
                       <div
                         key={grupo.id}
-                        className={`bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm ${
+                        className={`bg-white border border-slate-200 rounded-xl overflow-hidden ${
                           iv && !iv.ativoNoCusteio ? 'opacity-60' : ''
                         }`}
                       >
@@ -1869,50 +2398,27 @@ export default function PlanoCusteioWorkspace({
                             <h3 className="font-bold text-slate-800 text-sm">
                               {iv?.nomeUnidadeOuObra || 'Aquisições Globais da Rede'}
                             </h3>
-                            {iv &&
-                              (iv.escopo === 'unidade_completa' ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
-                                  Creche Completa (100%)
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
-                                  Incremental ({iv.subtipoIntervencao === 'adaptacao' ? 'Adaptação' : 'Ampliação'})
-                                </span>
-                              ))}
                             {iv && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white text-slate-600 border border-slate-200 whitespace-nowrap">
-                                +{iv.salasAdicionais} salas · +{iv.vagasAdicionais} vagas
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 whitespace-nowrap">
+                                {iv.modeloCrecheNome}
+                              </span>
+                            )}
+                            {iv && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white text-slate-600 border border-slate-200 whitespace-nowrap">
+                                +{iv.salasAdicionais} salas · +{iv.vagasAdicionais} vagas ·{' '}
+                                {resumoIv?.mesesOperacaoNoPeriodo ?? 0}m ativos no período
                               </span>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2.5 flex-wrap shrink-0 self-end sm:self-auto">
+                          <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                             <div className="text-right text-[11px] text-slate-500">
-                              <span>Únicas: </span>
-                              <strong className="text-amber-700">{BRL(subtotalPontualGrupo)}</strong>
+                              <span>Custo Anual: </span>
+                              <strong className="text-emerald-700">{BRL(subtotalAnualGrupo)}</strong>
                               <span className="mx-1.5 text-slate-300">|</span>
-                              <span>Recorr.: </span>
-                              <strong className="text-emerald-700">
-                                {BRL(subtotalRecorrenteGrupo)}
-                              </strong>
-                              <span className="mx-1.5 text-slate-300">|</span>
-                              <span>Total: </span>
-                              <strong className="text-slate-900">{BRL(subtotalTotalGrupo)}</strong>
+                              <span>No Período: </span>
+                              <strong className="text-blue-700">{BRL(subtotalPeriodoGrupo)}</strong>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleAddAquisicaoManual(
-                                  'pontual_implantacao',
-                                  grupo.id !== 'global' ? grupo.id : undefined
-                                )
-                              }
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold transition-colors whitespace-nowrap"
-                              title="Adicionar aquisição pontual nesta unidade"
-                            >
-                              <Plus className="w-3 h-3" />
-                              Pontual
-                            </button>
                             <button
                               type="button"
                               onClick={() =>
@@ -1921,44 +2427,35 @@ export default function PlanoCusteioWorkspace({
                                   grupo.id !== 'global' ? grupo.id : undefined
                                 )
                               }
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold transition-colors whitespace-nowrap"
-                              title="Adicionar aquisição recorrente nesta unidade"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold transition-colors whitespace-nowrap"
+                              title="Adicionar aquisição específica nesta unidade"
                             >
-                              <Plus className="w-3 h-3" />
-                              Recorrente
+                              <Plus className="w-3.5 h-3.5" />
+                              Aquisição
                             </button>
                           </div>
                         </div>
 
                         <div className="overflow-x-auto">
-                          <table className="w-full min-w-[730px] text-xs">
+                          <table className="w-full min-w-[720px] text-xs">
                             <thead className="bg-slate-100/80 text-slate-700 border-b border-slate-200">
                               <tr>
-                                <th className="text-left px-3.5 py-2.5 font-bold min-w-[210px]">
-                                  Item de Aquisição & Finalidade
+                                <th className="text-left px-3.5 py-2.5 font-bold min-w-[230px]">
+                                  Item de Aquisição (Configurado no Modelo)
                                 </th>
-                                <th className="text-left px-3 py-2.5 font-bold w-[200px]">
-                                  <span className="inline-flex items-center gap-1">
-                                    Recorrência & Critério
-                                    <FieldTooltip
-                                      title="Multiplicador Unificado"
-                                      text="Itens Pontuais (Única): informe a quantidade física de kits/salas. Itens Recorrentes (ANO): selecione o critério proporcional (Por Vaga, Por Profissional, Por Unidade, Rateio % ou Valor Fixo) aplicado sobre o catálogo anual."
-                                    />
-                                  </span>
+                                <th className="text-left px-3 py-2.5 font-bold w-[165px]">
+                                  Base Fixa do Modelo
+                                </th>
+                                <th className="text-right px-3 py-2.5 font-bold w-[125px]">
+                                  Valor no Modelo (ANO)
                                 </th>
                                 <th className="text-right px-3 py-2.5 font-bold w-[120px]">
-                                  <span className="inline-flex items-center gap-1 justify-end">
-                                    Valor Ref.
-                                    <FieldTooltip text="Valor unitário do Kit (para itens Pontuais) ou valor anual de referência do Modelo (para itens Recorrentes)." />
-                                  </span>
+                                  Custo Anual da Unidade
                                 </th>
-                                <th className="text-center px-3 py-2.5 font-bold w-[132px]">
-                                  <span className="inline-flex items-center gap-1">
-                                    Competência
-                                    <FieldTooltip text="Mês do desembolso único (para itens Pontuais) ou mês de início da despesa recorrente." />
-                                  </span>
+                                <th className="text-center px-2.5 py-2.5 font-bold w-[90px]">
+                                  Meses no Período
                                 </th>
-                                <th className="text-right px-3 py-2.5 font-bold w-[114px] whitespace-nowrap">
+                                <th className="text-right px-3 py-2.5 font-bold w-[120px]">
                                   Total no Período
                                 </th>
                                 <th className="text-center px-2 py-2.5 font-bold w-[34px]"></th>
@@ -1966,7 +2463,6 @@ export default function PlanoCusteioWorkspace({
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {grupo.itens.map(item => {
-                                const isPontual = item.tipoAquisicao === 'pontual_implantacao';
                                 const isManual = item.origemCalculo !== 'automatico';
                                 return (
                                   <tr
@@ -1975,7 +2471,7 @@ export default function PlanoCusteioWorkspace({
                                       isManual ? 'bg-amber-50/30' : ''
                                     }`}
                                   >
-                                    <td className="px-3.5 py-2.5 align-top min-w-[210px]">
+                                    <td className="px-3.5 py-2.5 align-top min-w-[230px]">
                                       <input
                                         type="text"
                                         value={item.descricao}
@@ -1998,21 +2494,12 @@ export default function PlanoCusteioWorkspace({
                                         }
                                         className="w-full min-w-[185px] text-xs font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white rounded-lg px-2 py-1 -ml-2 outline-none transition-colors"
                                       />
-                                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                        <span
-                                          className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
-                                            isPontual
-                                              ? 'bg-amber-50 text-amber-800'
-                                              : 'bg-emerald-50 text-emerald-800'
-                                          }`}
-                                        >
-                                          {isPontual ? 'Implantação Física' : 'Consumo Operacional'}
-                                        </span>
+                                      <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                                         {isManual && (
                                           <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold whitespace-nowrap">
                                             {item.origemCalculo === 'incluido_manualmente'
                                               ? 'Incluído Manual'
-                                              : 'Ajuste Manual'}
+                                              : 'Valor Ajustado'}
                                           </span>
                                         )}
                                         <span className="text-[11px] text-slate-500 leading-snug">
@@ -2021,209 +2508,21 @@ export default function PlanoCusteioWorkspace({
                                       </div>
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top w-[200px] space-y-1.5">
-                                      <select
-                                        value={item.tipoAquisicao}
-                                        onChange={e => {
-                                          const novoTipo = e.target
-                                            .value as ItemCusteioAquisicao['tipoAquisicao'];
-                                          mutatePlano(prev => ({
-                                            ...prev,
-                                            aquisicoes: prev.aquisicoes.map(a =>
-                                              a.id === item.id
-                                                ? {
-                                                    ...a,
-                                                    tipoAquisicao: novoTipo,
-                                                    periodicidade:
-                                                      novoTipo === 'pontual_implantacao'
-                                                        ? 'unica'
-                                                        : 'anual',
-                                                    unidadeMedida:
-                                                      novoTipo === 'pontual_implantacao'
-                                                        ? 'KIT'
-                                                        : 'ANO',
-                                                    fatorProporcional:
-                                                      novoTipo === 'pontual_implantacao'
-                                                        ? 1
-                                                        : a.fatorProporcional,
-                                                    quantidade:
-                                                      novoTipo === 'recorrente_manutencao'
-                                                        ? 1
-                                                        : a.quantidade,
-                                                    dataFim:
-                                                      novoTipo === 'pontual_implantacao'
-                                                        ? a.dataInicio
-                                                        : plano.dataFim,
-                                                    origemCalculo:
-                                                      a.origemCalculo === 'incluido_manualmente'
-                                                        ? 'incluido_manualmente'
-                                                        : 'ajustado_manualmente',
-                                                  }
-                                                : a
-                                            ),
-                                          }));
-                                        }}
-                                        className={`w-full px-2.5 py-1 rounded-lg text-[11px] font-bold border outline-none cursor-pointer ${
-                                          isPontual
-                                            ? 'bg-amber-100/80 text-amber-900 border-amber-300'
-                                            : 'bg-emerald-100/80 text-emerald-900 border-emerald-300'
+                                    <td className="px-3 py-2.5 align-top w-[165px]">
+                                      <span
+                                        className={`inline-block px-2 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap ${
+                                          item.fatorProporcional === 1
+                                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                            : 'bg-amber-50 text-amber-900 border-amber-200'
                                         }`}
                                       >
-                                        <option value="pontual_implantacao">
-                                          Pontual (Despesa Única)
-                                        </option>
-                                        <option value="recorrente_manutencao">
-                                          Recorrente (Base ANO)
-                                        </option>
-                                      </select>
-
-                                      {isPontual ? (
-                                        <div className="flex items-center justify-between gap-1.5">
-                                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                            Qtd Física:
-                                          </span>
-                                          <div className="inline-flex items-center gap-1">
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              value={item.quantidade}
-                                              onChange={e =>
-                                                mutatePlano(prev => ({
-                                                  ...prev,
-                                                  aquisicoes: prev.aquisicoes.map(a =>
-                                                    a.id === item.id
-                                                      ? {
-                                                          ...a,
-                                                          quantidade: Math.max(
-                                                            0,
-                                                            Number(e.target.value)
-                                                          ),
-                                                          fatorProporcional: 1,
-                                                          origemCalculo:
-                                                            a.origemCalculo ===
-                                                            'incluido_manualmente'
-                                                              ? 'incluido_manualmente'
-                                                              : 'ajustado_manualmente',
-                                                        }
-                                                      : a
-                                                  ),
-                                                }))
-                                              }
-                                              className="w-16 px-2 py-0.5 text-right border border-slate-300 rounded-md font-bold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                            <span className="text-[10px] font-bold uppercase text-slate-500">
-                                              {item.unidadeMedida || 'KIT'}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <select
-                                            value={item.criterioCalculo}
-                                            onChange={e => {
-                                              const novoCrit = e.target
-                                                .value as CriterioProporcionalidade;
-                                              const qtdProf =
-                                                qtdProfPorInterv.get(item.intervencaoCusteioId) ||
-                                                0;
-                                              const calcProp = calcularProporcaoPorCriterio(
-                                                novoCrit,
-                                                iv,
-                                                catalogos,
-                                                qtdProf,
-                                                novoCrit === 'percentual_utilizacao'
-                                                  ? item.percentualRateio ?? 25
-                                                  : item.percentualRateio
-                                              );
-                                              mutatePlano(prev => ({
-                                                ...prev,
-                                                aquisicoes: prev.aquisicoes.map(a =>
-                                                  a.id === item.id
-                                                    ? {
-                                                        ...a,
-                                                        criterioCalculo: novoCrit,
-                                                        quantidade: 1,
-                                                        fatorProporcional:
-                                                          calcProp.fatorProporcional,
-                                                        numeradorProporcao:
-                                                          calcProp.numeradorProporcao,
-                                                        denominadorProporcao:
-                                                          calcProp.denominadorProporcao,
-                                                        unidadeProporcao:
-                                                          calcProp.unidadeProporcao,
-                                                        percentualRateio:
-                                                          calcProp.percentualRateio,
-                                                        naturezaCusto: calcProp.naturezaCusto,
-                                                        memoriaCalculo: calcProp.memoriaCalculo,
-                                                        origemCalculo:
-                                                          a.origemCalculo ===
-                                                          'incluido_manualmente'
-                                                            ? 'incluido_manualmente'
-                                                            : 'ajustado_manualmente',
-                                                      }
-                                                    : a
-                                                ),
-                                              }));
-                                            }}
-                                            className="w-full min-w-0 px-2 py-1 border border-slate-200 rounded-lg bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                                          >
-                                            {Object.entries(CRITERIO_LABELS).map(([k, lbl]) => (
-                                              <option key={k} value={k}>
-                                                {lbl}
-                                              </option>
-                                            ))}
-                                          </select>
-                                          <div className="flex items-center justify-between gap-1.5">
-                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                              Fator:
-                                            </span>
-                                            {item.criterioCalculo === 'percentual_utilizacao' ? (
-                                              <div className="inline-flex items-center gap-1">
-                                                <input
-                                                  type="number"
-                                                  min={0}
-                                                  max={200}
-                                                  step={5}
-                                                  value={item.percentualRateio ?? 0}
-                                                  onChange={e => {
-                                                    const pct = Math.max(
-                                                      0,
-                                                      Number(e.target.value)
-                                                    );
-                                                    mutatePlano(prev => ({
-                                                      ...prev,
-                                                      aquisicoes: prev.aquisicoes.map(a =>
-                                                        a.id === item.id
-                                                          ? {
-                                                              ...a,
-                                                              quantidade: 1,
-                                                              percentualRateio: pct,
-                                                              fatorProporcional: pct / 100,
-                                                              origemCalculo:
-                                                                a.origemCalculo ===
-                                                                'incluido_manualmente'
-                                                                  ? 'incluido_manualmente'
-                                                                  : 'ajustado_manualmente',
-                                                            }
-                                                          : a
-                                                      ),
-                                                    }));
-                                                  }}
-                                                  className="w-16 px-2 py-0.5 text-right border border-emerald-300 bg-emerald-50/40 rounded-md text-xs font-bold text-emerald-900 outline-none focus:ring-2 focus:ring-emerald-500"
-                                                />
-                                                <span className="font-bold text-slate-600">%</span>
-                                              </div>
-                                            ) : (
-                                              <span className="inline-block px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800 whitespace-nowrap">
-                                                {formatProporcaoResumo(item)}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </>
-                                      )}
+                                        {item.fatorProporcional === 1
+                                          ? '100% do Modelo (ANO)'
+                                          : formatProporcaoResumo(item)}
+                                      </span>
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top text-right w-[120px]">
+                                    <td className="px-3 py-2.5 align-top text-right w-[125px]">
                                       <CusteioCurrencyInput
                                         value={item.valorUnitario}
                                         onChange={val =>
@@ -2245,49 +2544,25 @@ export default function PlanoCusteioWorkspace({
                                         }
                                         className="w-[112px] px-2 py-1 text-right text-xs border border-slate-300 rounded-lg font-semibold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-blue-500"
                                       />
-                                      <div className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">
-                                        {isPontual ? 'por kit / unid.' : 'ref. anual (ANO)'}
+                                    </td>
+
+                                    <td className="px-3 py-2.5 align-top text-right w-[120px]">
+                                      <div className="font-semibold text-slate-800 whitespace-nowrap py-0.5">
+                                        {BRL(item.valorAnualizado)}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 whitespace-nowrap">
+                                        {BRL0(item.valorAnualizado / 12)}/mês
                                       </div>
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top text-center w-[132px]">
-                                      <input
-                                        type="month"
-                                        value={item.dataInicio}
-                                        onChange={e =>
-                                          mutatePlano(prev => ({
-                                            ...prev,
-                                            aquisicoes: prev.aquisicoes.map(a =>
-                                              a.id === item.id
-                                                ? {
-                                                    ...a,
-                                                    dataInicio: e.target.value,
-                                                    dataFim:
-                                                      a.tipoAquisicao === 'pontual_implantacao'
-                                                        ? e.target.value
-                                                        : a.dataFim,
-                                                    origemCalculo:
-                                                      a.origemCalculo === 'incluido_manualmente'
-                                                        ? 'incluido_manualmente'
-                                                        : 'ajustado_manualmente',
-                                                  }
-                                                : a
-                                            ),
-                                          }))
-                                        }
-                                        className="w-[122px] px-2 py-1 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
-                                      />
-                                      <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">
-                                        {isPontual
-                                          ? `${item.ocorrenciasNoPeriodo}× despesa única`
-                                          : `${item.ocorrenciasNoPeriodo}m (${BRL0(
-                                              item.valorAnualizado
-                                            )}/ano)`}
-                                      </div>
+                                    <td className="px-2.5 py-2.5 align-top text-center w-[90px]">
+                                      <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px] whitespace-nowrap mt-0.5">
+                                        {item.ocorrenciasNoPeriodo} meses
+                                      </span>
                                     </td>
 
-                                    <td className="px-3 py-2.5 align-top text-right font-bold text-slate-900 whitespace-nowrap w-[114px]">
-                                      <div className="py-1">{BRL(item.valorTotalProjetado)}</div>
+                                    <td className="px-3 py-2.5 align-top text-right font-bold text-blue-700 whitespace-nowrap w-[120px]">
+                                      <div className="py-0.5">{BRL(item.valorTotalProjetado)}</div>
                                     </td>
 
                                     <td className="px-2 py-2.5 align-top text-center w-[34px]">
@@ -2319,31 +2594,23 @@ export default function PlanoCusteioWorkspace({
                 )}
 
                 {/* Card Totalizador Consolidado de Aquisições */}
-                <div className="bg-white border-2 border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-amber-800">
-                      Consolidação da Categoria B — Aquisições
+                      Consolidação da Categoria B — Aquisições de Funcionamento
                     </div>
                     <div className="text-sm text-slate-600 mt-0.5">
-                      Total de <strong>{aquisicoesFiltradas.length} itens</strong> em{' '}
+                      Total de <strong>{aquisicoesFiltradas.length} itens de consumo anual</strong> em{' '}
                       <strong>{gruposAquisicoes.length} unidade(s)</strong> exibida(s)
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-6">
                     <div className="text-right">
-                      <div className="text-[11px] font-bold uppercase text-amber-700">
-                        Pontuais (Despesa Única)
-                      </div>
-                      <div className="text-base font-extrabold text-amber-800 whitespace-nowrap">
-                        {BRL(totalPontualAqFiltradas)}
-                      </div>
-                    </div>
-                    <div className="text-right">
                       <div className="text-[11px] font-bold uppercase text-emerald-700">
-                        Recorrentes (No Período)
+                        Custo Anual (Regime)
                       </div>
-                      <div className="text-base font-extrabold text-emerald-800 whitespace-nowrap">
-                        {BRL(totalRecorrenteAqFiltradas)}
+                      <div className="text-lg font-extrabold text-emerald-700 whitespace-nowrap">
+                        {BRL(aquisicoesFiltradas.reduce((s, a) => s + a.valorAnualizado, 0))}/ano
                       </div>
                     </div>
                     <div className="text-right">
@@ -2360,349 +2627,357 @@ export default function PlanoCusteioWorkspace({
             )}
 
             {/* ═══════════════════════════════════════════════════════════════════
-                ABA 4 — CATEGORIA C: PESSOAL E FOLHA DE PAGAMENTO
+                ABA 5 — SEÇÃO 4: PESSOAL E FOLHA DE PAGAMENTO (AGRUPADO POR UNIDADE)
                ═══════════════════════════════════════════════════════════════════ */}
             {activeTab === 'pessoal' && (
-              <div className="space-y-5">
-                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 flex items-start gap-3">
-                  <Info className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-purple-900 leading-relaxed">
-                    <strong>Dimensionamento de Pessoal em Paridade com os Modelos:</strong> Novas creches carregam exatamente o quadro de servidores do Modelo FNDE associado. Ampliações incrementais adicionam Professores e Monitores das novas turmas, mantendo Direção e Coordenação como <em>Compartilhadas (Qtd 0)</em> salvo necessidade específica ajustada abaixo. O custo anual aplica <strong>13,33 salários/ano</strong> (12 meses + 13º + 1/3 de férias).
+              <div className="space-y-4">
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <Info className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-purple-900 leading-relaxed">
+                      <strong>Quadro de Pessoal por Unidade Escolar (Conforme Modelo da Creche + Período do Custeio):</strong> Novas creches carregam exatamente o quadro de servidores configurado no <strong>Modelo de Creche</strong> associado. Ampliações incrementais adicionam Professores e Monitores das novas turmas. O custo anual aplica <strong>13,33 salários/ano</strong> (12 meses + 13º + 1/3 de férias) e o <strong>Total no Período</strong> multiplica <code>Anual ÷ 12</code> pelos meses ativos no Plano de Custeio.
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAddPessoalManual('pedagogico')}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shrink-0 shadow-2xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Incluir Cargo
+                  </button>
                 </div>
 
-                {(['pedagogico', 'administrativo', 'apoio'] as const).map(catCargo => {
-                  const lista = pessoalFiltrado.filter(p => p.categoriaCargo === catCargo);
-                  const titulo =
-                    catCargo === 'pedagogico'
-                      ? 'Quadro Pedagógico (Professores, Monitores e Coordenação)'
-                      : catCargo === 'administrativo'
-                      ? 'Quadro Administrativo e Gestão Escolar'
-                      : 'Quadro de Apoio Operacional (Nutrição e Limpeza)';
+                {gruposPessoal.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
+                    Nenhum cargo encontrado para o filtro selecionado.
+                  </div>
+                ) : (
+                  gruposPessoal.map(grupo => {
+                    const iv = grupo.intervencao;
+                    const resumoIv = iv
+                      ? resumoPorIntervencao.find(r => r.intervencaoId === iv.id)
+                      : undefined;
+                    const qtdProfUnidade = grupo.itens.reduce(
+                      (acc, p) => acc + p.quantidade,
+                      0
+                    );
+                    const subtotalAnualGrupo = grupo.itens.reduce(
+                      (acc, p) => acc + p.valorAnualizado,
+                      0
+                    );
+                    const subtotalPeriodoGrupo = grupo.itens.reduce(
+                      (acc, p) => acc + p.valorTotalProjetado,
+                      0
+                    );
 
-                  const qtdProfGrupo = lista.reduce((acc, p) => {
-                    const iv = mapInterv.get(p.intervencaoCusteioId);
-                    return iv && !iv.ativoNoCusteio ? acc : acc + p.quantidade;
-                  }, 0);
-                  const anualGrupo = lista.reduce((acc, p) => {
-                    const iv = mapInterv.get(p.intervencaoCusteioId);
-                    return iv && !iv.ativoNoCusteio ? acc : acc + p.valorAnualizado;
-                  }, 0);
-                  const totalPeriodoGrupo = lista.reduce(
-                    (acc, p) => acc + p.valorTotalProjetado,
-                    0
-                  );
+                    return (
+                      <div
+                        key={grupo.id}
+                        className={`bg-white border border-slate-200 rounded-xl overflow-hidden ${
+                          iv && !iv.ativoNoCusteio ? 'opacity-60' : ''
+                        }`}
+                      >
+                        {/* Cabeçalho da Unidade Escolar / Intervenção */}
+                        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <Building2 className="w-4 h-4 text-purple-600 shrink-0" />
+                            <h3 className="font-bold text-slate-800 text-sm">
+                              {iv?.nomeUnidadeOuObra || 'Quadro Global'}
+                            </h3>
+                            {iv && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-50 text-purple-900 border border-purple-200 whitespace-nowrap">
+                                {iv.modeloCrecheNome}
+                              </span>
+                            )}
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white text-slate-600 border border-slate-200 whitespace-nowrap">
+                              {qtdProfUnidade} prof. · {iv?.turmasPrevistas || 0} turmas ·{' '}
+                              {resumoIv?.mesesOperacaoNoPeriodo ?? 0}m ativos no período
+                            </span>
+                          </div>
 
-                  return (
-                    <div
-                      key={catCargo}
-                      className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm"
-                    >
-                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
-                        <h3 className="font-bold text-slate-800 text-sm">{titulo}</h3>
-                        <button
-                          type="button"
-                          onClick={() => handleAddPessoalManual(catCargo)}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-2xs shrink-0"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Adicionar Cargo
-                        </button>
-                      </div>
+                          <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+                            <div className="text-right text-[11px] text-slate-500">
+                              <span>Folha Anual: </span>
+                              <strong className="text-emerald-700">{BRL(subtotalAnualGrupo)}</strong>
+                              <span className="mx-1.5 text-slate-300">|</span>
+                              <span>No Período: </span>
+                              <strong className="text-purple-800">{BRL(subtotalPeriodoGrupo)}</strong>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAddPessoalManual(
+                                  'pedagogico',
+                                  grupo.id !== 'global' ? grupo.id : undefined
+                                )
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-bold transition-colors whitespace-nowrap"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Cargo
+                            </button>
+                          </div>
+                        </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[750px] text-xs">
-                          <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
-                            <tr>
-                              <th className="text-left px-3 py-2.5 font-bold min-w-[215px]">
-                                Cargo / Função & Unidade Escolar
-                              </th>
-                              <th className="text-center px-2 py-2.5 font-bold w-[62px]">
-                                <span className="inline-flex items-center gap-1">
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[780px] text-xs">
+                            <thead className="bg-slate-100/80 text-slate-700 border-b border-slate-200">
+                              <tr>
+                                <th className="text-left px-3 py-2.5 font-bold min-w-[205px]">
+                                  Cargo / Função (Modelo)
+                                </th>
+                                <th className="text-center px-2 py-2.5 font-bold w-[60px]">
                                   Qtd
-                                  <FieldTooltip text="Número de profissionais deste cargo na intervenção. Alterar este número também atualiza automaticamente o cálculo de Uniformes/EPIs na aba Aquisições." />
-                                </span>
-                              </th>
-                              <th className="text-right px-2 py-2.5 font-bold w-[102px]">
-                                <span className="inline-flex items-center gap-1 justify-end">
+                                </th>
+                                <th className="text-right px-2 py-2.5 font-bold w-[98px]">
                                   Rem. Base
-                                  <FieldTooltip text="Vencimento mensal base do servidor conforme tabela salarial de referência." />
-                                </span>
-                              </th>
-                              <th className="text-right px-2 py-2.5 font-bold w-[90px]">
-                                <span className="inline-flex items-center gap-1 justify-end">
+                                </th>
+                                <th className="text-right px-2 py-2.5 font-bold w-[88px]">
                                   Auxílios
-                                  <FieldTooltip text="Benefícios mensais (auxílio-alimentação, transporte, etc.) por servidor." />
-                                </span>
-                              </th>
-                              <th className="text-right px-2 py-2.5 font-bold w-[94px]">
-                                <span className="inline-flex items-center gap-1 justify-end">
+                                </th>
+                                <th className="text-right px-2 py-2.5 font-bold w-[90px]">
                                   Encargos
-                                  <FieldTooltip text="Encargos previdenciários e patronais mensais incidentes sobre o cargo." />
-                                </span>
-                              </th>
-                              <th className="text-right px-2.5 py-2.5 font-bold w-[112px] whitespace-nowrap">
-                                <span className="inline-flex items-center gap-1 justify-end">
-                                  Anual (×13,33)
-                                  <FieldTooltip
-                                    title="Folha Anualizada da Linha"
-                                    text="Considera os 12 meses salariais + 13º salário integral + 1/3 constitucional de férias (fator 13,33), multiplicados pela Qtd de profissionais."
-                                    formula="(Base + Auxílios + Encargos) × 13,33 × Qtd"
-                                  />
-                                </span>
-                              </th>
-                              <th className="text-right px-3 py-2.5 font-bold w-[116px] whitespace-nowrap">
-                                Total no Período
-                              </th>
-                              <th className="text-center px-2 py-2.5 w-[32px]"></th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {lista.map(item => {
-                              const iv = mapInterv.get(item.intervencaoCusteioId);
-                              const isManual = item.origemCalculo !== 'automatico';
-                              return (
-                                <tr
-                                  key={item.id}
-                                  className={`hover:bg-slate-50 ${
-                                    isManual
-                                      ? 'bg-amber-50/30'
-                                      : item.quantidade === 0
-                                      ? 'bg-slate-50/70 text-slate-400'
-                                      : ''
-                                  }`}
-                                >
-                                  <td className="px-3 py-2.5 align-top min-w-[215px]">
-                                    <select
-                                      value={item.funcao}
-                                      onChange={e => {
-                                        const cg = catalogos.cargosRef.find(
-                                          c => c.descricao === e.target.value
-                                        );
-                                        mutatePlano(prev => ({
-                                          ...prev,
-                                          pessoal: prev.pessoal.map(p =>
-                                            p.id === item.id
-                                              ? {
-                                                  ...p,
-                                                  funcao: e.target.value,
-                                                  descricao: e.target.value,
-                                                  remuneracaoBase: cg
-                                                    ? cg.remuneracaoBase
-                                                    : p.remuneracaoBase,
-                                                  auxilios: cg ? cg.auxilios : p.auxilios,
-                                                  patronalUnitario: cg
-                                                    ? cg.patronal
-                                                    : p.patronalUnitario,
-                                                  origemCalculo:
-                                                    p.origemCalculo === 'incluido_manualmente'
-                                                      ? 'incluido_manualmente'
-                                                      : 'ajustado_manualmente',
-                                                }
-                                              : p
-                                          ),
-                                        }));
-                                      }}
-                                      className="px-2 py-1 border border-slate-200 rounded-lg bg-white text-xs font-bold text-slate-800 w-full min-w-[185px] outline-none focus:ring-2 focus:ring-purple-500"
-                                    >
-                                      {!catalogos.cargosRef.some(
-                                        c => c.descricao === item.funcao
-                                      ) && <option value={item.funcao}>{item.funcao}</option>}
-                                      {catalogos.cargosRef.map(cg => (
-                                        <option key={cg.id} value={cg.descricao}>
-                                          {cg.descricao}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                      <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-100 text-[10px] font-semibold">
-                                        {iv?.nomeUnidadeOuObra || 'Global'}
-                                      </span>
-                                      {isManual && (
-                                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold">
-                                          {item.origemCalculo === 'incluido_manualmente'
-                                            ? 'Incluído Manual'
-                                            : 'Ajuste Manual'}
+                                </th>
+                                <th className="text-right px-2.5 py-2.5 font-bold w-[112px] whitespace-nowrap">
+                                  Folha Anual (×13,33)
+                                </th>
+                                <th className="text-center px-2 py-2.5 font-bold w-[82px]">
+                                  Meses
+                                </th>
+                                <th className="text-right px-3 py-2.5 font-bold w-[116px] whitespace-nowrap">
+                                  Total no Período
+                                </th>
+                                <th className="text-center px-2 py-2.5 w-[32px]"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {grupo.itens.map(item => {
+                                const isManual = item.origemCalculo !== 'automatico';
+                                return (
+                                  <tr
+                                    key={item.id}
+                                    className={`hover:bg-slate-50 ${
+                                      isManual
+                                        ? 'bg-amber-50/30'
+                                        : item.quantidade === 0
+                                        ? 'bg-slate-50/70 text-slate-400'
+                                        : ''
+                                    }`}
+                                  >
+                                    <td className="px-3 py-2.5 align-top min-w-[205px]">
+                                      <select
+                                        value={item.funcao}
+                                        onChange={e => {
+                                          const cg = catalogos.cargosRef.find(
+                                            c => c.descricao === e.target.value
+                                          );
+                                          mutatePlano(prev => ({
+                                            ...prev,
+                                            pessoal: prev.pessoal.map(p =>
+                                              p.id === item.id
+                                                ? {
+                                                    ...p,
+                                                    funcao: e.target.value,
+                                                    descricao: e.target.value,
+                                                    remuneracaoBase: cg
+                                                      ? cg.remuneracaoBase
+                                                      : p.remuneracaoBase,
+                                                    auxilios: cg ? cg.auxilios : p.auxilios,
+                                                    patronalUnitario: cg
+                                                      ? cg.patronal
+                                                      : p.patronalUnitario,
+                                                    origemCalculo:
+                                                      p.origemCalculo === 'incluido_manualmente'
+                                                        ? 'incluido_manualmente'
+                                                        : 'ajustado_manualmente',
+                                                  }
+                                                : p
+                                            ),
+                                          }));
+                                        }}
+                                        className="px-2 py-1 border border-slate-200 rounded-lg bg-white text-xs font-bold text-slate-800 w-full min-w-[180px] outline-none focus:ring-2 focus:ring-purple-500"
+                                      >
+                                        {!catalogos.cargosRef.some(
+                                          c => c.descricao === item.funcao
+                                        ) && <option value={item.funcao}>{item.funcao}</option>}
+                                        {catalogos.cargosRef.map(cg => (
+                                          <option key={cg.id} value={cg.descricao}>
+                                            {cg.descricao}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                        {isManual && (
+                                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold">
+                                            {item.origemCalculo === 'incluido_manualmente'
+                                              ? 'Incluído Manual'
+                                              : 'Ajustado'}
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] text-slate-500">
+                                          {item.memoriaCalculo}
                                         </span>
-                                      )}
-                                      <span className="text-[10px] text-slate-500">
-                                        {item.cargaHoraria} · {item.memoriaCalculo}
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-2.5 align-top text-center w-[60px]">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={item.quantidade}
+                                        onChange={e =>
+                                          mutatePlano(prev => ({
+                                            ...prev,
+                                            pessoal: prev.pessoal.map(p =>
+                                              p.id === item.id
+                                                ? {
+                                                    ...p,
+                                                    quantidade: Math.max(0, Number(e.target.value)),
+                                                    numeradorProporcao: Math.max(
+                                                      0,
+                                                      Number(e.target.value)
+                                                    ),
+                                                    naturezaCusto:
+                                                      Number(e.target.value) > 0
+                                                        ? 'exclusivo_intervencao'
+                                                        : 'compartilhado_rede',
+                                                    origemCalculo:
+                                                      p.origemCalculo === 'incluido_manualmente'
+                                                        ? 'incluido_manualmente'
+                                                        : 'ajustado_manualmente',
+                                                  }
+                                                : p
+                                            ),
+                                          }))
+                                        }
+                                        className="w-14 px-1.5 py-1 text-center font-black border border-slate-300 rounded-lg text-slate-800 bg-white outline-none focus:ring-2 focus:ring-purple-500"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2.5 align-top text-right w-[98px]">
+                                      <CusteioCurrencyInput
+                                        value={item.remuneracaoBase}
+                                        onChange={val =>
+                                          mutatePlano(prev => ({
+                                            ...prev,
+                                            pessoal: prev.pessoal.map(p =>
+                                              p.id === item.id
+                                                ? {
+                                                    ...p,
+                                                    remuneracaoBase: Math.max(0, val),
+                                                    origemCalculo:
+                                                      p.origemCalculo === 'incluido_manualmente'
+                                                        ? 'incluido_manualmente'
+                                                        : 'ajustado_manualmente',
+                                                  }
+                                                : p
+                                            ),
+                                          }))
+                                        }
+                                        className="w-[90px] px-2 py-1 text-right text-xs border border-slate-200 rounded-lg bg-white text-slate-700 font-medium outline-none focus:ring-2 focus:ring-purple-500"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2.5 align-top text-right w-[88px]">
+                                      <CusteioCurrencyInput
+                                        value={item.auxilios}
+                                        onChange={val =>
+                                          mutatePlano(prev => ({
+                                            ...prev,
+                                            pessoal: prev.pessoal.map(p =>
+                                              p.id === item.id
+                                                ? {
+                                                    ...p,
+                                                    auxilios: Math.max(0, val),
+                                                    origemCalculo:
+                                                      p.origemCalculo === 'incluido_manualmente'
+                                                        ? 'incluido_manualmente'
+                                                        : 'ajustado_manualmente',
+                                                  }
+                                                : p
+                                            ),
+                                          }))
+                                        }
+                                        className="w-[80px] px-2 py-1 text-right text-xs border border-slate-200 rounded-lg bg-white text-slate-700 outline-none focus:ring-2 focus:ring-purple-500"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-2.5 align-top text-right w-[90px]">
+                                      <CusteioCurrencyInput
+                                        value={item.patronalUnitario}
+                                        onChange={val =>
+                                          mutatePlano(prev => ({
+                                            ...prev,
+                                            pessoal: prev.pessoal.map(p =>
+                                              p.id === item.id
+                                                ? {
+                                                    ...p,
+                                                    patronalUnitario: Math.max(0, val),
+                                                    origemCalculo:
+                                                      p.origemCalculo === 'incluido_manualmente'
+                                                        ? 'incluido_manualmente'
+                                                        : 'ajustado_manualmente',
+                                                  }
+                                                : p
+                                            ),
+                                          }))
+                                        }
+                                        className="w-[82px] px-2 py-1 text-right text-xs border border-slate-200 rounded-lg bg-white text-slate-700 outline-none focus:ring-2 focus:ring-purple-500"
+                                      />
+                                    </td>
+                                    <td className="px-2.5 py-2.5 align-top text-right w-[112px]">
+                                      <div className="font-semibold text-slate-800 whitespace-nowrap py-0.5">
+                                        {BRL(item.valorAnualizado)}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 whitespace-nowrap">
+                                        {BRL0(item.valorAnualizado / 12)}/mês
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-2.5 align-top text-center w-[82px]">
+                                      <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px] whitespace-nowrap mt-0.5">
+                                        {item.ocorrenciasNoPeriodo} meses
                                       </span>
-                                    </div>
-                                  </td>
-                                  <td className="px-2 py-2.5 align-top text-center w-[62px]">
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={item.quantidade}
-                                      onChange={e =>
-                                        mutatePlano(prev => ({
-                                          ...prev,
-                                          pessoal: prev.pessoal.map(p =>
-                                            p.id === item.id
-                                              ? {
-                                                  ...p,
-                                                  quantidade: Math.max(0, Number(e.target.value)),
-                                                  numeradorProporcao: Math.max(
-                                                    0,
-                                                    Number(e.target.value)
-                                                  ),
-                                                  naturezaCusto:
-                                                    Number(e.target.value) > 0
-                                                      ? 'exclusivo_intervencao'
-                                                      : 'compartilhado_rede',
-                                                  origemCalculo:
-                                                    p.origemCalculo === 'incluido_manualmente'
-                                                      ? 'incluido_manualmente'
-                                                      : 'ajustado_manualmente',
-                                                }
-                                              : p
-                                          ),
-                                        }))
-                                      }
-                                      className="w-14 px-1.5 py-1 text-center font-black border border-slate-300 rounded-lg text-slate-800 bg-white outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </td>
-                                  <td className="px-2 py-2.5 align-top text-right w-[102px]">
-                                    <CusteioCurrencyInput
-                                      value={item.remuneracaoBase}
-                                      onChange={val =>
-                                        mutatePlano(prev => ({
-                                          ...prev,
-                                          pessoal: prev.pessoal.map(p =>
-                                            p.id === item.id
-                                              ? {
-                                                  ...p,
-                                                  remuneracaoBase: Math.max(0, val),
-                                                  origemCalculo:
-                                                    p.origemCalculo === 'incluido_manualmente'
-                                                      ? 'incluido_manualmente'
-                                                      : 'ajustado_manualmente',
-                                                }
-                                              : p
-                                          ),
-                                        }))
-                                      }
-                                      className="w-[94px] px-2 py-1 text-right text-xs border border-slate-200 rounded-lg bg-white text-slate-700 font-medium outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </td>
-                                  <td className="px-2 py-2.5 align-top text-right w-[90px]">
-                                    <CusteioCurrencyInput
-                                      value={item.auxilios}
-                                      onChange={val =>
-                                        mutatePlano(prev => ({
-                                          ...prev,
-                                          pessoal: prev.pessoal.map(p =>
-                                            p.id === item.id
-                                              ? {
-                                                  ...p,
-                                                  auxilios: Math.max(0, val),
-                                                  origemCalculo:
-                                                    p.origemCalculo === 'incluido_manualmente'
-                                                      ? 'incluido_manualmente'
-                                                      : 'ajustado_manualmente',
-                                                }
-                                              : p
-                                          ),
-                                        }))
-                                      }
-                                      className="w-[82px] px-2 py-1 text-right text-xs border border-slate-200 rounded-lg bg-white text-slate-700 outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </td>
-                                  <td className="px-2 py-2.5 align-top text-right w-[94px]">
-                                    <CusteioCurrencyInput
-                                      value={item.patronalUnitario}
-                                      onChange={val =>
-                                        mutatePlano(prev => ({
-                                          ...prev,
-                                          pessoal: prev.pessoal.map(p =>
-                                            p.id === item.id
-                                              ? {
-                                                  ...p,
-                                                  patronalUnitario: Math.max(0, val),
-                                                  origemCalculo:
-                                                    p.origemCalculo === 'incluido_manualmente'
-                                                      ? 'incluido_manualmente'
-                                                      : 'ajustado_manualmente',
-                                                }
-                                              : p
-                                          ),
-                                        }))
-                                      }
-                                      className="w-[86px] px-2 py-1 text-right text-xs border border-slate-200 rounded-lg bg-white text-slate-700 outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </td>
-                                  <td className="px-2.5 py-2.5 align-top text-right w-[112px]">
-                                    <div className="font-semibold text-slate-800 whitespace-nowrap py-1">
-                                      {BRL(item.valorAnualizado)}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400 whitespace-nowrap">
-                                      Unit.: {BRL(item.custoMensalUnitario)}/m
-                                    </div>
-                                  </td>
-                                  <td className="px-3 py-2.5 align-top text-right w-[116px]">
-                                    <div className="font-bold text-purple-700 whitespace-nowrap py-1">
-                                      {BRL(item.valorTotalProjetado)}
-                                    </div>
-                                    <div className="text-[10px] text-slate-500 whitespace-nowrap">
-                                      {item.ocorrenciasNoPeriodo}m ativos
-                                    </div>
-                                  </td>
-                                  <td className="px-2 py-2.5 align-top text-center w-[32px]">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        mutatePlano(prev => ({
-                                          ...prev,
-                                          pessoal: prev.pessoal.filter(p => p.id !== item.id),
-                                        }))
-                                      }
-                                      className="p-1 mt-0.5 text-slate-400 hover:text-red-600 rounded transition-colors"
-                                      title="Remover cargo"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot className="bg-slate-100 border-t-2 border-slate-300 text-slate-800 font-bold">
-                            <tr>
-                              <td className="px-3 py-2.5">
-                                Subtotal — {titulo.split(' (')[0]}
-                              </td>
-                              <td className="px-2 py-2.5 text-center whitespace-nowrap">
-                                {qtdProfGrupo} prof.
-                              </td>
-                              <td colSpan={3}></td>
-                              <td className="px-2.5 py-2.5 text-right text-emerald-800 whitespace-nowrap">
-                                {BRL(anualGrupo)}/ano
-                              </td>
-                              <td className="px-3 py-2.5 text-right text-purple-800 font-black whitespace-nowrap">
-                                {BRL(totalPeriodoGrupo)}
-                              </td>
-                              <td></td>
-                            </tr>
-                          </tfoot>
-                        </table>
+                                    </td>
+                                    <td className="px-3 py-2.5 align-top text-right w-[116px]">
+                                      <div className="font-bold text-purple-700 whitespace-nowrap py-0.5">
+                                        {BRL(item.valorTotalProjetado)}
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-2.5 align-top text-center w-[32px]">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          mutatePlano(prev => ({
+                                            ...prev,
+                                            pessoal: prev.pessoal.filter(p => p.id !== item.id),
+                                          }))
+                                        }
+                                        className="p-1 mt-0.5 text-slate-400 hover:text-red-600 rounded transition-colors"
+                                        title="Remover cargo"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
 
                 {/* Card Totalizador Consolidado de Pessoal */}
-                <div className="bg-white border-2 border-purple-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-purple-700">
-                      Consolidação da Categoria C — Pessoal e Folha de Pagamento
+                      Consolidação da Seção 4 — Pessoal e Folha de Pagamento
                     </div>
                     <div className="text-sm text-slate-600 mt-0.5">
                       Total de{' '}
                       <strong>
                         {pessoalFiltrado.reduce((s, p) => s + p.quantidade, 0)} profissionais
                       </strong>{' '}
-                      nas unidades exibidas
+                      em <strong>{gruposPessoal.length} unidade(s)</strong> exibida(s)
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
@@ -2717,6 +2992,7 @@ export default function PlanoCusteioWorkspace({
                             return iv && !iv.ativoNoCusteio ? acc : acc + p.valorAnualizado;
                           }, 0)
                         )}
+                        /ano
                       </div>
                     </div>
                     <div className="text-right">
@@ -2738,7 +3014,7 @@ export default function PlanoCusteioWorkspace({
             {activeTab === 'cronograma' && (
               <div className="space-y-6">
                 {/* Painel de Simulação Integrada */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-2">
                       <Sliders className="w-5 h-5 text-blue-600" />
@@ -2871,7 +3147,7 @@ export default function PlanoCusteioWorkspace({
                 </div>
 
                 {/* Gráfico de Evolução Anual por Categoria */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
                   <h3 className="font-bold text-slate-800 text-base mb-4">
                     Projeção Anual de Desembolso por Categoria
                   </h3>
@@ -2886,32 +3162,32 @@ export default function PlanoCusteioWorkspace({
                       />
                       <RechartsTooltip formatter={(val: number) => BRL(val)} />
                       <Legend />
-                      <Bar dataKey="pessoal" name="Pessoal e Folha" stackId="a" fill="#7c3aed" />
+                      <Bar dataKey="pessoal" name="4. Pessoal e Folha" stackId="a" fill="#7c3aed" />
                       <Bar
                         dataKey="aquisicoesRecorrentes"
-                        name="Aquisições Recorrentes"
+                        name="3. Aquisições (Consumo)"
                         stackId="a"
                         fill="#10b981"
                       />
-                      <Bar dataKey="servicos" name="Serviços" stackId="a" fill="#2563eb" />
+                      <Bar dataKey="servicos" name="2. Serviços" stackId="a" fill="#2563eb" />
                       <Bar
                         dataKey="aquisicoesPontuais"
-                        name="Aquisições Pontuais (Implantação)"
+                        name="1. Mobiliário (Ambientes)"
                         stackId="a"
-                        fill="#f59e0b"
+                        fill="#d97706"
                       />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
 
                 {/* Tabela Cronograma Anual ou Mensal */}
-                <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                   <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                     <h3 className="font-bold text-slate-800 text-sm">
                       Matriz de Desembolso Operacional (
                       {visaoCronograma === 'anual' ? 'Visão Anual por Exercício' : 'Visão Mensal Mês a Mês'})
                     </h3>
-                    <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl">
+                    <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-lg">
                       <button
                         type="button"
                         onClick={() => setVisaoCronograma('anual')}
@@ -2938,18 +3214,26 @@ export default function PlanoCusteioWorkspace({
                   </div>
 
                   <div className="overflow-x-auto max-h-[520px]">
-                    <table className="w-full min-w-[660px] text-xs">
+                    <table className="w-full min-w-[680px] text-xs">
                       <thead className="bg-slate-100 text-slate-700 sticky top-0 z-10 border-b border-slate-200">
                         <tr>
                           <th className="text-left px-4 py-3 font-bold whitespace-nowrap">
                             {visaoCronograma === 'anual' ? 'Exercício' : 'Competência'}
                           </th>
-                          <th className="text-right px-4 py-3 font-bold whitespace-nowrap">Serviços</th>
-                          <th className="text-right px-4 py-3 font-bold whitespace-nowrap">Aq. Pontuais (Única)</th>
-                          <th className="text-right px-4 py-3 font-bold whitespace-nowrap">Aq. Recorrentes</th>
-                          <th className="text-right px-4 py-3 font-bold whitespace-nowrap">Pessoal e Folha</th>
+                          <th className="text-right px-4 py-3 font-bold text-amber-800 whitespace-nowrap">
+                            1. Mobiliário
+                          </th>
+                          <th className="text-right px-4 py-3 font-bold whitespace-nowrap">
+                            2. Serviços
+                          </th>
+                          <th className="text-right px-4 py-3 font-bold text-emerald-800 whitespace-nowrap">
+                            3. Aquisições
+                          </th>
+                          <th className="text-right px-4 py-3 font-bold text-purple-800 whitespace-nowrap">
+                            4. Pessoal e Folha
+                          </th>
                           <th className="text-right px-4 py-3 font-bold bg-blue-50 text-blue-900 whitespace-nowrap">
-                            Total do Período
+                            Total no Período
                           </th>
                         </tr>
                       </thead>
@@ -2963,14 +3247,16 @@ export default function PlanoCusteioWorkspace({
                                     ({row.mesesNoPlano} meses)
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 text-right">{BRL(row.servicos)}</td>
-                                <td className="px-4 py-3 text-right text-amber-700 font-semibold">
+                                <td className="px-4 py-3 text-right text-amber-800 font-semibold">
                                   {BRL(row.aquisicoesPontuais)}
                                 </td>
-                                <td className="px-4 py-3 text-right">
+                                <td className="px-4 py-3 text-right">{BRL(row.servicos)}</td>
+                                <td className="px-4 py-3 text-right text-emerald-700 font-semibold">
                                   {BRL(row.aquisicoesRecorrentes)}
                                 </td>
-                                <td className="px-4 py-3 text-right">{BRL(row.pessoal)}</td>
+                                <td className="px-4 py-3 text-right text-purple-800 font-semibold">
+                                  {BRL(row.pessoal)}
+                                </td>
                                 <td className="px-4 py-3 text-right font-extrabold bg-blue-50/40 text-blue-900">
                                   {BRL(row.total)}
                                 </td>
@@ -2981,14 +3267,16 @@ export default function PlanoCusteioWorkspace({
                                 <td className="px-4 py-2.5 font-bold text-slate-800">
                                   {formatYMDisplay(row.competencia)}
                                 </td>
-                                <td className="px-4 py-2.5 text-right">{BRL(row.servicos)}</td>
-                                <td className="px-4 py-2.5 text-right text-amber-700 font-semibold">
-                                  {row.aquisicoesPontuais > 0 ? BRL(row.aquisicoesPontuais) : '—'}
+                                <td className="px-4 py-2.5 text-right text-amber-800 font-semibold">
+                                  {BRL(row.aquisicoesPontuais)}
                                 </td>
-                                <td className="px-4 py-2.5 text-right">
+                                <td className="px-4 py-2.5 text-right">{BRL(row.servicos)}</td>
+                                <td className="px-4 py-2.5 text-right text-emerald-700 font-semibold">
                                   {BRL(row.aquisicoesRecorrentes)}
                                 </td>
-                                <td className="px-4 py-2.5 text-right">{BRL(row.pessoal)}</td>
+                                <td className="px-4 py-2.5 text-right text-purple-800 font-semibold">
+                                  {BRL(row.pessoal)}
+                                </td>
                                 <td className="px-4 py-2.5 text-right font-bold bg-blue-50/40 text-blue-900">
                                   {BRL(row.total)}
                                 </td>
@@ -3000,11 +3288,11 @@ export default function PlanoCusteioWorkspace({
                           <td className="px-4 py-3 font-black">
                             TOTAL ACUMULADO ({cronogramaMensal.length} meses)
                           </td>
+                          <td className="px-4 py-3 text-right text-amber-800">
+                            {BRL(resumoFinanceiro.totalMobiliarioPeriodo)}
+                          </td>
                           <td className="px-4 py-3 text-right">
                             {BRL(resumoFinanceiro.totalServicosPeriodo)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-amber-800">
-                            {BRL(resumoFinanceiro.totalAquisicoesPontuaisPeriodo)}
                           </td>
                           <td className="px-4 py-3 text-right text-emerald-800">
                             {BRL(resumoFinanceiro.totalAquisicoesRecorrentesPeriodo)}
@@ -3020,6 +3308,231 @@ export default function PlanoCusteioWorkspace({
                     </table>
                   </div>
                 </div>
+
+                {/* Painel de Sustentabilidade Fiscal (FUNDEB / PNAE / MDE) e Visão Consolidada TCO (CAPEX + OPEX) */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-base flex items-center gap-1.5">
+                          Sustentabilidade Fiscal (FUNDEB / PNAE) & Orçamento Global TCO (CAPEX + OPEX)
+                          <FieldTooltip
+                            title="Integração Orçamentária Expansão + Custeio"
+                            text="Compara o desembolso de obras (CAPEX do Plano de Expansão) e a operação das novas vagas (OPEX do Plano de Custeio) com a receita vinculada incremental gerada pelas novas matrículas no FUNDEB e PNAE."
+                          />
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Simule o cofinanciamento das novas matrículas pelo FUNDEB/PNAE e o esforço líquido do Tesouro Municipal (MDE).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Parâmetros de Receita Vinculada por Aluno/Ano */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                    <div>
+                      <label className="flex items-center gap-1 text-[11px] font-bold text-slate-600 mb-1">
+                        FUNDEB Creche Integral (Aluno/Ano)
+                        <FieldTooltip text="Valor Aluno-Ano (VAAF/VAAT) estimado para matrícula em Creche Tempo Integral (fator de ponderação 1,30)." />
+                      </label>
+                      <CusteioCurrencyInput
+                        value={sustentabilidadeFiscal.valorAlunoAnoFundebIntegral}
+                        onChange={val =>
+                          mutatePlano(prev => ({
+                            ...prev,
+                            parametrosSimulacao: {
+                              ...prev.parametrosSimulacao,
+                              valorAlunoAnoFundebIntegral: Math.max(0, val),
+                            },
+                          }))
+                        }
+                        className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="flex items-center gap-1 text-[11px] font-bold text-slate-600 mb-1">
+                        FUNDEB Creche Parcial (Aluno/Ano)
+                        <FieldTooltip text="Valor Aluno-Ano (VAAF/VAAT) estimado para matrícula em Creche Tempo Parcial." />
+                      </label>
+                      <CusteioCurrencyInput
+                        value={sustentabilidadeFiscal.valorAlunoAnoFundebParcial}
+                        onChange={val =>
+                          mutatePlano(prev => ({
+                            ...prev,
+                            parametrosSimulacao: {
+                              ...prev.parametrosSimulacao,
+                              valorAlunoAnoFundebParcial: Math.max(0, val),
+                            },
+                          }))
+                        }
+                        className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
+                        <span>% Vagas em Tempo Integral</span>
+                        <span className="text-emerald-700">
+                          {sustentabilidadeFiscal.percentualMatriculasTempoIntegral}%
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={sustentabilidadeFiscal.percentualMatriculasTempoIntegral}
+                        onChange={e =>
+                          mutatePlano(prev => ({
+                            ...prev,
+                            parametrosSimulacao: {
+                              ...prev.parametrosSimulacao,
+                              percentualMatriculasTempoIntegral: Number(e.target.value),
+                            },
+                          }))
+                        }
+                        className="w-full accent-emerald-600 cursor-pointer mt-1.5"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="flex items-center gap-1 text-[11px] font-bold text-slate-600 mb-1">
+                        Repasse PNAE Creche (Aluno/Ano)
+                        <FieldTooltip text="Repasse federal per capita anual do PNAE para alimentação escolar em creches (200 dias letivos)." />
+                      </label>
+                      <CusteioCurrencyInput
+                        value={sustentabilidadeFiscal.repassePerCapitaPnaeAno}
+                        onChange={val =>
+                          mutatePlano(prev => ({
+                            ...prev,
+                            parametrosSimulacao: {
+                              ...prev.parametrosSimulacao,
+                              repassePerCapitaPnaeAno: Math.max(0, val),
+                            },
+                          }))
+                        }
+                        className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cards de Indicadores Fiscais */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                      <div className="text-[11px] font-bold uppercase text-emerald-800">
+                        Receita Incremental FUNDEB + PNAE (Regime)
+                      </div>
+                      <div className="text-lg font-black text-emerald-900 mt-1">
+                        {BRL(sustentabilidadeFiscal.receitaVinculadaAnualRegime)}/ano
+                      </div>
+                      <div className="text-[11px] text-emerald-700 mt-0.5">
+                        Cobre{' '}
+                        <strong>
+                          {sustentabilidadeFiscal.coberturaVinculadaRegimePct.toFixed(1)}%
+                        </strong>{' '}
+                        do custeio anual em regime pleno
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200">
+                      <div className="text-[11px] font-bold uppercase text-amber-800">
+                        Esforço Líquido Tesouro MDE (Regime)
+                      </div>
+                      <div className="text-lg font-black text-amber-900 mt-1">
+                        {BRL(sustentabilidadeFiscal.esforcoLiquidoTesouroMdeRegime)}/ano
+                      </div>
+                      <div className="text-[11px] text-amber-700 mt-0.5">
+                        Complementação municipal necessária além do FUNDEB/PNAE
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-purple-50/70 border border-purple-200">
+                      <div className="text-[11px] font-bold uppercase text-purple-800">
+                        Índice FUNDEB Magistério (Mín. 70%)
+                      </div>
+                      <div className="text-lg font-black text-purple-900 mt-1">
+                        {sustentabilidadeFiscal.indiceMagisterioFundebPct.toFixed(1)}%
+                      </div>
+                      <div className="text-[11px] text-purple-700 mt-0.5">
+                        Folha Pedagógica: {BRL0(sustentabilidadeFiscal.folhaMagisterioAnualRegime)}/ano
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
+                      <div className="text-[11px] font-bold uppercase text-blue-800">
+                        Custo Total de Propriedade (TCO Global)
+                      </div>
+                      <div className="text-lg font-black text-blue-900 mt-1">
+                        {BRL(sustentabilidadeFiscal.totalTcoGlobal)}
+                      </div>
+                      <div className="text-[11px] text-blue-700 mt-0.5">
+                        CAPEX Obras ({BRL0(sustentabilidadeFiscal.totalCapexPlanoExpansao)}) + OPEX (
+                        {BRL0(sustentabilidadeFiscal.totalOpexPeriodoCusteio)})
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tabela Consolidada TCO Anual (CAPEX Obras + OPEX Custeio + Receitas Vinculadas) */}
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                    <table className="w-full min-w-[700px] text-xs">
+                      <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                        <tr>
+                          <th className="text-left px-3 py-2.5 font-bold">Exercício</th>
+                          <th className="text-right px-3 py-2.5 font-bold text-slate-700">
+                            Obras e Ampliações (CAPEX)
+                          </th>
+                          <th className="text-right px-3 py-2.5 font-bold text-purple-800">
+                            Custeio Operacional (OPEX)
+                          </th>
+                          <th className="text-right px-3 py-2.5 font-bold bg-blue-50 text-blue-900">
+                            Total TCO (CAPEX + OPEX)
+                          </th>
+                          <th className="text-right px-3 py-2.5 font-bold text-emerald-800">
+                            Repasse Est. FUNDEB+PNAE
+                          </th>
+                          <th className="text-right px-3 py-2.5 font-bold bg-amber-50/70 text-amber-900">
+                            Esforço Líquido MDE (OPEX)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {sustentabilidadeFiscal.fluxoIntegradoAnual.map(row => (
+                          <tr key={row.ano} className="hover:bg-slate-50">
+                            <td className="px-3 py-2.5 font-black text-slate-800">
+                              {row.ano}{' '}
+                              <span className="text-[10px] font-normal text-slate-500">
+                                ({row.vagasEmOperacaoMediaAno} vg méd.)
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-medium text-slate-700">
+                              {row.capexObrasAcoes > 0 ? BRL(row.capexObrasAcoes) : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-purple-800 font-medium">
+                              {row.totalOpex > 0 ? BRL(row.totalOpex) : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-extrabold bg-blue-50/40 text-blue-900">
+                              {BRL(row.totalTcoMunicipal)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-emerald-700">
+                              {row.receitaVinculadaTotal > 0
+                                ? `+${BRL(row.receitaVinculadaTotal)}`
+                                : '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-bold bg-amber-50/30 text-amber-900">
+                              {row.esforcoLiquidoTesouroMde > 0
+                                ? BRL(row.esforcoLiquidoTesouroMde)
+                                : 'R$ 0,00'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -3030,6 +3543,7 @@ export default function PlanoCusteioWorkspace({
               <PlanoCusteioReportDocument
                 planoCusteio={{
                   ...plano,
+                  mobiliario: projecao.mobiliario,
                   servicos: projecao.servicos,
                   aquisicoes: projecao.aquisicoes,
                   pessoal: projecao.pessoal,
@@ -3042,43 +3556,49 @@ export default function PlanoCusteioWorkspace({
                 showToolbar={true}
               />
             )}
+            </div>
 
-            {/* Navegação Inferior entre Etapas (Padrão PlanoForm) */}
-            <div className="bg-white border border-slate-200 rounded-2xl px-5 py-3.5 flex items-center justify-between shadow-sm print:hidden">
+            {/* Footer idêntico ao PlanoForm */}
+            <div className="border-t border-slate-200 bg-slate-50 px-7 py-4 flex flex-col sm:flex-row justify-between items-center gap-3 print:hidden">
               <button
                 type="button"
-                disabled={currentTabIdx === 0}
-                onClick={() => setActiveTab(TABS[Math.max(0, currentTabIdx - 1)].id)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                onClick={handleBackClick}
+                className="flex items-center gap-2 px-5 py-2.5 text-slate-700 border border-slate-300 rounded-lg font-semibold hover:bg-slate-100 transition-colors text-sm"
               >
-                <ChevronLeft className="w-4 h-4" />
-                Etapa Anterior
+                <ChevronLeft className="w-4 h-4" /> Voltar
               </button>
 
-              <span className="text-xs text-slate-500 font-semibold">
-                Etapa {currentTabIdx + 1} de {TABS.length}:{' '}
-                <strong className="text-slate-800">{TABS[currentTabIdx]?.label}</strong>
-              </span>
-
-              {currentTabIdx < TABS.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(TABS[currentTabIdx + 1].id)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-colors"
-                >
-                  Próxima Etapa
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              ) : (
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={handleSavePlano}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-colors shadow-xs text-sm"
+                  title="Salvar progresso atual do Plano de Custeio"
                 >
                   <Save className="w-4 h-4" />
-                  Salvar Versão
+                  Salvar Plano de Custeio
                 </button>
-              )}
+
+                {currentTabIdx > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(TABS[Math.max(0, currentTabIdx - 1)].id)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-slate-700 border border-slate-300 rounded-lg font-semibold hover:bg-slate-100 transition-colors text-sm"
+                  >
+                    ← Anterior
+                  </button>
+                )}
+
+                {currentTabIdx < TABS.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(TABS[currentTabIdx + 1].id)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    Próxima →
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

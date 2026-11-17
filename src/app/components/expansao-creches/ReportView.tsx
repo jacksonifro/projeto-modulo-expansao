@@ -5,6 +5,8 @@ import { mockCargosReferencia } from './mockDataCusto';
 import { ExpansionPlan, MembroEquipe, ObraConstrucao, AcaoUnidade, CargoReferencia, PlanoCusteio } from './types';
 import { getActivities } from './Kanban';
 import { loadPlanosCusteio } from './utils/custeioMigration';
+import { calcularCustoObraTotal, calcularCustoAcaoTotal, obterQuantidadeSalasAcao } from './utils/planLogic';
+import { calcularProjecaoPlanoCusteio, calcularBaselineAutomaticoPeriodo, calcularSustentabilidadeFiscalCusteio } from './utils/custeioCalculator';
 import PlanoCusteioReportDocument from './PlanoCusteioReportDocument';
 
 interface ReportViewProps {
@@ -91,18 +93,54 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
   // Financeiro
   const sumObras = obras.reduce((sum, o) => {
     const totalDesembolso = o.desembolsoPorAno?.reduce((s, d) => s + d.valor, 0) || 0;
-    return sum + totalDesembolso;
+    return sum + (totalDesembolso > 0 ? totalDesembolso : calcularCustoObraTotal(o).total);
   }, 0);
-  const sumAcoes = acoes.reduce((sum, a) => sum + (a.custoPorSala * 1), 0);
+  const sumAcoes = acoes.reduce((sum, a) => {
+    const totalDesembolso = a.desembolsoPorAno?.reduce((s, d) => s + d.valor, 0) || 0;
+    return sum + (totalDesembolso > 0 ? totalDesembolso : calcularCustoAcaoTotal(a).total);
+  }, 0);
   const totalGeral = sumObras + sumAcoes;
 
-  // Pessoal (integrado com o novo Plano de Custeio vinculado, com fallback legado)
+  // Pessoal (integrado com o Plano de Custeio Oficial vinculado, com fallback legado)
   const planosCusteio = loadPlanosCusteio();
   const activePlanoCusteio: PlanoCusteio | undefined = filters.planoCusteioId
     ? planosCusteio.find(pc => pc.id === filters.planoCusteioId)
-    : planosCusteio.find(pc => pc.planoExpansaoId === activePlan?.id) || planosCusteio[0];
+    : (activePlan?.planoCusteioId
+        ? planosCusteio.find(pc => pc.id === activePlan.planoCusteioId)
+        : undefined) ||
+      planosCusteio.find(pc => pc.planoExpansaoId === activePlan?.id && pc.status === 'Aprovado') ||
+      planosCusteio.find(pc => pc.planoExpansaoId === activePlan?.id) ||
+      planosCusteio[0];
 
-  const novasSalasPrevistas = obras.reduce((sum, o) => sum + (o.numeroDeSalas || 0), 0) + acoes.length;
+  const projecaoCusteioAtiva = activePlanoCusteio
+    ? calcularProjecaoPlanoCusteio(
+        activePlanoCusteio.dataInicio,
+        activePlanoCusteio.dataFim,
+        activePlanoCusteio.intervencoes,
+        activePlanoCusteio.servicos,
+        activePlanoCusteio.aquisicoes,
+        activePlanoCusteio.pessoal,
+        activePlanoCusteio.parametrosSimulacao,
+        calcularBaselineAutomaticoPeriodo(
+          activePlanoCusteio.dataInicio,
+          activePlanoCusteio.dataFim,
+          activePlanoCusteio.intervencoes
+        )
+      )
+    : undefined;
+
+  const sustentabilidadeFiscalAtiva =
+    activePlanoCusteio && projecaoCusteioAtiva
+      ? calcularSustentabilidadeFiscalCusteio(
+          activePlanoCusteio,
+          projecaoCusteioAtiva,
+          activePlan
+        )
+      : undefined;
+
+  const novasSalasPrevistas =
+    obras.reduce((sum, o) => sum + (o.numeroDeSalas || 0), 0) +
+    acoes.reduce((sum, a) => sum + obterQuantidadeSalasAcao(a), 0);
   
   const pessoal = activePlanoCusteio
     ? activePlanoCusteio.pessoal
@@ -114,15 +152,21 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
           quantidade: p.quantidade,
           remuneracaoBase: p.remuneracaoBase,
           auxilios: p.auxilios,
+          patronalUnitario: p.patronalUnitario,
         }))
     : (activePlan?.pessoal || []);
   const configSalas = activePlanoCusteio?.configSalas || activePlan?.configSalas || [];
 
   const calcularCustoPessoal = (item: any) => {
     const cargoConf = cargosRef.find((c: any) => c.descricao === item.funcao);
-    const patronal = cargoConf ? cargoConf.patronal : 0;
+    const patronal =
+      typeof item.patronalUnitario === 'number'
+        ? item.patronalUnitario
+        : cargoConf
+        ? cargoConf.patronal
+        : 0;
     const custoMensal = (item.remuneracaoBase + item.auxilios + patronal) * item.quantidade;
-    const custoAnual = custoMensal * 13.3; // 13º salário + 1/3 Férias
+    const custoAnual = custoMensal * (12 + 1 + 1 / 3); // 13,33 salários/ano (12 meses + 13º + 1/3 Férias)
     return { patronal, custoMensal, custoAnual };
   };
 
@@ -327,7 +371,7 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                       <tr key={a.id}>
                         <td className="px-4 py-2">{unidade?.nome || 'Unidade'}</td>
                         <td className="px-4 py-2">{a.tipo}</td>
-                        <td className="px-4 py-2 text-center">1</td>
+                        <td className="px-4 py-2 text-center font-semibold">{obterQuantidadeSalasAcao(a)}</td>
                         <td className="px-4 py-2 text-center text-blue-600 font-bold">+{vagasAdd}</td>
                         <td className="px-4 py-2">{a.previsaoConclusao || '-'}</td>
                         <td className="px-4 py-2">
@@ -511,6 +555,40 @@ export default function ReportView({ reportType, filters, onBack }: ReportViewPr
                     })()}
                   </tbody>
                 </table>
+
+                {projecaoCusteioAtiva && sustentabilidadeFiscalAtiva && (
+                  <div className="mt-8 pt-6 border-t border-slate-200 space-y-4">
+                    <h4 className="text-lg font-bold text-slate-800">
+                      Integração Orçamentária: Plano de Custeio (OPEX) & Visão Global TCO (CAPEX + OPEX)
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <p className="text-xs text-amber-800 font-semibold mb-1">OPEX Acumulado no Período</p>
+                        <p className="text-xl font-bold text-amber-900">
+                          {BRL(projecaoCusteioAtiva.resumoFinanceiro.totalGeralPeriodo)}
+                        </p>
+                      </div>
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <p className="text-xs text-purple-800 font-semibold mb-1">OPEX Anual (Regime Pleno)</p>
+                        <p className="text-xl font-bold text-purple-900">
+                          {BRL(projecaoCusteioAtiva.resumoFinanceiro.custoAnualRegimePleno)}/ano
+                        </p>
+                      </div>
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                        <p className="text-xs text-emerald-800 font-semibold mb-1">Repasse Est. FUNDEB+PNAE (Regime)</p>
+                        <p className="text-xl font-bold text-emerald-900">
+                          {BRL(sustentabilidadeFiscalAtiva.receitaVinculadaAnualRegime)}/ano
+                        </p>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-xs text-blue-800 font-semibold mb-1">TCO Global (CAPEX + OPEX)</p>
+                        <p className="text-xl font-bold text-blue-900">
+                          {BRL(sustentabilidadeFiscalAtiva.totalTcoGlobal)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

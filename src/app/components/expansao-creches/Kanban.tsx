@@ -332,7 +332,26 @@ export default function Kanban({ schoolId, onBack }: KanbanProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStatus, setModalStatus] = useState<ActivityStatus>('A FAZER');
 
-  if (!school) return null;
+  if (!school) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-8">
+        <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-xs p-10 text-center">
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Escola não encontrada no quadro legado</h2>
+          <p className="text-sm text-slate-500 mb-6">
+            Utilize a visão de Escolas do Plano ou Execução do Plano para abrir o Quadro Kanban atualizado.
+          </p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Voltar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleMove = (activityId: string, newStatus: ActivityStatus) => {
     setAllActivities(prev => {
@@ -380,7 +399,8 @@ export default function Kanban({ schoolId, onBack }: KanbanProps) {
   const doingActivities = activities.filter(a => a.status === 'FAZENDO');
   const doneActivities = activities.filter(a => a.status === 'FEITO');
 
-  const overallProgress = Math.round((doneActivities.length / activities.length) * 100);
+  const overallProgress =
+    activities.length > 0 ? Math.round((doneActivities.length / activities.length) * 100) : 0;
 
   return (
     <DndProvider backend={HTML5Backend}>

@@ -204,6 +204,8 @@ export const mockPlans: ExpansionPlan[] = [
   {
     id: 'p1',
     nome: 'Plano de Expansão de Creches 2026–2029',
+    dataInicio: '2026-01',
+    dataFim: '2029-12',
     periodoInicio: 2026,
     periodoFim: 2029,
     status: 'Em execução',
@@ -240,6 +242,7 @@ export const mockPlans: ExpansionPlan[] = [
     acoesUnidades: [
       {
         id: 'au1', tipo: 'adaptacao', unidadeId: 'ue3', salaId: 'sl11',
+        quantidadeSalas: 1,
         descricao: 'Transformar Sala Multiuso em sala de Jardim I para criação de turma de creche',
         etapaDestino: 'Jardim I', capacidadeAnterior: 30, novaCapacidade: 16,
         fonteFinanciamento: 'Recurso Próprio', custoPorSala: 0,
@@ -248,6 +251,7 @@ export const mockPlans: ExpansionPlan[] = [
       },
       {
         id: 'au2', tipo: 'ampliacao', unidadeId: 'ue10', salaId: 'sl32',
+        modeloCrecheId: 'mc01', ambienteModeloId: 'ma01', quantidadeSalas: 2,
         descricao: 'Construção de 2 novas salas de creche anexas à unidade',
         etapaDestino: 'Jardim II', capacidadeAnterior: 0, novaCapacidade: 40,
         fonteFinanciamento: 'Emenda Parlamentar', custoPorSala: 160592,
@@ -256,11 +260,12 @@ export const mockPlans: ExpansionPlan[] = [
       },
       {
         id: 'au3', tipo: 'ampliacao', unidadeId: 'ue11', salaId: 'sl36',
+        modeloCrecheId: 'mc01', ambienteModeloId: 'ma01', quantidadeSalas: 3,
         descricao: 'Construção de 3 novas salas de creche',
         etapaDestino: 'Jardim II', capacidadeAnterior: 0, novaCapacidade: 60,
         fonteFinanciamento: 'Recurso Próprio', custoPorSala: 160592,
         previsaoConclusao: '2028-12-31',
-        desembolsoPorAno: [{ ano: 2028, valor: 481777, fonte: 'Recurso Próprio' }],
+        desembolsoPorAno: [{ ano: 2028, valor: 481776, fonte: 'Recurso Próprio' }],
       },
     ],
     obras: [
@@ -271,6 +276,7 @@ export const mockPlans: ExpansionPlan[] = [
         numeroConvenio: 'MD Calha Norte / 2023',
         percentualConclusaoAtual: 60,
         tipoProjetoFNDE: 'proprio',
+        modeloCrecheId: 'mc03',
         numeroDeSalas: 4,
         etapasAtendidas: ['Jardim I', 'Jardim II'],
         desembolsoPorAno: [
@@ -287,6 +293,7 @@ export const mockPlans: ExpansionPlan[] = [
         nome: 'Creche Pré-Escola Tipo 1 — Região Leste',
         localizacao: 'Village do Sol', bairro: 'Village do Sol', setor: 'Região Leste',
         tipoProjetoFNDE: 'tipo1',
+        modeloCrecheId: 'mc01',
         numeroDeSalas: 10,
         etapasAtendidas: ['Maternal', 'Jardim I', 'Jardim II', 'Pré-Escola'],
         desembolsoPorAno: [
@@ -303,6 +310,7 @@ export const mockPlans: ExpansionPlan[] = [
         nome: 'Creche Pré-Escola Tipo 2 — Região Oeste',
         localizacao: 'Habitar Brasil', bairro: 'Habitar Brasil', setor: 'Região Oeste',
         tipoProjetoFNDE: 'tipo2',
+        modeloCrecheId: 'mc02',
         numeroDeSalas: 5,
         etapasAtendidas: ['Maternal', 'Jardim I', 'Jardim II'],
         desembolsoPorAno: [
@@ -320,6 +328,7 @@ export const mockPlans: ExpansionPlan[] = [
         localizacao: 'Zona Rural', bairro: 'Zona Rural', setor: 'Zona Rural',
         numeroConvenio: 'MD Calha Norte / 2025',
         tipoProjetoFNDE: 'proprio',
+        modeloCrecheId: 'mc03',
         numeroDeSalas: 3,
         etapasAtendidas: ['Jardim I', 'Jardim II'],
         desembolsoPorAno: [

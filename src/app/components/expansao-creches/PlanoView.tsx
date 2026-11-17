@@ -9,7 +9,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import KanbanBoard from './KanbanBoard';
 import { ObraConstrucao, AcaoUnidade, ExpansionPlan, PlanStatus, PlanoCusteio } from './types';
 import { calculateViewMetrics } from './utils/planoViewLogic';
-import { formatYMDisplay } from './utils/custeioCalculator';
+import { setPlanoCusteioPrincipal } from './utils/custeioMigration';
+import { formatYMDisplay, obterPeriodoExpansaoYM } from './utils/custeioCalculator';
 import PlanoCusteioReportDocument from './PlanoCusteioReportDocument';
 import PlanStatusConfirmModal, { PlanModalConfig, PlanActionType } from './PlanStatusConfirmModal';
 import { toast } from 'sonner';
@@ -152,7 +153,10 @@ export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoV
                   <option value="Concluído">Concluído</option>
                 </select>
 
-                <span className="text-slate-400 text-sm font-semibold">{plan.periodoInicio}–{plan.periodoFim}</span>
+                <span className="text-slate-500 text-sm font-semibold flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                  Período: {obterPeriodoExpansaoYM(plan).label}
+                </span>
               </div>
               <h1 className="text-3xl font-bold text-slate-800 mb-1">{plan.nome}</h1>
               {plan.descricao && <p className="text-slate-600">{plan.descricao}</p>}
@@ -278,9 +282,19 @@ export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoV
 
         {/* Projeção de vagas */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4"><TrendingUp className="w-5 h-5 text-green-500" /><h2 className="font-bold text-slate-800">Projeção de Vagas 2025–2029</h2></div>
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-green-500" />
+              <h2 className="font-bold text-slate-800">
+                Projeção Dinâmica de Vagas ({plan.periodoInicio - 1}–{plan.periodoFim})
+              </h2>
+            </div>
+            <span className="text-xs text-slate-500">
+              Calculada pelas datas de conclusão física das obras e ações deste plano
+            </span>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={mockProjecaoVagas}>
+            <AreaChart data={metrics.projecaoVagasDinamica || mockProjecaoVagas}>
               <defs>
                 <linearGradient id="pvGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
@@ -326,38 +340,99 @@ export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoV
           </div>
         </div>
 
-        {/* Plano de Desembolso Anual */}
+        {/* Plano de Desembolso Anual (Caixa Único CAPEX + Visão Integrada OPEX) */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4"><DollarSign className="w-5 h-5 text-blue-500" /><h2 className="font-bold text-slate-800">Plano de Desembolso Anual</h2></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-blue-500" />
+              <h2 className="font-bold text-slate-800">
+                Fluxo de Desembolso Anual (Caixa Único CAPEX & Impacto de Custeio OPEX)
+              </h2>
+            </div>
+            {metrics.custeioReferencia && (
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                Integrado ao Custeio: {metrics.custeioReferencia.nome}
+              </span>
+            )}
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold text-slate-700">Ano</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-700">Disponível (fontes)</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-700">Desembolso (planejado)</th>
-                  <th className="text-right px-4 py-3 font-semibold text-slate-700">Saldo</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-700">Saldo Inicial CAPEX</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-700">Investimento Obras (CAPEX)</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-700">Saldo Final CAPEX</th>
+                  {metrics.custeioReferencia && (
+                    <>
+                      <th className="text-right px-4 py-3 font-semibold text-emerald-800 bg-emerald-50/60">
+                        Custeio no Ano (OPEX)
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-blue-900 bg-blue-50/60">
+                        Total Global (CAPEX + OPEX)
+                      </th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {metrics.anosPlano.map(ano => {
-                  const dispon = plan.fontesFinanciamento.reduce((s,f) => s + f.valorPrevisto, 0) / metrics.anosPlano.length;
-                  const inv = metrics.investimentoPorAno.find(d => d.ano === ano)?.valor || 0;
-                  const saldo = dispon - inv;
-                  return (
-                    <tr key={ano}>
-                      <td className="px-4 py-3 text-slate-700">{ano}</td>
-                      <td className="px-4 py-3 text-right text-green-700 font-semibold">{BRL(dispon)}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">{BRL(inv)}</td>
-                      <td className={`px-4 py-3 text-right font-semibold ${saldo < 0 ? 'text-red-600' : 'text-slate-800'}`}>{BRL(saldo)}</td>
-                    </tr>
-                  );
-                })}
+                {(metrics.fluxoCaixaAnual || []).map(row => (
+                  <tr key={row.ano}>
+                    <td className="px-4 py-3 font-bold text-slate-700">{row.ano}</td>
+                    <td className="px-4 py-3 text-right text-green-700 font-semibold">
+                      {BRL(row.disponivelNoAno)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-700 font-medium">
+                      {BRL(row.investimentoCapex)}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right font-semibold ${
+                        row.saldoCapexFimAno < 0 ? 'text-red-600' : 'text-slate-800'
+                      }`}
+                    >
+                      {BRL(row.saldoCapexFimAno)}
+                    </td>
+                    {metrics.custeioReferencia && (
+                      <>
+                        <td className="px-4 py-3 text-right font-semibold text-emerald-700 bg-emerald-50/20">
+                          {BRL(row.custeioTotalAno)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-blue-900 bg-blue-50/20">
+                          {BRL(row.desembolsoGlobalTco)}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
                 <tr className="bg-slate-50 font-bold">
-                  <td className="px-4 py-3 text-slate-800">Total</td>
-                  <td className="px-4 py-3 text-right text-blue-700">{BRL(plan.fontesFinanciamento.reduce((s,f)=>s+f.valorPrevisto,0))}</td>
+                  <td className="px-4 py-3 text-slate-800">Total no Horizonte</td>
+                  <td className="px-4 py-3 text-right text-blue-700">
+                    {BRL(plan.fontesFinanciamento.reduce((s, f) => s + f.valorPrevisto, 0))}
+                  </td>
                   <td className="px-4 py-3 text-right text-blue-700">{BRL(metrics.totalInvestimento)}</td>
-                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3 text-right text-slate-800">
+                    {BRL(
+                      plan.fontesFinanciamento.reduce((s, f) => s + f.valorPrevisto, 0) -
+                        metrics.totalInvestimento
+                    )}
+                  </td>
+                  {metrics.custeioReferencia && (
+                    <>
+                      <td className="px-4 py-3 text-right text-emerald-800">
+                        {BRL(
+                          (metrics.fluxoCaixaAnual || []).reduce((s, r) => s + r.custeioTotalAno, 0)
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right text-blue-900">
+                        {BRL(
+                          (metrics.fluxoCaixaAnual || []).reduce(
+                            (s, r) => s + r.desembolsoGlobalTco,
+                            0
+                          )
+                        )}
+                      </td>
+                    </>
+                  )}
                 </tr>
               </tbody>
             </table>
@@ -533,26 +608,56 @@ export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoV
           </div>
           
           <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
-            <h3 className="font-bold text-slate-800 mb-3">Evolução do Plano de Expansão</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="font-bold text-slate-800">
+                Evolução Integrada do Plano (CAPEX Obras + OPEX Custeio + FUNDEB/PNAE)
+              </h3>
+              {metrics.custeioReferencia && (
+                <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md">
+                  Cenário Oficial: {metrics.custeioReferencia.nome} ({metrics.custeioReferencia.cenarioLabel})
+                </span>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-200/50">
                   <tr>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-700 rounded-l-lg">Ano</th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate-700">Investimento Previsto</th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate-700">Vagas Entregues</th>
-                    <th className="text-right px-4 py-3 font-semibold text-slate-700 rounded-r-lg">Salas Concluídas</th>
+                    <th className="text-left px-3 py-3 font-semibold text-slate-700 rounded-l-lg">Ano</th>
+                    <th className="text-right px-3 py-3 font-semibold text-slate-700">CAPEX (Obras/Ações)</th>
+                    <th className="text-right px-3 py-3 font-semibold text-purple-800">OPEX (Custeio)</th>
+                    <th className="text-right px-3 py-3 font-semibold text-emerald-800">Repasse FUNDEB+PNAE</th>
+                    <th className="text-right px-3 py-3 font-semibold text-amber-900">Esforço Líquido MDE</th>
+                    <th className="text-right px-3 py-3 font-semibold text-slate-700">Vagas Entregues</th>
+                    <th className="text-right px-3 py-3 font-semibold text-slate-700 rounded-r-lg">Salas</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200/50">
-                  {metrics.anosPlano.map(ano => (
-                    <tr key={ano}>
-                      <td className="px-4 py-3 font-medium text-slate-800">{ano}</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{BRL(metrics.investimentoPorAno.find(d => d.ano === ano)?.valor || 0)}</td>
-                      <td className="px-4 py-3 text-right text-blue-600 font-bold">+{metrics.vagasPorAno.find(d => d.ano === ano)?.vagas || 0}</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{metrics.salasPorAno.find(d => d.ano === ano)?.salas || 0}</td>
-                    </tr>
-                  ))}
+                  {metrics.anosPlano.map(ano => {
+                    const fc = metrics.fluxoCaixaAnual.find(f => f.ano === ano);
+                    return (
+                      <tr key={ano} className="hover:bg-white/60">
+                        <td className="px-3 py-3 font-bold text-slate-800">{ano}</td>
+                        <td className="px-3 py-3 text-right text-slate-700">
+                          {BRL(metrics.investimentoPorAno.find(d => d.ano === ano)?.valor || 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right text-purple-800 font-medium">
+                          {fc && fc.custeioTotalAno > 0 ? BRL(fc.custeioTotalAno) : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-right text-emerald-700 font-medium">
+                          {fc && fc.repasseFundebPnae > 0 ? `+${BRL(fc.repasseFundebPnae)}` : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-right text-amber-900 font-semibold">
+                          {fc && fc.custeioTotalAno > 0 ? BRL(fc.esforcoLiquidoMde) : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-right text-blue-600 font-bold">
+                          +{metrics.vagasPorAno.find(d => d.ano === ano)?.vagas || 0}
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-600">
+                          {metrics.salasPorAno.find(d => d.ano === ano)?.salas || 0}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -585,7 +690,7 @@ export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoV
                     openCreateModal: true,
                   })
                 }
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors shrink-0"
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors shrink-0"
               >
                 <Plus className="w-4 h-4" />
                 Novo Plano de Custeio
@@ -607,7 +712,7 @@ export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoV
                       openCreateModal: true,
                     })
                   }
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
                 >
                   <Calculator className="w-4 h-4" />
                   Elaborar Plano de Custeio Operacional
@@ -616,75 +721,101 @@ export default function PlanoView({ planId, onBack, onEdit, onNavigate }: PlanoV
             </div>
           ) : (
             <div className="space-y-3">
-              {metrics.planosCusteioVinculados.map(pc => (
-                <div
-                  key={pc.id}
-                  className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-slate-800">{pc.nome}</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
-                        {pc.status}
-                      </span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-semibold">
-                        {pc.cenarioLabel} · v{pc.versao}
-                      </span>
+              {metrics.planosCusteioVinculados.map(pc => {
+                const isPrincipal = metrics.custeioReferencia?.id === pc.id;
+                return (
+                  <div
+                    key={pc.id}
+                    className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                      isPrincipal
+                        ? 'bg-emerald-50/40 border-emerald-300'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-slate-800">{pc.nome}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-semibold">
+                          {pc.status}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 font-medium">
+                          {pc.cenarioLabel} · v{pc.versao}
+                        </span>
+                        {isPrincipal && (
+                          <span className="text-xs px-2 py-0.5 rounded-md bg-blue-600 text-white font-semibold">
+                            Cenário Oficial do Plano
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-xs text-slate-600 mt-1.5">
+                        <span>
+                          Vigência Custeio:{' '}
+                          <strong>
+                            {formatYMDisplay(pc.dataInicio)} a {formatYMDisplay(pc.dataFim)}
+                          </strong>
+                        </span>
+                        <span>
+                          Regime Anual:{' '}
+                          <strong>
+                            {BRL(
+                              pc.resumoFinanceiro.custoAnualRegimePleno ||
+                                pc.resumoFinanceiro.custoMedioAnual
+                            )}
+                          </strong>
+                        </span>
+                        <span>
+                          Total no Período:{' '}
+                          <strong className="text-emerald-700">
+                            {BRL(pc.resumoFinanceiro.totalGeralPeriodo)}
+                          </strong>
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-4 text-xs text-slate-600 mt-1.5">
-                      <span>
-                        Vigência Custeio:{' '}
-                        <strong>
-                          {formatYMDisplay(pc.dataInicio)} a {formatYMDisplay(pc.dataFim)}
-                        </strong>
-                      </span>
-                      <span>
-                        Regime Anual:{' '}
-                        <strong>
-                          {BRL(
-                            pc.resumoFinanceiro.custoAnualRegimePleno ||
-                              pc.resumoFinanceiro.custoMedioAnual
-                          )}
-                        </strong>
-                      </span>
-                      <span>
-                        Total no Período:{' '}
-                        <strong className="text-emerald-700">
-                          {BRL(pc.resumoFinanceiro.totalGeralPeriodo)}
-                        </strong>
-                      </span>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setRelatorioCusteioAberto(pc)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold shadow-2xs transition-colors"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-blue-600" />
-                      Consultar Relatório
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {!isPrincipal && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = setPlanoCusteioPrincipal(plan.id, pc.id);
+                            setPlans(updated);
+                            toast.success(`"${pc.nome}" definido como Cenário Oficial deste Plano de Expansão!`);
+                          }}
+                          className="px-3 py-2 bg-white border border-emerald-300 hover:bg-emerald-50 text-emerald-800 rounded-lg text-xs font-semibold transition-colors"
+                        >
+                          Definir como Oficial
+                        </button>
+                      )}
 
-                    {onNavigate && (
                       <button
                         type="button"
-                        onClick={() =>
-                          onNavigate('custeio-simulacao', {
-                            planoCusteioId: pc.id,
-                            planoExpansaoId: plan.id,
-                            initialTab: 'visao-geral',
-                          })
-                        }
-                        className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                        onClick={() => setRelatorioCusteioAberto(pc)}
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 rounded-lg text-xs font-semibold transition-colors"
                       >
-                        <Calculator className="w-3.5 h-3.5" />
-                        Abrir Plano de Custeio
+                        <FileText className="w-3.5 h-3.5 text-blue-600" />
+                        Consultar Relatório
                       </button>
-                    )}
+
+                      {onNavigate && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onNavigate('custeio-simulacao', {
+                              planoCusteioId: pc.id,
+                              planoExpansaoId: plan.id,
+                              initialTab: 'visao-geral',
+                            })
+                          }
+                          className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                        >
+                          <Calculator className="w-3.5 h-3.5" />
+                          Abrir Plano de Custeio
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

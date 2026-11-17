@@ -250,6 +250,9 @@ export interface AcaoUnidade {
   unidadeId: string;
   salaId: string;
   modeloCrecheId?: string;   // used in 'ampliacao': which creche model the ambiente comes from
+  ambienteModeloId?: string; // modelo de ambiente selecionado na ampliação
+  quantidadeSalas?: number;  // número explícito de salas adicionadas/adaptadas
+  incluiMobiliarioNoCapex?: boolean; // se true, mobiliário/equipamentos permanentes já compõem o CAPEX da ação
   descricao: string;
   etapaDestino: EtapaEI;
   capacidadeAnterior: number;
@@ -296,6 +299,7 @@ export interface ObraConstrucao {
   etapasAtendidas: EtapaEI[];
   desembolsoPorAno: DesembolsoAnual[];
   contrapartidaMunicipal?: number;
+  incluiMobiliarioNoCapex?: boolean; // se true, o orçamento da obra já contempla mobiliário e equipamentos
   previsaoConclusao: string;
   statusObra: StatusObra;
   coordenadas?: { lat: number; lng: number };
@@ -314,6 +318,8 @@ export interface ExpansionPlan {
   id: string;
   // Aba 0 — Dados Gerais
   nome: string;
+  dataInicio?: string; // YYYY-MM (igual ao Plano de Custeio)
+  dataFim?: string;    // YYYY-MM (igual ao Plano de Custeio)
   periodoInicio: number;
   periodoFim: number;
   status: PlanStatus;
@@ -335,6 +341,7 @@ export interface ExpansionPlan {
   // Aba 5 — Pessoal
   pessoal?: ItemPessoal[];
   configSalas?: ConfiguracaoSala[];
+  planoCusteioId?: string; // ID do Plano de Custeio principal vinculado
   // Legacy para compatibilidade com componentes existentes
   name: string;
   year: number;
@@ -491,6 +498,9 @@ export interface IntervencaoCusteioVinculada {
   dataInicioOperacao: string; // YYYY-MM
   dataFimOperacao?: string;   // YYYY-MM
   ativoNoCusteio: boolean;
+  escopoImplantacaoMobiliario?: 'incluido_no_custeio' | 'contemplado_no_capex_obra';
+  statusObraOrigem?: StatusObra;
+  percentualConclusaoObra?: number;
 }
 
 export interface ItemCusteioBase {
@@ -519,6 +529,16 @@ export interface ItemCusteioBase {
   quantidadeOriginal?: number;
   valorUnitarioOriginal?: number;
   justificativaAjuste?: string;
+}
+
+export interface ItemCusteioMobiliario extends ItemCusteioBase {
+  categoria: 'mobiliario';
+  ambienteId?: string;
+  categoriaAmbiente?: string;
+  valorMobiliarioUnitario: number;
+  valorEquipamentosUnitario: number;
+  resumoItensAmbiente?: string;
+  incluidoNoCusteio: boolean;
 }
 
 export interface ItemCusteioServico extends ItemCusteioBase {
@@ -550,9 +570,15 @@ export interface ParametrosSimulacaoCusteio {
   taxaReajusteAnualAquisicoes: number; // % ao ano
   taxaReajusteAnualPessoal: number;    // % ao ano
   observacoesCenario?: string;
+  // Parâmetros de Sustentabilidade Fiscal e Fontes de Custeio (FUNDEB / PNAE / MDE)
+  valorAlunoAnoFundebIntegral?: number;      // VAAF/VAAT referência Creche Integral (R$/aluno/ano)
+  valorAlunoAnoFundebParcial?: number;       // VAAF/VAAT referência Creche Parcial (R$/aluno/ano)
+  percentualMatriculasTempoIntegral?: number;// % das vagas em tempo integral (0–100)
+  repassePerCapitaPnaeAno?: number;          // Repasse PNAE Creche por aluno/ano (R$/aluno/ano)
 }
 
 export interface ResumoFinanceiroCusteio {
+  totalMobiliarioPeriodo: number;
   totalServicosPeriodo: number;
   totalAquisicoesPontuaisPeriodo: number;
   totalAquisicoesRecorrentesPeriodo: number;
@@ -585,6 +611,7 @@ export interface PlanoCusteio {
   dataAtualizacao: string;
   intervencoes: IntervencaoCusteioVinculada[];
   configSalas: ConfiguracaoSala[];
+  mobiliario?: ItemCusteioMobiliario[];
   servicos: ItemCusteioServico[];
   aquisicoes: ItemCusteioAquisicao[];
   pessoal: ItemCusteioPessoal[];

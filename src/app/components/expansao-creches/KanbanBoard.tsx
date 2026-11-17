@@ -6,6 +6,7 @@ import { mockActivities } from './mockData';
 import { Activity, ActivityStatus, Priority, ObraConstrucao, AcaoUnidade } from './types';
 import { getActivities, saveActivities } from './Kanban';
 import { selecionarTemplateAutomatico, calcularPrazo, TaskTemplate } from './kanbanTemplates';
+import { loadExpansionPlans, saveExpansionPlans } from './utils/custeioMigration';
 
 const getCategoryColor = (category: string) => {
   switch (category) {
@@ -453,6 +454,27 @@ export default function KanbanBoard({ planId, itemId, itemType, itemData, onBack
     setInitialized(true);
   };
 
+  const syncObraProgressInPlan = (updatedAll: Activity[]) => {
+    if (itemType !== 'obra') return;
+    const itemActs = updatedAll.filter(
+      a => a.planId === planId && a.itemId === itemId && a.itemType === 'obra'
+    );
+    if (itemActs.length === 0) return;
+    const doneCount = itemActs.filter(a => a.status === 'FEITO').length;
+    const pct = Math.round((doneCount / itemActs.length) * 100);
+    const expPlans = loadExpansionPlans();
+    const updatedPlans = expPlans.map(p => {
+      if (p.id !== planId) return p;
+      return {
+        ...p,
+        obras: (p.obras || []).map(o =>
+          o.id === itemId ? { ...o, percentualConclusaoAtual: pct } : o
+        ),
+      };
+    });
+    saveExpansionPlans(updatedPlans);
+  };
+
   const handleMove = (activityId: string, newStatus: ActivityStatus) => {
     setAllActivities(prev => {
       const updated = prev.map(activity =>
@@ -461,6 +483,7 @@ export default function KanbanBoard({ planId, itemId, itemType, itemData, onBack
           : activity
       );
       saveActivities(updated);
+      syncObraProgressInPlan(updated);
       return updated;
     });
   };

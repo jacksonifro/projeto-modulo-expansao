@@ -10,6 +10,7 @@ import {
   PlanoCusteio,
   IntervencaoCusteioVinculada,
   ItemCusteioBase,
+  ItemCusteioMobiliario,
   ItemCusteioServico,
   ItemCusteioAquisicao,
   ItemCusteioPessoal,
@@ -70,11 +71,16 @@ export interface ResumoPorIntervencao {
   salas: number;
   vagas: number;
   turmas: number;
+  mobiliario: number;
+  custoBaseMobiliario: number;
   servicos: number;
   aquisicoesPontuais: number;
   aquisicoesRecorrentes: number;
   pessoal: number;
   totalPeriodo: number;
+  custoAnualServicos: number;
+  custoAnualAquisicoes: number;
+  custoAnualPessoal: number;
   custoAnualizadoRegime: number;
   custoPorVagaAno: number;
 }
@@ -154,11 +160,30 @@ export function calcularVagasObraPadrao(
 export function parseSalasFromAcao(
   descricao: string,
   capacidadeAnterior: number,
-  novaCapacidade: number
+  novaCapacidade: number,
+  quantidadeSalasExplicita?: number
 ): number {
+  if (typeof quantidadeSalasExplicita === 'number' && quantidadeSalasExplicita > 0) {
+    return quantidadeSalasExplicita;
+  }
   const match = (descricao || '').match(/(\d+)\s*(?:novas?\s+)?salas?/i);
   if (match && Number(match[1]) > 0) {
     return Number(match[1]);
+  }
+  const mapaExtenso: Record<string, number> = {
+    uma: 1,
+    duas: 2,
+    tres: 3,
+    três: 3,
+    quatro: 4,
+    cinco: 5,
+    seis: 6,
+  };
+  const matchExtenso = (descricao || '')
+    .toLowerCase()
+    .match(/\b(uma|duas|tr[eê]s|quatro|cinco|seis)\s+(?:novas?\s+)?salas?\b/i);
+  if (matchExtenso && mapaExtenso[matchExtenso[1].toLowerCase()]) {
+    return mapaExtenso[matchExtenso[1].toLowerCase()];
   }
   const deltaVagas = Math.max(0, (novaCapacidade || 0) - (capacidadeAnterior || 0));
   if (deltaVagas > 25) {
@@ -242,6 +267,38 @@ export function listMonthsBetween(startYM: string, endYM: string): string[] {
   return result;
 }
 
+export function obterPeriodoExpansaoYM(plan?: ExpansionPlan): {
+  dataInicio: string;
+  dataFim: string;
+  meses: number;
+  label: string;
+  labelComMeses: string;
+} {
+  const anoIni = plan?.periodoInicio || plan?.year || 2026;
+  const anoFim = plan?.periodoFim || anoIni + 3;
+  const dataInicio =
+    plan?.dataInicio && /^\d{4}-\d{2}$/.test(plan.dataInicio)
+      ? plan.dataInicio
+      : plan?.startDate && /^\d{4}-\d{2}/.test(plan.startDate)
+        ? plan.startDate.slice(0, 7)
+        : `${anoIni}-01`;
+  const dataFim =
+    plan?.dataFim && /^\d{4}-\d{2}$/.test(plan.dataFim)
+      ? plan.dataFim
+      : plan?.expectedEndDate && /^\d{4}-\d{2}/.test(plan.expectedEndDate)
+        ? plan.expectedEndDate.slice(0, 7)
+        : `${anoFim}-12`;
+  const meses = listMonthsBetween(dataInicio, dataFim).length;
+  const label = `${formatYMDisplay(dataInicio)} a ${formatYMDisplay(dataFim)}`;
+  return {
+    dataInicio,
+    dataFim,
+    meses,
+    label,
+    labelComMeses: meses > 0 ? `${label} (${meses} meses)` : label,
+  };
+}
+
 // ─── Extração de Intervenções do Plano de Expansão ─────────────────────────
 
 export function countModelClassrooms(modelo: ModeloCreche, ambientes: ModeloAmbiente[]): number {
@@ -290,7 +347,8 @@ export function extrairIntervencoesDoPlano(
   plan: ExpansionPlan,
   catalogos: CatalogosCusteio,
   defaultStartYM: string,
-  existingIntervencoes?: IntervencaoCusteioVinculada[]
+  existingIntervencoes?: IntervencaoCusteioVinculada[],
+  syncFromExpansion: boolean = false
 ): IntervencaoCusteioVinculada[] {
   const { modelos, ambientes } = catalogos;
   const mapExisting = new Map((existingIntervencoes || []).map(i => [`${i.origemTipo}:${i.origemId}`, i]));
@@ -300,60 +358,72 @@ export function extrairIntervencoesDoPlano(
   // 1. Obras (Construção de nova unidade / Retomada de creche completa)
   (plan.obras || []).forEach(obra => {
     const prev = mapExisting.get(`obra:${obra.id}`);
-    const isProjetoProprio = obra.tipoProjetoFNDE === 'proprio' && !obra.modeloCrecheId;
 
     const modelo =
       modelos.find(m => m.id === obra.modeloCrecheId) ||
       (obra.tipoProjetoFNDE === 'tipo1'
         ? modelos.find(m => m.tipoBase === 'tipo1')
         : obra.tipoProjetoFNDE === 'tipo2'
-        ? modelos.find(m => m.tipoBase === 'tipo2')
-        : modelos.find(m => m.tipoBase === 'tipo2')) ||
+          ? modelos.find(m => m.tipoBase === 'tipo2')
+          : obra.tipoProjetoFNDE === 'proprio'
+            ? modelos.find(m => m.tipoBase === 'proprio') || modelos.find(m => m.tipoBase === 'tipo2')
+            : modelos.find(m => m.tipoBase === 'tipo2')) ||
       modelos[0];
 
     const salasModeloTotal = modelo ? countModelClassrooms(modelo, ambientes) : 5;
-    const salasAdicionais = isProjetoProprio
-      ? obra.numeroDeSalas || 4
-      : obra.numeroDeSalas || salasModeloTotal;
-    const vagasAdicionais = calcularVagasObraPadrao(obra, modelos);
+    const salasAdicionais = obra.numeroDeSalas || salasModeloTotal;
+    const isProjetoProprio = obra.tipoProjetoFNDE === 'proprio' && salasAdicionais !== salasModeloTotal;
+    const vagasAdicionais =
+      obra.capacidadeAlunos && obra.capacidadeAlunos > 0
+        ? obra.capacidadeAlunos
+        : modelo && salasAdicionais === salasModeloTotal
+          ? modelo.capacidadeAlunos
+          : Math.round(((modelo?.capacidadeAlunos || 80) * salasAdicionais) / Math.max(1, salasModeloTotal));
 
     const turmasConfiguradas = configSalasPlano
       .filter(cs => cs.origem === 'obra' && cs.origemId === obra.id)
       .reduce((s, cs) => s + (cs.numeroTurmas || 1), 0);
 
     const turmasPadraoModelo = turmasConfiguradas > 0 ? turmasConfiguradas : salasAdicionais;
-    const turmasPrevistas = prev ? prev.turmasPrevistas : turmasPadraoModelo;
+    const mudouPorteSala = prev && prev.salasAdicionais !== salasAdicionais;
+    const turmasPrevistas =
+      prev && !(syncFromExpansion && mudouPorteSala) ? prev.turmasPrevistas : turmasPadraoModelo;
 
     const ambientesPrevistos: { ambienteId: string; nome: string; quantidade: number }[] = [];
-    if (modelo && !isProjetoProprio) {
+    if (modelo) {
       modelo.ambientes.forEach(ma => {
         const amb = ambientes.find(a => a.id === ma.modeloAmbienteId);
         if (!amb) return;
+        const isClassroom = amb.categoria === 'sala-atividades' || amb.categoria === 'bercario';
+        const qtd =
+          isClassroom && salasAdicionais !== salasModeloTotal && modelo.ambientes.filter(x => {
+            const a = ambientes.find(y => y.id === x.modeloAmbienteId);
+            return a && (a.categoria === 'sala-atividades' || a.categoria === 'bercario');
+          }).length === 1
+            ? salasAdicionais
+            : ma.quantidade;
         ambientesPrevistos.push({
           ambienteId: amb.id,
           nome: amb.nome,
-          quantidade: ma.quantidade,
+          quantidade: qtd,
         });
       });
     } else {
-      // Projeto próprio: salas previstas + estrutura básica de creche completa
       const salaRef = ambientes.find(a => a.id === 'ma01') || ambientes[0];
       if (salaRef) {
         ambientesPrevistos.push({ ambienteId: salaRef.id, nome: salaRef.nome, quantidade: salasAdicionais });
       }
-      ['ma04', 'ma06', 'ma07', 'ma10', 'ma15'].forEach(idAmb => {
-        const amb = ambientes.find(a => a.id === idAmb);
-        if (amb) {
-          ambientesPrevistos.push({
-            ambienteId: amb.id,
-            nome: amb.nome,
-            quantidade: idAmb === 'ma04' ? Math.max(1, Math.ceil(salasAdicionais / 2)) : 1,
-          });
-        }
-      });
     }
 
-    const suggestedStart = nextMonthAfterDate(obra.previsaoConclusao, defaultStartYM);
+    // No Plano de Custeio a creche já foi construída e opera durante o Período do Plano de Custeio
+    const dataInicioOperacao = prev?.dataInicioOperacao || defaultStartYM;
+
+    const escopoImplantacaoMobiliario =
+      obra.incluiMobiliarioNoCapex !== undefined
+        ? obra.incluiMobiliarioNoCapex
+          ? 'contemplado_no_capex_obra'
+          : 'incluido_no_custeio'
+        : prev?.escopoImplantacaoMobiliario || 'incluido_no_custeio';
 
     result.push({
       id: prev?.id || `int-obra-${obra.id}`,
@@ -364,9 +434,7 @@ export function extrairIntervencoesDoPlano(
       escopo: 'unidade_completa',
       subtipoIntervencao: obra.tipo === 'retomada' ? 'retomada' : 'nova_construcao',
       modeloCrecheId: modelo?.id,
-      modeloCrecheNome: isProjetoProprio
-        ? `Projeto Próprio (${salasAdicionais} salas)`
-        : (modelo?.nome || 'Modelo Padrão'),
+      modeloCrecheNome: modelo?.nome || 'Modelo Padrão',
       projetoProprio: isProjetoProprio,
       salasAdicionais,
       vagasAdicionais,
@@ -375,9 +443,12 @@ export function extrairIntervencoesDoPlano(
       etapasAtendidas: obra.etapasAtendidas || [],
       ambientesPrevistos,
       dataConclusaoObra: obra.previsaoConclusao,
-      dataInicioOperacao: prev?.dataInicioOperacao || suggestedStart,
+      dataInicioOperacao,
       dataFimOperacao: prev?.dataFimOperacao,
       ativoNoCusteio: prev ? prev.ativoNoCusteio : true,
+      escopoImplantacaoMobiliario,
+      statusObraOrigem: obra.statusObra,
+      percentualConclusaoObra: obra.percentualConclusaoAtual,
     });
   });
 
@@ -388,7 +459,8 @@ export function extrairIntervencoesDoPlano(
     const salasAdicionais = parseSalasFromAcao(
       acao.descricao,
       acao.capacidadeAnterior,
-      acao.novaCapacidade
+      acao.novaCapacidade,
+      acao.quantidadeSalas
     );
     const vagasAdicionais = calcularVagasAcaoPadrao(acao) || salasAdicionais * 20;
 
@@ -397,17 +469,31 @@ export function extrairIntervencoesDoPlano(
       .reduce((s, cs) => s + (cs.numeroTurmas || 1), 0);
 
     const turmasPadraoModelo = turmasConfiguradas > 0 ? turmasConfiguradas : salasAdicionais;
-    const turmasPrevistas = prev ? prev.turmasPrevistas : turmasPadraoModelo;
+    const mudouPorteSala = prev && prev.salasAdicionais !== salasAdicionais;
+    const turmasPrevistas =
+      prev && !(syncFromExpansion && mudouPorteSala) ? prev.turmasPrevistas : turmasPadraoModelo;
 
-    // Se acao.salaId apontar para um ModeloAmbiente cadastrado, usá-lo diretamente; caso contrário, inferir por etapa
-    const ambEspecifico = ambientes.find(a => a.id === acao.salaId);
+    // Se acao.ambienteModeloId ou acao.salaId apontar para um ModeloAmbiente cadastrado, usá-lo diretamente; caso contrário, inferir por etapa
+    const ambEspecifico =
+      ambientes.find(a => a.id === acao.ambienteModeloId) ||
+      ambientes.find(a => a.id === acao.salaId);
     const fallbackSalaId = acao.etapaDestino === 'Pré-Escola' ? 'ma02' : 'ma01';
     const ambSala = ambEspecifico || ambientes.find(a => a.id === fallbackSalaId) || ambientes[0];
     const ambientesPrevistos = ambSala
       ? [{ ambienteId: ambSala.id, nome: ambSala.nome, quantidade: salasAdicionais }]
       : [];
 
-    const suggestedStart = nextMonthAfterDate(acao.previsaoConclusao, defaultStartYM);
+    // No Plano de Custeio a ampliação/adaptação opera durante o Período do Plano de Custeio
+    const dataInicioOperacao = prev?.dataInicioOperacao || defaultStartYM;
+
+    const escopoImplantacaoMobiliario =
+      acao.incluiMobiliarioNoCapex !== undefined
+        ? acao.incluiMobiliarioNoCapex
+          ? 'contemplado_no_capex_obra'
+          : 'incluido_no_custeio'
+        : prev?.escopoImplantacaoMobiliario || 'incluido_no_custeio';
+
+    const modAcao = modelos.find(m => m.id === (acao.modeloCrecheId || 'mc02')) || modelos[0];
 
     result.push({
       id: prev?.id || `int-acao-${acao.id}`,
@@ -418,10 +504,8 @@ export function extrairIntervencoesDoPlano(
       localizacaoResumo: [ue?.bairro, ue?.setor].filter(Boolean).join(' · ') || acao.descricao,
       escopo: 'incremental',
       subtipoIntervencao: acao.tipo,
-      modeloCrecheId: acao.modeloCrecheId || 'mc02',
-      modeloCrecheNome: acao.tipo === 'ampliacao'
-        ? `Expansão Incremental (+${salasAdicionais} sala${salasAdicionais > 1 ? 's' : ''})`
-        : `Adaptação de Ambiente (${salasAdicionais} sala)`,
+      modeloCrecheId: modAcao?.id || 'mc02',
+      modeloCrecheNome: modAcao?.nome || 'CRECHE FNDE TIPO 2 (PROINFÂNCIA C)',
       projetoProprio: false,
       salasAdicionais,
       vagasAdicionais,
@@ -430,9 +514,10 @@ export function extrairIntervencoesDoPlano(
       etapasAtendidas: acao.etapaDestino ? [acao.etapaDestino] : [],
       ambientesPrevistos,
       dataConclusaoObra: acao.previsaoConclusao,
-      dataInicioOperacao: prev?.dataInicioOperacao || suggestedStart,
+      dataInicioOperacao,
       dataFimOperacao: prev?.dataFimOperacao,
       ativoNoCusteio: prev ? prev.ativoNoCusteio : true,
+      escopoImplantacaoMobiliario,
     });
   });
 
@@ -631,18 +716,23 @@ export function gerarEstimativaItensProporcionais(
   planStartYM: string,
   planEndYM: string,
   existing?: {
+    mobiliario?: ItemCusteioMobiliario[];
     servicos?: ItemCusteioServico[];
     aquisicoes?: ItemCusteioAquisicao[];
     pessoal?: ItemCusteioPessoal[];
   },
   preserveManual: boolean = true
 ): {
+  mobiliario: ItemCusteioMobiliario[];
   servicos: ItemCusteioServico[];
   aquisicoes: ItemCusteioAquisicao[];
   pessoal: ItemCusteioPessoal[];
 } {
   const { modelos, ambientes, servicosRef, aquisicoesRef, cargosRef } = catalogos;
 
+  const manualMobiliario = preserveManual
+    ? (existing?.mobiliario || []).filter(i => i.origemCalculo !== 'automatico')
+    : [];
   const manualServicos = preserveManual
     ? (existing?.servicos || []).filter(i => i.origemCalculo !== 'automatico')
     : [];
@@ -667,11 +757,16 @@ export function gerarEstimativaItensProporcionais(
         item.catalogoRefId === refKey
     );
 
+  const mobiliario: ItemCusteioMobiliario[] = [
+    ...manualMobiliario.filter(i => i.origemCalculo === 'incluido_manualmente'),
+  ];
   const servicos: ItemCusteioServico[] = [
     ...manualServicos.filter(i => i.origemCalculo === 'incluido_manualmente'),
   ];
   const aquisicoes: ItemCusteioAquisicao[] = [
-    ...manualAquisicoes.filter(i => i.origemCalculo === 'incluido_manualmente'),
+    ...manualAquisicoes.filter(
+      i => i.origemCalculo === 'incluido_manualmente' && i.subcategoriaAquisicao !== 'mobiliario_equipamento'
+    ),
   ];
   const pessoal: ItemCusteioPessoal[] = [
     ...manualPessoal.filter(i => i.origemCalculo === 'incluido_manualmente'),
@@ -684,13 +779,86 @@ export function gerarEstimativaItensProporcionais(
   const vagasBaseRefIncremental = modeloRefIncremental?.capacidadeAlunos || 120;
 
   for (const interv of intervencoes) {
-    const startItemYM = maxYM(planStartYM, interv.dataInicioOperacao);
+    const startItemYM =
+      interv.dataInicioOperacao >= planStartYM && interv.dataInicioOperacao <= planEndYM
+        ? interv.dataInicioOperacao
+        : planStartYM;
     const modeloAssociado =
       modelos.find(m => m.id === interv.modeloCrecheId) || modeloRefIncremental;
 
+    const salasModeloAssociado = modeloAssociado
+      ? countModelClassrooms(modeloAssociado, ambientes)
+      : interv.salasAdicionais;
     const isProjetoProprio =
-      Boolean(interv.projetoProprio) ||
-      Boolean(interv.modeloCrecheNome?.startsWith('Projeto Próprio'));
+      interv.escopo === 'unidade_completa' && interv.salasAdicionais !== salasModeloAssociado;
+
+    // ── 1. MOBILIÁRIO & EQUIPAMENTOS DOS AMBIENTES (conforme configurado no Modelo da Creche) ──
+    const listaAmbientesInterv =
+      interv.ambientesPrevistos && interv.ambientesPrevistos.length > 0
+        ? interv.ambientesPrevistos
+        : (modeloAssociado?.ambientes || []).map(ma => {
+            const amb = ambientes.find(a => a.id === ma.modeloAmbienteId);
+            return {
+              ambienteId: ma.modeloAmbienteId,
+              nome: amb?.nome || ma.modeloAmbienteId,
+              quantidade: ma.quantidade,
+            };
+          });
+
+    listaAmbientesInterv.forEach(ambPrev => {
+      const amb = ambientes.find(a => a.id === ambPrev.ambienteId);
+      if (!amb) return;
+      const cAmb = calcularCustoAmbiente(amb);
+      const valorMobEqUnit = cAmb.mobiliario + cAmb.equipamentos;
+      if (valorMobEqUnit <= 0) return;
+
+      const refKey = `mob:${amb.id}`;
+      const manual = hasManualOverride(manualMobiliario, interv.id, refKey);
+      if (manual) {
+        mobiliario.push({ ...manual });
+        return;
+      }
+
+      const resumoItens = (amb.itens || [])
+        .map(it => `${it.quantidade}× ${it.descricao}`)
+        .join(' · ');
+
+      const incluido = interv.escopoImplantacaoMobiliario !== 'contemplado_no_capex_obra';
+      const totalAmb = valorMobEqUnit * ambPrev.quantidade;
+
+      mobiliario.push({
+        id: `mob-${interv.id}-${amb.id}`,
+        categoria: 'mobiliario',
+        intervencaoCusteioId: interv.id,
+        catalogoRefId: refKey,
+        ambienteId: amb.id,
+        categoriaAmbiente: amb.categoria,
+        descricao: amb.nome,
+        valorMobiliarioUnitario: cAmb.mobiliario,
+        valorEquipamentosUnitario: cAmb.equipamentos,
+        resumoItensAmbiente: resumoItens,
+        incluidoNoCusteio: incluido,
+        criterioCalculo: 'por_ambiente',
+        fatorProporcional: 1,
+        numeradorProporcao: ambPrev.quantidade,
+        denominadorProporcao: 1,
+        unidadeProporcao: 'amb.',
+        memoriaCalculo: `${ambPrev.quantidade}× ${amb.nome} (${(amb.itens || []).length} itens configurados no ambiente do modelo)`,
+        naturezaCusto: 'exclusivo_intervencao',
+        periodicidade: 'unica',
+        unidadeMedida: 'AMB',
+        quantidade: ambPrev.quantidade,
+        valorUnitario: valorMobEqUnit,
+        dataInicio: startItemYM,
+        dataFim: startItemYM,
+        ocorrenciasNoPeriodo: incluido ? 1 : 0,
+        valorAnualizado: totalAmb,
+        valorTotalProjetado: incluido ? totalAmb : 0,
+        origemCalculo: 'automatico',
+        quantidadeOriginal: ambPrev.quantidade,
+        valorUnitarioOriginal: valorMobEqUnit,
+      });
+    });
 
     const baseServicosList = (modeloAssociado?.servicos?.length
       ? modeloAssociado.servicos
@@ -732,15 +900,16 @@ export function gerarEstimativaItensProporcionais(
 
     let specsPessoal: SpecPessoal[] = [];
 
-    if (isCompleta && !isProjetoProprio && modeloAssociado?.pessoal?.length) {
+    if (isCompleta && modeloAssociado?.pessoal?.length) {
       // Paridade 100% com o quadro cadastrado em "Consultar Modelos de Creches"
+      const baseTurmasModelo = Math.max(1, salasModeloAssociado || tPadrao);
       specsPessoal = modeloAssociado.pessoal.map(mp => {
         const cargo =
           cargosRef.find(c => c.id === mp.cargoId) || findCargo(mp.cargoId, mp.cargoId);
         const catCargo = classifyCategoriaCargo(cargo.descricao);
         const d = cargo.descricao.toLowerCase();
         const isRegenciaSala = d.includes('professor') || d.includes('monitor');
-        const escalaTurmas = tPadrao > 0 && t !== tPadrao ? t / tPadrao : 1;
+        const escalaTurmas = baseTurmasModelo > 0 && t !== baseTurmasModelo ? t / baseTurmasModelo : 1;
         const qtdCalculada = isRegenciaSala
           ? Math.max(1, Math.round(mp.quantidade * escalaTurmas))
           : mp.quantidade;
@@ -755,7 +924,7 @@ export function gerarEstimativaItensProporcionais(
           memoria:
             escalaTurmas === 1
               ? `Quadro oficial do modelo ${modeloAssociado.nome} (${mp.quantidade} prof.)`
-              : `Ajustado proporcionalmente para ${t} turmas a partir do modelo ${modeloAssociado.nome}`,
+              : `Ajustado proporcionalmente para ${t} turmas a partir do modelo ${modeloAssociado.nome} (${baseTurmasModelo} salas base)`,
         };
       });
     } else {
@@ -818,8 +987,8 @@ export function gerarEstimativaItensProporcionais(
           memoria: isCompleta
             ? `Dimensionamento de cozinha para ${t} turmas`
             : t >= 4
-            ? `+${Math.floor(t / 4)} profissional pelo porte incremental (${t} novas turmas)`
-            : 'Equipe de cozinha atual absorve a demanda incremental (< 4 novas turmas)',
+              ? `+${Math.floor(t / 4)} profissional pelo porte incremental (${t} novas turmas)`
+              : 'Equipe de cozinha atual absorve a demanda incremental (< 4 novas turmas)',
         },
         {
           cargo: cgLimpeza,
@@ -828,24 +997,24 @@ export function gerarEstimativaItensProporcionais(
             ? t <= 4
               ? 1
               : t <= 8
-              ? 2
-              : 3
+                ? 2
+                : 3
             : interv.subtipoIntervencao === 'ampliacao' && interv.salasAdicionais >= 3
-            ? 1
-            : Math.floor(t / 4),
+              ? 1
+              : Math.floor(t / 4),
           criterio: 'por_ambiente',
           natureza:
             isCompleta ||
-            (interv.subtipoIntervencao === 'ampliacao' && interv.salasAdicionais >= 3) ||
-            t >= 4
+              (interv.subtipoIntervencao === 'ampliacao' && interv.salasAdicionais >= 3) ||
+              t >= 4
               ? 'exclusivo_intervencao'
               : 'compartilhado_rede',
           jornada: '40h semanais',
           memoria: isCompleta
             ? `Dimensionamento de higienização predial para ${t} turmas`
             : interv.subtipoIntervencao === 'ampliacao' && interv.salasAdicionais >= 3
-            ? '+1 Auxiliar de Limpeza para atender o novo bloco de salas'
-            : 'Equipe de apoio atual absorve a demanda incremental',
+              ? '+1 Auxiliar de Limpeza para atender o novo bloco de salas'
+              : 'Equipe de apoio atual absorve a demanda incremental',
         },
       ];
     }
@@ -940,8 +1109,8 @@ export function gerarEstimativaItensProporcionais(
           memoriaCalculo: escalarPorPorte
             ? `Unidade nova de projeto próprio: ${interv.salasAdicionais} de ${salasModelo} salas do modelo base (${pctFmt}%)`
             : fixedUnitContract && isProjetoProprio
-            ? 'Contrato indivisível da nova unidade escolar autônoma (100%)'
-            : `Implantação integral de nova creche (100% do modelo ${modeloAssociado?.tipoBase?.toUpperCase() || ''})`,
+              ? 'Contrato indivisível da nova unidade escolar autônoma (100%)'
+              : `Implantação integral de nova creche (100% do modelo ${modeloAssociado?.tipoBase?.toUpperCase() || ''})`,
           naturezaCusto: 'exclusivo_intervencao',
           periodicidade: 'anual',
           unidadeMedida: 'ANO',
@@ -1001,9 +1170,11 @@ export function gerarEstimativaItensProporcionais(
             valorUnitarioOriginal: sv.valorAnual,
           });
         } else {
+          const vagasModeloRef = Math.max(1, modeloAssociado?.capacidadeAlunos || vagasBaseRefIncremental);
+          const salasModeloRef = Math.max(1, salasModeloAssociado || salasBaseRefIncremental);
           const criterio: CriterioProporcionalidade = isAdaptacao ? 'por_vaga' : 'por_ambiente';
           const num = isAdaptacao ? interv.vagasAdicionais : interv.salasAdicionais;
-          const den = isAdaptacao ? Math.max(1, vagasBaseRefIncremental) : Math.max(1, salasBaseRefIncremental);
+          const den = isAdaptacao ? vagasModeloRef : salasModeloRef;
           const fatorExato = num / den; // Sem truncamento .toFixed(3)!
           const pctFmt = (fatorExato * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
@@ -1020,8 +1191,8 @@ export function gerarEstimativaItensProporcionais(
             denominadorProporcao: den,
             unidadeProporcao: isAdaptacao ? 'vagas' : 'salas',
             memoriaCalculo: isAdaptacao
-              ? `Proporcional ao consumo de +${num} de ${den} vagas do modelo ref. (${pctFmt}%)`
-              : `Proporcional a +${num} de ${den} salas do modelo ref. (${pctFmt}%)`,
+              ? `Proporcional ao consumo de +${num} de ${den} vagas do modelo ${modeloAssociado?.nome || 'ref.'} (${pctFmt}%)`
+              : `Proporcional a +${num} de ${den} salas do modelo ${modeloAssociado?.nome || 'ref.'} (${pctFmt}%)`,
             naturezaCusto: 'exclusivo_intervencao',
             periodicidade: 'anual',
             unidadeMedida: 'ANO',
@@ -1040,164 +1211,9 @@ export function gerarEstimativaItensProporcionais(
       });
     }
 
-    // ── B. AQUISIÇÕES (1. Pontuais de Implantação + 2. Recorrentes Anuais) ───
-    // B.1. Pontuais de Implantação: considera TODOS os ambientes pedagógicos previstos (ma01, ma02, berçário...)
-    const ambientesSalasPrevistos = interv.ambientesPrevistos.filter(ap => {
-      const amb = ambientes.find(a => a.id === ap.ambienteId);
-      return amb && (amb.categoria === 'sala-atividades' || amb.categoria === 'bercario');
-    });
-
-    if (ambientesSalasPrevistos.length > 0) {
-      ambientesSalasPrevistos.forEach(ap => {
-        const amb = ambientes.find(a => a.id === ap.ambienteId);
-        if (!amb) return;
-        const c = calcularCustoAmbiente(amb);
-        const custoUnitAmb = Number((c.mobiliario + c.equipamentos).toFixed(2));
-        if (custoUnitAmb <= 0) return;
-
-        // Compatibilidade com refKey legado quando há apenas 1 tipo de sala
-        const refKeySala =
-          ambientesSalasPrevistos.length === 1
-            ? 'aq-pontual:KIT_SALAS'
-            : `aq-pontual:KIT_SALA_${amb.id}`;
-        const manualKit =
-          hasManualOverride(manualAquisicoes, interv.id, refKeySala) ||
-          (amb.id === 'ma01' ? hasManualOverride(manualAquisicoes, interv.id, 'aq-pontual:KIT_SALAS') : undefined);
-
-        if (manualKit) {
-          if (!aquisicoes.some(existingAq => existingAq.id === manualKit.id)) {
-            aquisicoes.push({ ...manualKit });
-          }
-          return;
-        }
-
-        aquisicoes.push({
-          id:
-            ambientesSalasPrevistos.length === 1
-              ? `aq-kit-salas-${interv.id}`
-              : `aq-kit-salas-${interv.id}-${amb.id}`,
-          categoria: 'aquisicao',
-          tipoAquisicao: 'pontual_implantacao',
-          subcategoriaAquisicao: 'mobiliario_equipamento',
-          intervencaoCusteioId: interv.id,
-          catalogoRefId: refKeySala,
-          descricao: `MOBILIÁRIO E EQUIPAMENTOS — ${amb.nome} (${ap.quantidade} SALA${ap.quantidade > 1 ? 'S' : ''})`,
-          criterioCalculo: 'por_ambiente',
-          fatorProporcional: 1,
-          numeradorProporcao: ap.quantidade,
-          denominadorProporcao: 1,
-          unidadeProporcao: 'salas',
-          memoriaCalculo: `${ap.quantidade} kit(s) completo(s) de ${amb.nome} (despesa única de implantação)`,
-          naturezaCusto: 'exclusivo_intervencao',
-          periodicidade: 'unica',
-          unidadeMedida: 'KIT',
-          quantidade: ap.quantidade,
-          valorUnitario: custoUnitAmb,
-          dataInicio: startItemYM,
-          dataFim: startItemYM,
-          ocorrenciasNoPeriodo: 0,
-          valorAnualizado: Number((ap.quantidade * custoUnitAmb).toFixed(2)),
-          valorTotalProjetado: 0,
-          origemCalculo: 'automatico',
-          quantidadeOriginal: ap.quantidade,
-          valorUnitarioOriginal: custoUnitAmb,
-        });
-      });
-    } else {
-      // Fallback caso não haja ambientes mapeados
-      const ambPadrao = ambientes[0];
-      const custoSala = ambPadrao
-        ? (() => {
-            const c = calcularCustoAmbiente(ambPadrao);
-            return Number((c.mobiliario + c.equipamentos).toFixed(2));
-          })()
-        : 10678.5;
-      const refKeyKitSalas = 'aq-pontual:KIT_SALAS';
-      const manualKitSalas = hasManualOverride(manualAquisicoes, interv.id, refKeyKitSalas);
-      if (manualKitSalas) {
-        aquisicoes.push({ ...manualKitSalas });
-      } else {
-        aquisicoes.push({
-          id: `aq-kit-salas-${interv.id}`,
-          categoria: 'aquisicao',
-          tipoAquisicao: 'pontual_implantacao',
-          subcategoriaAquisicao: 'mobiliario_equipamento',
-          intervencaoCusteioId: interv.id,
-          catalogoRefId: refKeyKitSalas,
-          descricao: `MOBILIÁRIO E EQUIPAMENTOS — SALAS DE ATIVIDADES (${interv.salasAdicionais} SALA${interv.salasAdicionais > 1 ? 'S' : ''})`,
-          criterioCalculo: 'por_ambiente',
-          fatorProporcional: 1,
-          numeradorProporcao: interv.salasAdicionais,
-          denominadorProporcao: 1,
-          unidadeProporcao: 'salas',
-          memoriaCalculo: `${interv.salasAdicionais} kit(s) completo(s) de sala infantil (despesa única de implantação)`,
-          naturezaCusto: 'exclusivo_intervencao',
-          periodicidade: 'unica',
-          unidadeMedida: 'KIT',
-          quantidade: interv.salasAdicionais,
-          valorUnitario: custoSala,
-          dataInicio: startItemYM,
-          dataFim: startItemYM,
-          ocorrenciasNoPeriodo: 0,
-          valorAnualizado: Number((interv.salasAdicionais * custoSala).toFixed(2)),
-          valorTotalProjetado: 0,
-          origemCalculo: 'automatico',
-          quantidadeOriginal: interv.salasAdicionais,
-          valorUnitarioOriginal: custoSala,
-        });
-      }
-    }
-
-    if (interv.escopo === 'unidade_completa') {
-      // Áreas comuns da creche nova (Copa, Refeitório, Fraldário, Playground, Administração)
-      let custoDemaisAmbientes = 0;
-      interv.ambientesPrevistos.forEach(ap => {
-        const amb = ambientes.find(a => a.id === ap.ambienteId);
-        if (!amb || amb.categoria === 'sala-atividades' || amb.categoria === 'bercario') return;
-        const c = calcularCustoAmbiente(amb);
-        custoDemaisAmbientes += (c.mobiliario + c.equipamentos) * ap.quantidade;
-      });
-
-      if (custoDemaisAmbientes > 0) {
-        const refKeyKitComum = 'aq-pontual:KIT_AREAS_COMUNS';
-        const manualKitComum = hasManualOverride(manualAquisicoes, interv.id, refKeyKitComum);
-        if (manualKitComum) {
-          aquisicoes.push({ ...manualKitComum });
-        } else {
-          const valComum = Number(custoDemaisAmbientes.toFixed(2));
-          aquisicoes.push({
-            id: `aq-kit-comuns-${interv.id}`,
-            categoria: 'aquisicao',
-            tipoAquisicao: 'pontual_implantacao',
-            subcategoriaAquisicao: 'mobiliario_equipamento',
-            intervencaoCusteioId: interv.id,
-            catalogoRefId: refKeyKitComum,
-            descricao: 'MOBILIÁRIO E EQUIPAMENTOS — COPA, REFEITÓRIO, FRALDÁRIOS E PLAYGROUND',
-            criterioCalculo: 'por_unidade',
-            fatorProporcional: 1,
-            numeradorProporcao: 1,
-            denominadorProporcao: 1,
-            unidadeProporcao: 'unid.',
-            memoriaCalculo: 'Implantação única dos ambientes coletivos e administrativos da nova unidade',
-            naturezaCusto: 'exclusivo_intervencao',
-            periodicidade: 'unica',
-            unidadeMedida: 'KIT',
-            quantidade: 1,
-            valorUnitario: valComum,
-            dataInicio: startItemYM,
-            dataFim: startItemYM,
-            ocorrenciasNoPeriodo: 0,
-            valorAnualizado: valComum,
-            valorTotalProjetado: 0,
-            origemCalculo: 'automatico',
-            quantidadeOriginal: 1,
-            valorUnitarioOriginal: valComum,
-          });
-        }
-      }
-    }
-
-    // B.2. Aquisições Recorrentes Anuais (Merenda, Material Pedagógico, Higiene, EPI, Gás)
+    // ── B. AQUISIÇÕES ANUAIS DE CONSUMO (conforme configurado no Modelo da Creche) ──
+    // Nota: Mobiliário e Equipamentos dos Ambientes pertencem à implantação física da Obra/Construção (CAPEX)
+    // e ficam separados em Ambientes do Modelo / Plano de Expansão, não sendo misturados aqui em Aquisições.
     const capBaseModelo = Math.max(1, modeloAssociado?.capacidadeAlunos || vagasBaseRefIncremental);
     const profBaseModelo = Math.max(
       1,
@@ -1282,12 +1298,13 @@ export function gerarEstimativaItensProporcionais(
     });
   }
 
-  return { servicos, aquisicoes, pessoal };
+  return { mobiliario, servicos, aquisicoes, pessoal };
 }
 
 // ─── Projeção Temporal e Financeira (Mês a Mês / Ano a Ano) ────────────────
 
 export interface ResultadoProjecaoCusteio {
+  mobiliario: ItemCusteioMobiliario[];
   servicos: ItemCusteioServico[];
   aquisicoes: ItemCusteioAquisicao[];
   pessoal: ItemCusteioPessoal[];
@@ -1324,7 +1341,8 @@ export function calcularBaselineAutomaticoPeriodo(
       taxaReajusteAnualAquisicoes: 0,
       taxaReajusteAnualPessoal: 0,
     },
-    0 // evita recursão
+    0, // evita recursão
+    autoGerados.mobiliario
   );
   return projBase.resumoFinanceiro.totalGeralPeriodo;
 }
@@ -1337,11 +1355,25 @@ export function calcularProjecaoPlanoCusteio(
   aquisicoesIn: ItemCusteioAquisicao[],
   pessoalIn: ItemCusteioPessoal[],
   parametros: ParametrosSimulacaoCusteio,
-  totalInicialAutomaticoRef?: number
+  totalInicialAutomaticoRef?: number,
+  mobiliarioIn?: ItemCusteioMobiliario[]
 ): ResultadoProjecaoCusteio {
   const mesesPlano = listMonthsBetween(dataInicio, dataFim);
   const { year: anoBase } = parseYM(dataInicio);
   const mapInterv = new Map(intervencoes.map(i => [i.id, i]));
+
+  // Garantir que todo plano tenha os itens de Mobiliário & Equipamentos dos Ambientes do Modelo
+  const baseMobiliarioIn: ItemCusteioMobiliario[] =
+    mobiliarioIn && mobiliarioIn.length > 0
+      ? mobiliarioIn
+      : gerarEstimativaItensProporcionais(
+          intervencoes,
+          loadCatalogosCusteio(),
+          dataInicio,
+          dataFim,
+          undefined,
+          false
+        ).mobiliario;
 
   // Contagem real de profissionais por intervenção para atualizar itens automáticos "por_profissional"
   const profPorIntervMap = new Map<string, number>();
@@ -1381,22 +1413,61 @@ export function calcularProjecaoPlanoCusteio(
     row.porIntervencao[intervencaoId] = (row.porIntervencao[intervencaoId] || 0) + amount;
   };
 
-  const getEffectiveWindow = (intervencaoId: string, itemInicio: string, itemFim?: string) => {
+  // No Plano de Custeio a unidade ativa opera dentro do Período do Plano de Custeio.
+  // Se uma data legada estiver fora da vigência (ex.: 2030-01 num plano até 2029-12), alinha ao início do plano.
+  const getEffectiveWindow = (intervencaoId: string, _itemInicio?: string, _itemFim?: string) => {
     const interv = mapInterv.get(intervencaoId);
     if (interv && !interv.ativoNoCusteio) {
       return { active: false, start: dataInicio, end: dataInicio, opStart: dataInicio };
     }
-    const opStart = interv ? interv.dataInicioOperacao : dataInicio;
-    const opEnd = interv?.dataFimOperacao || dataFim;
-    const effStart = maxYM(dataInicio, opStart, itemInicio || dataInicio);
-    const effEnd = minYM(dataFim, opEnd, itemFim || dataFim);
+    const rawOpStart = interv?.dataInicioOperacao || dataInicio;
+    const opStart =
+      rawOpStart >= dataInicio && rawOpStart <= dataFim ? rawOpStart : dataInicio;
+    const rawOpEnd = interv?.dataFimOperacao || dataFim;
+    const opEnd =
+      rawOpEnd >= opStart && rawOpEnd <= dataFim ? rawOpEnd : dataFim;
     return {
-      active: effStart <= effEnd,
-      start: effStart,
-      end: effEnd,
+      active: opStart <= opEnd,
+      start: opStart,
+      end: opEnd,
       opStart,
     };
   };
+
+  // 0. Processar Mobiliário & Equipamentos dos Ambientes (Implantação Única)
+  const mobiliario: ItemCusteioMobiliario[] = baseMobiliarioIn.map(item => {
+    const interv = mapInterv.get(item.intervencaoCusteioId);
+    const isAtivo = !interv || interv.ativoNoCusteio;
+    const incluidoPorInterv =
+      !interv || interv.escopoImplantacaoMobiliario !== 'contemplado_no_capex_obra';
+    const incluidoEfetivo = Boolean(isAtivo && incluidoPorInterv && item.incluidoNoCusteio !== false);
+
+    const valorBase = item.valorUnitario * item.quantidade;
+    const win = getEffectiveWindow(item.intervencaoCusteioId, item.dataInicio, item.dataFim);
+    const mesImplantacao = win.start;
+
+    if (!incluidoEfetivo || !win.active || valorBase <= 0) {
+      return {
+        ...item,
+        incluidoNoCusteio: incluidoPorInterv && item.incluidoNoCusteio !== false,
+        ocorrenciasNoPeriodo: 0,
+        valorAnualizado: valorBase,
+        valorTotalProjetado: 0,
+      };
+    }
+
+    addToMonth(mesImplantacao, item.intervencaoCusteioId, 'aquisicoesPontuais', valorBase);
+
+    return {
+      ...item,
+      incluidoNoCusteio: true,
+      dataInicio: mesImplantacao,
+      dataFim: mesImplantacao,
+      ocorrenciasNoPeriodo: 1,
+      valorAnualizado: valorBase,
+      valorTotalProjetado: valorBase,
+    };
+  });
 
   const resolveFatorEfetivo = (item: ItemCusteioBase): {
     fator: number;
@@ -1496,373 +1567,746 @@ export function calcularProjecaoPlanoCusteio(
     };
   });
 
-  // 2. Processar Aquisições (Pontuais vs Recorrentes)
-  const aquisicoes = aquisicoesIn.map(item => {
-    const win = getEffectiveWindow(item.intervencaoCusteioId, item.dataInicio, item.dataFim);
+    // 2. Processar Aquisições (Consumo Anual do Modelo; filtra eventuais itens legados de mobiliário de ambientes)
+    const aquisicoes = aquisicoesIn
+      .filter(item => item.subcategoriaAquisicao !== 'mobiliario_equipamento' && item.tipoAquisicao !== 'pontual_implantacao')
+      .map(item => {
+        const win = getEffectiveWindow(item.intervencaoCusteioId, item.dataInicio, item.dataFim);
 
-    if (item.periodicidade === 'unica' || item.tipoAquisicao === 'pontual_implantacao') {
-      // Aquisições pontuais usam diretamente Quantidade Física × Valor Unitário (100%, sem fator redutor)
-      const valorUnicoBase = item.valorUnitario * item.quantidade;
-      const mesOcorrencia = maxYM(win.opStart, item.dataInicio || win.opStart);
-      const interv = mapInterv.get(item.intervencaoCusteioId);
-      const isAtivo = !interv || interv.ativoNoCusteio;
-      const dentroDoPeriodo = isAtivo && mesOcorrencia >= dataInicio && mesOcorrencia <= dataFim;
+        if (item.periodicidade === 'unica' || item.tipoAquisicao === 'pontual_implantacao') {
+          // Aquisições pontuais usam diretamente Quantidade Física × Valor Unitário (100%, sem fator redutor)
+          const valorUnicoBase = item.valorUnitario * item.quantidade;
+          const mesOcorrencia = maxYM(win.opStart, item.dataInicio || win.opStart);
+          const interv = mapInterv.get(item.intervencaoCusteioId);
+          const isAtivo = !interv || interv.ativoNoCusteio;
+          const dentroDoPeriodo = isAtivo && mesOcorrencia >= dataInicio && mesOcorrencia <= dataFim;
 
-      if (!dentroDoPeriodo || valorUnicoBase <= 0) {
+          if (!dentroDoPeriodo || valorUnicoBase <= 0) {
+            return {
+              ...item,
+              fatorProporcional: 1,
+              periodicidade: 'unica' as const,
+              ocorrenciasNoPeriodo: 0,
+              valorAnualizado: valorUnicoBase,
+              valorTotalProjetado: 0,
+            };
+          }
+
+          const { year } = parseYM(mesOcorrencia);
+          const inflFactor = Math.pow(
+            1 + (parametros.taxaReajusteAnualAquisicoes || 0) / 100,
+            Math.max(0, year - anoBase)
+          );
+          const totalUnico = valorUnicoBase * inflFactor;
+          addToMonth(mesOcorrencia, item.intervencaoCusteioId, 'aquisicoesPontuais', totalUnico);
+
+          return {
+            ...item,
+            fatorProporcional: 1,
+            periodicidade: 'unica' as const,
+            ocorrenciasNoPeriodo: 1,
+            valorAnualizado: valorUnicoBase,
+            valorTotalProjetado: totalUnico,
+          };
+        }
+
+        // Recorrente (anual / mensal)
+        const { fator: fatorEfetivo, numerador } = resolveFatorEfetivo(item);
+        const updatedItem =
+          numerador !== undefined
+            ? { ...item, fatorProporcional: fatorEfetivo, numeradorProporcao: numerador }
+            : item;
+
+        const baseAnual =
+          updatedItem.periodicidade === 'mensal'
+            ? updatedItem.valorUnitario * updatedItem.quantidade * fatorEfetivo * 12
+            : updatedItem.valorUnitario * updatedItem.quantidade * fatorEfetivo;
+
+        if (!win.active || baseAnual <= 0) {
+          return {
+            ...updatedItem,
+            ocorrenciasNoPeriodo: 0,
+            valorAnualizado: baseAnual,
+            valorTotalProjetado: 0,
+          };
+        }
+
+        const activeMonths = listMonthsBetween(win.start, win.end);
+        let totalItem = 0;
+        activeMonths.forEach(ym => {
+          const { year } = parseYM(ym);
+          const inflFactor = Math.pow(
+            1 + (parametros.taxaReajusteAnualAquisicoes || 0) / 100,
+            Math.max(0, year - anoBase)
+          );
+          const valMes = (baseAnual / 12) * inflFactor;
+          totalItem += valMes;
+          addToMonth(ym, updatedItem.intervencaoCusteioId, 'aquisicoesRecorrentes', valMes);
+        });
+
+        return {
+          ...updatedItem,
+          ocorrenciasNoPeriodo: activeMonths.length,
+          valorAnualizado: baseAnual,
+          valorTotalProjetado: totalItem,
+        };
+      });
+
+    // 3. Processar Pessoal e Folha de Pagamento
+    const pessoal = pessoalIn.map(item => {
+      const mensalUnit =
+        (item.remuneracaoBase || 0) + (item.auxilios || 0) + (item.patronalUnitario || 0);
+      const anualUnit = mensalUnit * 13.33; // 12 salários + 13º + 1/3 constitucional de férias
+      const fatorEfetivo =
+        item.criterioCalculo === 'percentual_utilizacao'
+          ? (item.percentualRateio ?? 0) / 100
+          : item.fatorProporcional ?? 1;
+
+      const baseAnual = anualUnit * item.quantidade * fatorEfetivo;
+      const win = getEffectiveWindow(item.intervencaoCusteioId, item.dataInicio, item.dataFim);
+
+      if (!win.active || baseAnual <= 0 || item.quantidade <= 0) {
         return {
           ...item,
-          fatorProporcional: 1,
-          periodicidade: 'unica' as const,
+          custoMensalUnitario: mensalUnit,
+          custoAnualUnitario: anualUnit,
+          valorUnitario: anualUnit,
           ocorrenciasNoPeriodo: 0,
-          valorAnualizado: valorUnicoBase,
+          valorAnualizado: baseAnual,
           valorTotalProjetado: 0,
         };
       }
 
-      const { year } = parseYM(mesOcorrencia);
-      const inflFactor = Math.pow(
-        1 + (parametros.taxaReajusteAnualAquisicoes || 0) / 100,
-        Math.max(0, year - anoBase)
-      );
-      const totalUnico = valorUnicoBase * inflFactor;
-      addToMonth(mesOcorrencia, item.intervencaoCusteioId, 'aquisicoesPontuais', totalUnico);
+      const activeMonths = listMonthsBetween(win.start, win.end);
+      let totalItem = 0;
+      activeMonths.forEach(ym => {
+        const { year } = parseYM(ym);
+        const inflFactor = Math.pow(
+          1 + (parametros.taxaReajusteAnualPessoal || 0) / 100,
+          Math.max(0, year - anoBase)
+        );
+        const valMes = (baseAnual / 12) * inflFactor;
+        totalItem += valMes;
+        addToMonth(ym, item.intervencaoCusteioId, 'pessoal', valMes);
+      });
 
-      return {
-        ...item,
-        fatorProporcional: 1,
-        periodicidade: 'unica' as const,
-        ocorrenciasNoPeriodo: 1,
-        valorAnualizado: valorUnicoBase,
-        valorTotalProjetado: totalUnico,
-      };
-    }
-
-    // Recorrente (anual / mensal)
-    const { fator: fatorEfetivo, numerador } = resolveFatorEfetivo(item);
-    const updatedItem =
-      numerador !== undefined
-        ? { ...item, fatorProporcional: fatorEfetivo, numeradorProporcao: numerador }
-        : item;
-
-    const baseAnual =
-      updatedItem.periodicidade === 'mensal'
-        ? updatedItem.valorUnitario * updatedItem.quantidade * fatorEfetivo * 12
-        : updatedItem.valorUnitario * updatedItem.quantidade * fatorEfetivo;
-
-    if (!win.active || baseAnual <= 0) {
-      return {
-        ...updatedItem,
-        ocorrenciasNoPeriodo: 0,
-        valorAnualizado: baseAnual,
-        valorTotalProjetado: 0,
-      };
-    }
-
-    const activeMonths = listMonthsBetween(win.start, win.end);
-    let totalItem = 0;
-    activeMonths.forEach(ym => {
-      const { year } = parseYM(ym);
-      const inflFactor = Math.pow(
-        1 + (parametros.taxaReajusteAnualAquisicoes || 0) / 100,
-        Math.max(0, year - anoBase)
-      );
-      const valMes = (baseAnual / 12) * inflFactor;
-      totalItem += valMes;
-      addToMonth(ym, updatedItem.intervencaoCusteioId, 'aquisicoesRecorrentes', valMes);
-    });
-
-    return {
-      ...updatedItem,
-      ocorrenciasNoPeriodo: activeMonths.length,
-      valorAnualizado: baseAnual,
-      valorTotalProjetado: totalItem,
-    };
-  });
-
-  // 3. Processar Pessoal e Folha de Pagamento
-  const pessoal = pessoalIn.map(item => {
-    const mensalUnit =
-      (item.remuneracaoBase || 0) + (item.auxilios || 0) + (item.patronalUnitario || 0);
-    const anualUnit = mensalUnit * 13.33; // 12 salários + 13º + 1/3 constitucional de férias
-    const fatorEfetivo =
-      item.criterioCalculo === 'percentual_utilizacao'
-        ? (item.percentualRateio ?? 0) / 100
-        : item.fatorProporcional ?? 1;
-
-    const baseAnual = anualUnit * item.quantidade * fatorEfetivo;
-    const win = getEffectiveWindow(item.intervencaoCusteioId, item.dataInicio, item.dataFim);
-
-    if (!win.active || baseAnual <= 0 || item.quantidade <= 0) {
       return {
         ...item,
         custoMensalUnitario: mensalUnit,
         custoAnualUnitario: anualUnit,
         valorUnitario: anualUnit,
-        ocorrenciasNoPeriodo: 0,
+        ocorrenciasNoPeriodo: activeMonths.length,
         valorAnualizado: baseAnual,
-        valorTotalProjetado: 0,
+        valorTotalProjetado: totalItem,
       };
-    }
-
-    const activeMonths = listMonthsBetween(win.start, win.end);
-    let totalItem = 0;
-    activeMonths.forEach(ym => {
-      const { year } = parseYM(ym);
-      const inflFactor = Math.pow(
-        1 + (parametros.taxaReajusteAnualPessoal || 0) / 100,
-        Math.max(0, year - anoBase)
-      );
-      const valMes = (baseAnual / 12) * inflFactor;
-      totalItem += valMes;
-      addToMonth(ym, item.intervencaoCusteioId, 'pessoal', valMes);
     });
 
-    return {
-      ...item,
-      custoMensalUnitario: mensalUnit,
-      custoAnualUnitario: anualUnit,
-      valorUnitario: anualUnit,
-      ocorrenciasNoPeriodo: activeMonths.length,
-      valorAnualizado: baseAnual,
-      valorTotalProjetado: totalItem,
-    };
-  });
+    const cronogramaMensal = Array.from(cronogramaMap.values());
 
-  const cronogramaMensal = Array.from(cronogramaMap.values());
-
-  // Agrupar Cronograma Anual
-  const anosMap = new Map<number, LinhaCronogramaAnual>();
-  cronogramaMensal.forEach(m => {
-    let row = anosMap.get(m.ano);
-    if (!row) {
-      row = {
-        ano: m.ano,
-        mesesNoPlano: 0,
-        servicos: 0,
-        aquisicoesPontuais: 0,
-        aquisicoesRecorrentes: 0,
-        pessoal: 0,
-        total: 0,
-        porIntervencao: {},
-      };
-      anosMap.set(m.ano, row);
-    }
-    row.mesesNoPlano += 1;
-    row.servicos += m.servicos;
-    row.aquisicoesPontuais += m.aquisicoesPontuais;
-    row.aquisicoesRecorrentes += m.aquisicoesRecorrentes;
-    row.pessoal += m.pessoal;
-    row.total += m.total;
-    Object.entries(m.porIntervencao).forEach(([intId, val]) => {
-      row!.porIntervencao[intId] = (row!.porIntervencao[intId] || 0) + val;
+    // Agrupar Cronograma Anual
+    const anosMap = new Map<number, LinhaCronogramaAnual>();
+    cronogramaMensal.forEach(m => {
+      let row = anosMap.get(m.ano);
+      if (!row) {
+        row = {
+          ano: m.ano,
+          mesesNoPlano: 0,
+          servicos: 0,
+          aquisicoesPontuais: 0,
+          aquisicoesRecorrentes: 0,
+          pessoal: 0,
+          total: 0,
+          porIntervencao: {},
+        };
+        anosMap.set(m.ano, row);
+      }
+      row.mesesNoPlano += 1;
+      row.servicos += m.servicos;
+      row.aquisicoesPontuais += m.aquisicoesPontuais;
+      row.aquisicoesRecorrentes += m.aquisicoesRecorrentes;
+      row.pessoal += m.pessoal;
+      row.total += m.total;
+      Object.entries(m.porIntervencao).forEach(([intId, val]) => {
+        row!.porIntervencao[intId] = (row!.porIntervencao[intId] || 0) + val;
+      });
     });
-  });
-  const cronogramaAnual = Array.from(anosMap.values()).sort((a, b) => a.ano - b.ano);
+    const cronogramaAnual = Array.from(anosMap.values()).sort((a, b) => a.ano - b.ano);
 
-  // Resumo por Intervenção / Unidade Escolar
-  const resumoPorIntervencao: ResumoPorIntervencao[] = intervencoes.map(interv => {
-    const srv = servicos
-      .filter(s => s.intervencaoCusteioId === interv.id)
-      .reduce((acc, s) => acc + s.valorTotalProjetado, 0);
-    const aqPont = aquisicoes
-      .filter(a => a.intervencaoCusteioId === interv.id && a.tipoAquisicao === 'pontual_implantacao')
-      .reduce((acc, a) => acc + a.valorTotalProjetado, 0);
-    const aqRec = aquisicoes
-      .filter(a => a.intervencaoCusteioId === interv.id && a.tipoAquisicao === 'recorrente_manutencao')
-      .reduce((acc, a) => acc + a.valorTotalProjetado, 0);
-    const pes = pessoal
-      .filter(p => p.intervencaoCusteioId === interv.id)
-      .reduce((acc, p) => acc + p.valorTotalProjetado, 0);
-
-    const custoAnualizadoRegime =
-      servicos
-        .filter(s => s.intervencaoCusteioId === interv.id && s.periodicidade !== 'unica')
-        .reduce((acc, s) => acc + s.valorAnualizado, 0) +
-      aquisicoes
+    // Resumo por Intervenção / Unidade Escolar
+    const resumoPorIntervencao: ResumoPorIntervencao[] = intervencoes.map(interv => {
+      const mob = mobiliario
+        .filter(m => m.intervencaoCusteioId === interv.id)
+        .reduce((acc, m) => acc + m.valorTotalProjetado, 0);
+      const custoBaseMobiliario = mobiliario
+        .filter(m => m.intervencaoCusteioId === interv.id)
+        .reduce((acc, m) => acc + m.valorAnualizado, 0);
+      const srv = servicos
+        .filter(s => s.intervencaoCusteioId === interv.id)
+        .reduce((acc, s) => acc + s.valorTotalProjetado, 0);
+      const aqRec = aquisicoes
         .filter(a => a.intervencaoCusteioId === interv.id && a.tipoAquisicao === 'recorrente_manutencao')
-        .reduce((acc, a) => acc + a.valorAnualizado, 0) +
-      pessoal
+        .reduce((acc, a) => acc + a.valorTotalProjetado, 0);
+      const pes = pessoal
+        .filter(p => p.intervencaoCusteioId === interv.id)
+        .reduce((acc, p) => acc + p.valorTotalProjetado, 0);
+
+      const custoAnualServicos = servicos
+        .filter(s => s.intervencaoCusteioId === interv.id && s.periodicidade !== 'unica')
+        .reduce((acc, s) => acc + s.valorAnualizado, 0);
+      const custoAnualAquisicoes = aquisicoes
+        .filter(a => a.intervencaoCusteioId === interv.id && a.tipoAquisicao === 'recorrente_manutencao')
+        .reduce((acc, a) => acc + a.valorAnualizado, 0);
+      const custoAnualPessoal = pessoal
         .filter(p => p.intervencaoCusteioId === interv.id)
         .reduce((acc, p) => acc + p.valorAnualizado, 0);
 
-    const effStart = maxYM(dataInicio, interv.dataInicioOperacao);
-    const effEnd = minYM(dataFim, interv.dataFimOperacao || dataFim);
-    const mesesOp =
-      interv.ativoNoCusteio && effStart <= effEnd ? listMonthsBetween(effStart, effEnd).length : 0;
-    const totalPeriodo = srv + aqPont + aqRec + pes;
+      const custoAnualizadoRegime =
+        custoAnualServicos + custoAnualAquisicoes + custoAnualPessoal;
+
+      const win = getEffectiveWindow(interv.id);
+      const mesesOp =
+        interv.ativoNoCusteio && win.active ? listMonthsBetween(win.start, win.end).length : 0;
+      const totalPeriodo = mob + srv + aqRec + pes;
+
+      return {
+        intervencaoId: interv.id,
+        nome: interv.nomeUnidadeOuObra,
+        escopo: interv.escopo,
+        subtipo: interv.subtipoIntervencao,
+        dataInicioOperacao: win.opStart,
+        mesesOperacaoNoPeriodo: mesesOp,
+        salas: interv.ativoNoCusteio ? interv.salasAdicionais : 0,
+        vagas: interv.ativoNoCusteio ? interv.vagasAdicionais : 0,
+        turmas: interv.ativoNoCusteio ? interv.turmasPrevistas : 0,
+        mobiliario: mob,
+        custoBaseMobiliario,
+        servicos: srv,
+        aquisicoesPontuais: mob,
+        aquisicoesRecorrentes: aqRec,
+        pessoal: pes,
+        totalPeriodo,
+        custoAnualServicos: interv.ativoNoCusteio ? custoAnualServicos : 0,
+        custoAnualAquisicoes: interv.ativoNoCusteio ? custoAnualAquisicoes : 0,
+        custoAnualPessoal: interv.ativoNoCusteio ? custoAnualPessoal : 0,
+        custoAnualizadoRegime: interv.ativoNoCusteio ? custoAnualizadoRegime : 0,
+        custoPorVagaAno:
+          interv.ativoNoCusteio && interv.vagasAdicionais > 0
+            ? custoAnualizadoRegime / interv.vagasAdicionais
+            : 0,
+      };
+    });
+
+    // Totais consolidados (100% idênticos à soma das linhas de resumoPorIntervencao)
+    const totalMobiliarioPeriodo = mobiliario.reduce((s, i) => s + i.valorTotalProjetado, 0);
+    const totalServicosPeriodo = servicos.reduce((s, i) => s + i.valorTotalProjetado, 0);
+    const totalAquisicoesPontuaisPeriodo = totalMobiliarioPeriodo;
+    const totalAquisicoesRecorrentesPeriodo = aquisicoes
+      .filter(a => a.tipoAquisicao === 'recorrente_manutencao')
+      .reduce((s, i) => s + i.valorTotalProjetado, 0);
+    const totalPessoalPeriodo = pessoal.reduce((s, i) => s + i.valorTotalProjetado, 0);
+    const totalGeralPeriodo =
+      totalMobiliarioPeriodo +
+      totalServicosPeriodo +
+      totalAquisicoesRecorrentesPeriodo +
+      totalPessoalPeriodo;
+
+    const numMesesPlano = Math.max(1, mesesPlano.length);
+    const custoMedioMensal = totalGeralPeriodo / numMesesPlano;
+    const custoMedioAnual = custoMedioMensal * 12;
+
+    const intervAtivas = intervencoes.filter(i => i.ativoNoCusteio);
+    const totalVagasContempladas = intervAtivas.reduce((s, i) => s + i.vagasAdicionais, 0);
+    const totalSalasContempladas = intervAtivas.reduce((s, i) => s + i.salasAdicionais, 0);
+    const totalProfissionais = pessoal
+      .filter(p => {
+        const iv = mapInterv.get(p.intervencaoCusteioId);
+        return !iv || iv.ativoNoCusteio;
+      })
+      .reduce((s, p) => s + p.quantidade, 0);
+
+    const custoAnualRegimePleno = resumoPorIntervencao.reduce(
+      (s, r) => s + r.custoAnualizadoRegime,
+      0
+    );
+    const custoPorVagaAdicionalAno =
+      totalVagasContempladas > 0 ? custoAnualRegimePleno / totalVagasContempladas : 0;
+
+    const baselineCalculado =
+      totalInicialAutomaticoRef !== undefined
+        ? totalInicialAutomaticoRef === 0
+          ? totalGeralPeriodo
+          : totalInicialAutomaticoRef
+        : calcularBaselineAutomaticoPeriodo(dataInicio, dataFim, intervencoes);
+
+    const resumoFinanceiro: ResumoFinanceiroCusteio = {
+      totalMobiliarioPeriodo,
+      totalServicosPeriodo,
+      totalAquisicoesPontuaisPeriodo,
+      totalAquisicoesRecorrentesPeriodo,
+      totalPessoalPeriodo,
+      totalGeralPeriodo,
+      custoAnualRegimePleno,
+      custoMedioAnual,
+      custoMedioMensal,
+      custoPorVagaAdicionalAno,
+      totalVagasContempladas,
+      totalSalasContempladas,
+      totalProfissionais,
+      totalInicialAutomatico: baselineCalculado,
+    };
 
     return {
-      intervencaoId: interv.id,
-      nome: interv.nomeUnidadeOuObra,
-      escopo: interv.escopo,
-      subtipo: interv.subtipoIntervencao,
-      dataInicioOperacao: interv.dataInicioOperacao,
-      mesesOperacaoNoPeriodo: mesesOp,
-      salas: interv.ativoNoCusteio ? interv.salasAdicionais : 0,
-      vagas: interv.ativoNoCusteio ? interv.vagasAdicionais : 0,
-      turmas: interv.ativoNoCusteio ? interv.turmasPrevistas : 0,
-      servicos: srv,
-      aquisicoesPontuais: aqPont,
-      aquisicoesRecorrentes: aqRec,
-      pessoal: pes,
-      totalPeriodo,
-      custoAnualizadoRegime: interv.ativoNoCusteio ? custoAnualizadoRegime : 0,
-      custoPorVagaAno:
-        interv.ativoNoCusteio && interv.vagasAdicionais > 0
-          ? custoAnualizadoRegime / interv.vagasAdicionais
-          : 0,
+      mobiliario,
+      servicos,
+      aquisicoes,
+      pessoal,
+      cronogramaMensal,
+      cronogramaAnual,
+      resumoPorIntervencao,
+      resumoFinanceiro,
     };
-  });
-
-  // Totais consolidados
-  const totalServicosPeriodo = servicos.reduce((s, i) => s + i.valorTotalProjetado, 0);
-  const totalAquisicoesPontuaisPeriodo = aquisicoes
-    .filter(a => a.tipoAquisicao === 'pontual_implantacao')
-    .reduce((s, i) => s + i.valorTotalProjetado, 0);
-  const totalAquisicoesRecorrentesPeriodo = aquisicoes
-    .filter(a => a.tipoAquisicao === 'recorrente_manutencao')
-    .reduce((s, i) => s + i.valorTotalProjetado, 0);
-  const totalPessoalPeriodo = pessoal.reduce((s, i) => s + i.valorTotalProjetado, 0);
-  const totalGeralPeriodo =
-    totalServicosPeriodo +
-    totalAquisicoesPontuaisPeriodo +
-    totalAquisicoesRecorrentesPeriodo +
-    totalPessoalPeriodo;
-
-  const numMesesPlano = Math.max(1, mesesPlano.length);
-  const custoMedioMensal = totalGeralPeriodo / numMesesPlano;
-  const custoMedioAnual = custoMedioMensal * 12; // Sempre consistente p/ qualquer duração (< ou >= 12 meses)
-
-  const intervAtivas = intervencoes.filter(i => i.ativoNoCusteio);
-  const totalVagasContempladas = intervAtivas.reduce((s, i) => s + i.vagasAdicionais, 0);
-  const totalSalasContempladas = intervAtivas.reduce((s, i) => s + i.salasAdicionais, 0);
-  const totalProfissionais = pessoal
-    .filter(p => {
-      const iv = mapInterv.get(p.intervencaoCusteioId);
-      return !iv || iv.ativoNoCusteio;
-    })
-    .reduce((s, p) => s + p.quantidade, 0);
-
-  const custoAnualRegimePleno = resumoPorIntervencao.reduce(
-    (s, r) => s + r.custoAnualizadoRegime,
-    0
-  );
-  const custoPorVagaAdicionalAno =
-    totalVagasContempladas > 0 ? custoAnualRegimePleno / totalVagasContempladas : 0;
-
-  const baselineCalculado =
-    totalInicialAutomaticoRef !== undefined
-      ? totalInicialAutomaticoRef === 0
-        ? totalGeralPeriodo
-        : totalInicialAutomaticoRef
-      : calcularBaselineAutomaticoPeriodo(dataInicio, dataFim, intervencoes);
-
-  const resumoFinanceiro: ResumoFinanceiroCusteio = {
-    totalServicosPeriodo,
-    totalAquisicoesPontuaisPeriodo,
-    totalAquisicoesRecorrentesPeriodo,
-    totalPessoalPeriodo,
-    totalGeralPeriodo,
-    custoAnualRegimePleno,
-    custoMedioAnual,
-    custoMedioMensal,
-    custoPorVagaAdicionalAno,
-    totalVagasContempladas,
-    totalSalasContempladas,
-    totalProfissionais,
-    totalInicialAutomatico: baselineCalculado,
-  };
-
-  return {
-    servicos,
-    aquisicoes,
-    pessoal,
-    cronogramaMensal,
-    cronogramaAnual,
-    resumoPorIntervencao,
-    resumoFinanceiro,
-  };
-}
+  }
 
 export function criarNovoPlanoCusteioAutomatico(params: {
-  planoExpansao: ExpansionPlan;
-  nome: string;
-  descricao: string;
-  cenarioLabel?: string;
-  dataInicio: string; // YYYY-MM
-  dataFim: string;    // YYYY-MM
-  responsavelNome?: string;
-}): PlanoCusteio {
-  const catalogos = loadCatalogosCusteio();
-  const { year: anoInicio } = parseYM(params.dataInicio);
-  const { year: anoFim } = parseYM(params.dataFim);
+    planoExpansao: ExpansionPlan;
+    nome: string;
+    descricao: string;
+    cenarioLabel?: string;
+    dataInicio: string; // YYYY-MM
+    dataFim: string;    // YYYY-MM
+    responsavelNome?: string;
+  }): PlanoCusteio {
+    const catalogos = loadCatalogosCusteio();
+    const { year: anoInicio } = parseYM(params.dataInicio);
+    const { year: anoFim } = parseYM(params.dataFim);
 
-  const intervencoes = extrairIntervencoesDoPlano(
-    params.planoExpansao,
-    catalogos,
-    params.dataInicio
-  );
+    const intervencoes = extrairIntervencoesDoPlano(
+      params.planoExpansao,
+      catalogos,
+      params.dataInicio
+    );
 
-  const configSalas: ConfiguracaoSala[] = intervencoes.map(iv => ({
-    id: `cs-${iv.id}`,
-    origem: iv.origemTipo,
-    origemId: iv.origemId,
-    nome: iv.nomeUnidadeOuObra,
-    numeroTurmas: iv.turmasPrevistas,
-    etapas: iv.etapasAtendidas,
-  }));
+    const configSalas: ConfiguracaoSala[] = intervencoes.map(iv => ({
+      id: `cs-${iv.id}`,
+      origem: iv.origemTipo,
+      origemId: iv.origemId,
+      nome: iv.nomeUnidadeOuObra,
+      numeroTurmas: iv.turmasPrevistas,
+      etapas: iv.etapasAtendidas,
+    }));
 
-  const gerados = gerarEstimativaItensProporcionais(
-    intervencoes,
-    catalogos,
-    params.dataInicio,
-    params.dataFim,
-    undefined,
-    false
-  );
+    const gerados = gerarEstimativaItensProporcionais(
+      intervencoes,
+      catalogos,
+      params.dataInicio,
+      params.dataFim,
+      undefined,
+      false
+    );
 
-  const parametrosSimulacao: ParametrosSimulacaoCusteio = {
-    taxaReajusteAnualServicos: 0,
-    taxaReajusteAnualAquisicoes: 0,
-    taxaReajusteAnualPessoal: 0,
-    observacoesCenario: '',
-  };
+    const parametrosSimulacao: ParametrosSimulacaoCusteio = {
+      taxaReajusteAnualServicos: 0,
+      taxaReajusteAnualAquisicoes: 0,
+      taxaReajusteAnualPessoal: 0,
+      observacoesCenario: '',
+      valorAlunoAnoFundebIntegral: 10250,
+      valorAlunoAnoFundebParcial: 6300,
+      percentualMatriculasTempoIntegral: 80,
+      repassePerCapitaPnaeAno: 540,
+    };
 
-  const projecao = calcularProjecaoPlanoCusteio(
-    params.dataInicio,
-    params.dataFim,
-    intervencoes,
-    gerados.servicos,
-    gerados.aquisicoes,
-    gerados.pessoal,
-    parametrosSimulacao,
-    0
-  );
+    const projecao = calcularProjecaoPlanoCusteio(
+      params.dataInicio,
+      params.dataFim,
+      intervencoes,
+      gerados.servicos,
+      gerados.aquisicoes,
+      gerados.pessoal,
+      parametrosSimulacao,
+      0,
+      gerados.mobiliario
+    );
 
-  const hoje = new Date().toISOString().split('T')[0];
+    const hoje = new Date().toISOString().split('T')[0];
 
-  return {
-    id: `pc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    planoExpansaoId: params.planoExpansao.id,
-    nome: params.nome,
-    descricao: params.descricao,
-    cenarioLabel: params.cenarioLabel || 'Cenário Base',
-    versao: 1,
-    status: 'Em Análise',
-    dataInicio: params.dataInicio,
-    dataFim: params.dataFim,
-    anoInicio,
-    anoFim,
-    responsavelNome:
-      params.responsavelNome || params.planoExpansao.responsible || 'Equipe Técnica SEMED',
-    dataCriacao: hoje,
-    dataAtualizacao: hoje,
-    intervencoes,
-    configSalas,
-    servicos: projecao.servicos,
-    aquisicoes: projecao.aquisicoes,
-    pessoal: projecao.pessoal,
-    parametrosSimulacao,
-    resumoFinanceiro: projecao.resumoFinanceiro,
-  };
-}
+    return {
+      id: `pc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      planoExpansaoId: params.planoExpansao.id,
+      nome: params.nome,
+      descricao: params.descricao,
+      cenarioLabel: params.cenarioLabel || 'Cenário Base',
+      versao: 1,
+      status: 'Em Análise',
+      dataInicio: params.dataInicio,
+      dataFim: params.dataFim,
+      anoInicio,
+      anoFim,
+      responsavelNome:
+        params.responsavelNome || params.planoExpansao.responsible || 'Equipe Técnica SEMED',
+      dataCriacao: hoje,
+      dataAtualizacao: hoje,
+      intervencoes,
+      configSalas,
+      mobiliario: projecao.mobiliario,
+      servicos: projecao.servicos,
+      aquisicoes: projecao.aquisicoes,
+      pessoal: projecao.pessoal,
+      parametrosSimulacao,
+      resumoFinanceiro: projecao.resumoFinanceiro,
+    };
+  }
+
+  // ─── Sincronização Reativa Expansão ↔ Custeio e Sustentabilidade Fiscal ────
+
+  export interface DivergenciaExpansaoCusteio {
+    tipo:
+    | 'nova_intervencao'
+    | 'intervencao_removida'
+    | 'mudanca_fisica'
+    | 'mudanca_cronograma'
+    | 'operacao_anterior_vigencia';
+    origemId: string;
+    nome: string;
+    detalhe: string;
+    dataSugeridaInicioCusteio?: string;
+  }
+
+  export function detectarDivergenciasExpansaoCusteio(
+    planExpansao: ExpansionPlan | undefined,
+    planoCusteio: PlanoCusteio,
+    catalogos?: CatalogosCusteio
+  ): DivergenciaExpansaoCusteio[] {
+    if (!planExpansao) return [];
+    const cats = catalogos || loadCatalogosCusteio();
+    const extraidas = extrairIntervencoesDoPlano(
+      planExpansao,
+      cats,
+      planoCusteio.dataInicio,
+      planoCusteio.intervencoes,
+      true
+    );
+
+    const divergencias: DivergenciaExpansaoCusteio[] = [];
+    const mapAtuais = new Map(
+      planoCusteio.intervencoes.map(iv => [`${iv.origemTipo}:${iv.origemId}`, iv])
+    );
+    const mapNovas = new Map(extraidas.map(iv => [`${iv.origemTipo}:${iv.origemId}`, iv]));
+
+    // 1. Novas intervenções ou mudanças nas existentes
+    extraidas.forEach(nova => {
+      const key = `${nova.origemTipo}:${nova.origemId}`;
+      const atual = mapAtuais.get(key);
+      if (!atual) {
+        divergencias.push({
+          tipo: 'nova_intervencao',
+          origemId: nova.origemId,
+          nome: nova.nomeUnidadeOuObra,
+          detalhe: `Nova intervenção cadastrada no Plano de Expansão (+${nova.salasAdicionais} salas, +${nova.vagasAdicionais} vagas).`,
+        });
+        return;
+      }
+
+      if (
+        atual.salasAdicionais !== nova.salasAdicionais ||
+        atual.vagasAdicionais !== nova.vagasAdicionais ||
+        atual.modeloCrecheId !== nova.modeloCrecheId
+      ) {
+        divergencias.push({
+          tipo: 'mudanca_fisica',
+          origemId: nova.origemId,
+          nome: nova.nomeUnidadeOuObra,
+          detalhe: `Escopo físico alterado no Plano de Expansão: de ${atual.salasAdicionais} salas / ${atual.vagasAdicionais} vagas para ${nova.salasAdicionais} salas / ${nova.vagasAdicionais} vagas.`,
+        });
+      }
+    });
+
+    // 2. Intervenções removidas do Plano de Expansão
+    planoCusteio.intervencoes.forEach(atual => {
+      const key = `${atual.origemTipo}:${atual.origemId}`;
+      if (!mapNovas.has(key)) {
+        divergencias.push({
+          tipo: 'intervencao_removida',
+          origemId: atual.origemId,
+          nome: atual.nomeUnidadeOuObra,
+          detalhe: `Esta obra/ação foi removida do Plano de Expansão, mas ainda consta no Plano de Custeio.`,
+        });
+      }
+    });
+
+    return divergencias;
+  }
+
+  export function sincronizarPlanoCusteioComExpansao(
+    planoCusteio: PlanoCusteio,
+    planExpansao: ExpansionPlan,
+    catalogos?: CatalogosCusteio,
+    ajustarDataInicioCusteio: boolean = false
+  ): PlanoCusteio {
+    const cats = catalogos || loadCatalogosCusteio();
+    const novasIntervencoes = extrairIntervencoesDoPlano(
+      planExpansao,
+      cats,
+      planoCusteio.dataInicio,
+      planoCusteio.intervencoes,
+      true
+    );
+
+    let dataInicio = planoCusteio.dataInicio;
+    if (ajustarDataInicioCusteio) {
+      const ativas = novasIntervencoes.filter(i => i.ativoNoCusteio);
+      if (ativas.length > 0) {
+        const menorOp = minYM(...ativas.map(i => i.dataInicioOperacao));
+        if (menorOp < dataInicio) {
+          dataInicio = menorOp;
+        }
+      }
+    }
+
+    const validIds = new Set(novasIntervencoes.map(i => i.id));
+    validIds.add('global');
+
+    const gerados = gerarEstimativaItensProporcionais(
+      novasIntervencoes,
+      cats,
+      dataInicio,
+      planoCusteio.dataFim,
+      {
+        mobiliario: (planoCusteio.mobiliario || []).filter(m => validIds.has(m.intervencaoCusteioId)),
+        servicos: planoCusteio.servicos.filter(s => validIds.has(s.intervencaoCusteioId)),
+        aquisicoes: planoCusteio.aquisicoes.filter(a => validIds.has(a.intervencaoCusteioId)),
+        pessoal: planoCusteio.pessoal.filter(p => validIds.has(p.intervencaoCusteioId)),
+      },
+      true
+    );
+
+    const baselineNovo = calcularBaselineAutomaticoPeriodo(
+      dataInicio,
+      planoCusteio.dataFim,
+      novasIntervencoes,
+      cats
+    );
+
+    const projecao = calcularProjecaoPlanoCusteio(
+      dataInicio,
+      planoCusteio.dataFim,
+      novasIntervencoes,
+      gerados.servicos,
+      gerados.aquisicoes,
+      gerados.pessoal,
+      planoCusteio.parametrosSimulacao,
+      baselineNovo,
+      gerados.mobiliario
+    );
+
+    const { year: anoInicio } = parseYM(dataInicio);
+    const { year: anoFim } = parseYM(planoCusteio.dataFim);
+
+    return {
+      ...planoCusteio,
+      dataInicio,
+      anoInicio,
+      anoFim,
+      dataAtualizacao: new Date().toISOString().split('T')[0],
+      intervencoes: novasIntervencoes,
+      configSalas: novasIntervencoes.map(iv => ({
+        id: `cs-${iv.id}`,
+        origem: iv.origemTipo,
+        origemId: iv.origemId,
+        nome: iv.nomeUnidadeOuObra,
+        numeroTurmas: iv.turmasPrevistas,
+        etapas: iv.etapasAtendidas,
+      })),
+      mobiliario: projecao.mobiliario,
+      servicos: projecao.servicos,
+      aquisicoes: projecao.aquisicoes,
+      pessoal: projecao.pessoal,
+      resumoFinanceiro: projecao.resumoFinanceiro,
+    };
+  }
+
+  export interface LinhaFluxoIntegradoTco {
+    ano: number;
+    capexObrasAcoes: number;
+    opexImplantacao: number;
+    opexServicos: number;
+    opexAquisicoesRecorrentes: number;
+    opexPessoal: number;
+    totalOpex: number;
+    totalTcoMunicipal: number;
+    vagasEmOperacaoMediaAno: number;
+    receitaIncrementalFundeb: number;
+    receitaIncrementalPnae: number;
+    receitaVinculadaTotal: number;
+    esforcoLiquidoTesouroMde: number;
+  }
+
+  export interface ResumoSustentabilidadeFiscal {
+    valorAlunoAnoFundebIntegral: number;
+    valorAlunoAnoFundebParcial: number;
+    percentualMatriculasTempoIntegral: number;
+    repassePerCapitaPnaeAno: number;
+    valorMedioAlunoAnoFundeb: number;
+    repasseAnualFundebRegime: number;
+    repasseAnualPnaeRegime: number;
+    receitaVinculadaAnualRegime: number;
+    custoAnualRegimePleno: number;
+    esforcoLiquidoTesouroMdeRegime: number;
+    coberturaVinculadaRegimePct: number;
+    folhaMagisterioAnualRegime: number;
+    indiceMagisterioFundebPct: number;
+    totalCapexPlanoExpansao: number;
+    totalOpexPeriodoCusteio: number;
+    totalTcoGlobal: number;
+    fluxoIntegradoAnual: LinhaFluxoIntegradoTco[];
+  }
+
+  export function calcularSustentabilidadeFiscalCusteio(
+    planoCusteio: PlanoCusteio,
+    projecao: ResultadoProjecaoCusteio,
+    planExpansao?: ExpansionPlan
+  ): ResumoSustentabilidadeFiscal {
+    const params = planoCusteio.parametrosSimulacao;
+    const valorAlunoAnoFundebIntegral = params.valorAlunoAnoFundebIntegral ?? 10250;
+    const valorAlunoAnoFundebParcial = params.valorAlunoAnoFundebParcial ?? 6300;
+    const percentualMatriculasTempoIntegral = params.percentualMatriculasTempoIntegral ?? 80;
+    const repassePerCapitaPnaeAno = params.repassePerCapitaPnaeAno ?? 540;
+
+    const fracIntegral = Math.max(0, Math.min(100, percentualMatriculasTempoIntegral)) / 100;
+    const valorMedioAlunoAnoFundeb =
+      valorAlunoAnoFundebIntegral * fracIntegral +
+      valorAlunoAnoFundebParcial * (1 - fracIntegral);
+
+    const totalVagasAtivas = projecao.resumoFinanceiro.totalVagasContempladas;
+    const repasseAnualFundebRegime = totalVagasAtivas * valorMedioAlunoAnoFundeb;
+    const repasseAnualPnaeRegime = totalVagasAtivas * repassePerCapitaPnaeAno;
+    const receitaVinculadaAnualRegime = repasseAnualFundebRegime + repasseAnualPnaeRegime;
+
+    const custoAnualRegimePleno = projecao.resumoFinanceiro.custoAnualRegimePleno;
+    const esforcoLiquidoTesouroMdeRegime = Math.max(
+      0,
+      custoAnualRegimePleno - receitaVinculadaAnualRegime
+    );
+    const coberturaVinculadaRegimePct =
+      custoAnualRegimePleno > 0
+        ? (receitaVinculadaAnualRegime / custoAnualRegimePleno) * 100
+        : 0;
+
+    const mapInterv = new Map(planoCusteio.intervencoes.map(i => [i.id, i]));
+    const folhaMagisterioAnualRegime = projecao.pessoal.reduce((acc, p) => {
+      const iv = mapInterv.get(p.intervencaoCusteioId);
+      if (iv && !iv.ativoNoCusteio) return acc;
+      if (p.categoriaCargo === 'pedagogico') {
+        return acc + p.valorAnualizado;
+      }
+      return acc;
+    }, 0);
+
+    const indiceMagisterioFundebPct =
+      repasseAnualFundebRegime > 0
+        ? (folhaMagisterioAnualRegime / repasseAnualFundebRegime) * 100
+        : 0;
+
+    // Mapear CAPEX por ano do Plano de Expansão
+    const capexPorAno = new Map<number, number>();
+    let totalCapexPlanoExpansao = 0;
+    if (planExpansao) {
+      (planExpansao.obras || []).forEach(o => {
+        (o.desembolsoPorAno || []).forEach(d => {
+          capexPorAno.set(d.ano, (capexPorAno.get(d.ano) || 0) + (d.valor || 0));
+          totalCapexPlanoExpansao += d.valor || 0;
+        });
+      });
+      (planExpansao.acoesUnidades || []).forEach(a => {
+        (a.desembolsoPorAno || []).forEach(d => {
+          capexPorAno.set(d.ano, (capexPorAno.get(d.ano) || 0) + (d.valor || 0));
+          totalCapexPlanoExpansao += d.valor || 0;
+        });
+      });
+    }
+
+    const anoMin = Math.min(
+      planExpansao?.periodoInicio || planoCusteio.anoInicio,
+      planoCusteio.anoInicio
+    );
+    const anoMax = Math.max(
+      planExpansao?.periodoFim || planoCusteio.anoFim,
+      planoCusteio.anoFim
+    );
+
+    const opexPorAno = new Map(projecao.cronogramaAnual.map(ca => [ca.ano, ca]));
+    const fluxoIntegradoAnual: LinhaFluxoIntegradoTco[] = [];
+
+    for (let ano = anoMin; ano <= anoMax; ano++) {
+      const capex = capexPorAno.get(ano) || 0;
+      const opex = opexPorAno.get(ano);
+      const opexImplantacao = opex?.aquisicoesPontuais || 0;
+      const opexServicos = opex?.servicos || 0;
+      const opexAquisicoesRecorrentes = opex?.aquisicoesRecorrentes || 0;
+      const opexPessoal = opex?.pessoal || 0;
+      const totalOpex = opex?.total || 0;
+
+      // Calcular vagas-mês ativas neste ano para estimar o repasse proporcional de FUNDEB/PNAE no exercício
+      let vagasMesNoAno = 0;
+      planoCusteio.intervencoes.forEach(iv => {
+        if (!iv.ativoNoCusteio) return;
+        const rawOpStart = iv.dataInicioOperacao || planoCusteio.dataInicio;
+        const effOpStart =
+          rawOpStart >= planoCusteio.dataInicio && rawOpStart <= planoCusteio.dataFim
+            ? rawOpStart
+            : planoCusteio.dataInicio;
+        const rawOpEnd = iv.dataFimOperacao || planoCusteio.dataFim;
+        const effOpEnd =
+          rawOpEnd >= effOpStart && rawOpEnd <= planoCusteio.dataFim
+            ? rawOpEnd
+            : planoCusteio.dataFim;
+        const startYM = maxYM(effOpStart, `${ano}-01`);
+        const endYM = minYM(effOpEnd, `${ano}-12`);
+        if (startYM <= endYM) {
+          const mesesAtivos = listMonthsBetween(startYM, endYM).length;
+          vagasMesNoAno += iv.vagasAdicionais * (mesesAtivos / 12);
+        }
+      });
+
+      const receitaIncrementalFundeb = vagasMesNoAno * valorMedioAlunoAnoFundeb;
+      const receitaIncrementalPnae = vagasMesNoAno * repassePerCapitaPnaeAno;
+      const receitaVinculadaTotal = receitaIncrementalFundeb + receitaIncrementalPnae;
+      const totalTcoMunicipal = capex + totalOpex;
+      const esforcoLiquidoTesouroMde = Math.max(0, totalOpex - receitaVinculadaTotal);
+
+      fluxoIntegradoAnual.push({
+        ano,
+        capexObrasAcoes: capex,
+        opexImplantacao,
+        opexServicos,
+        opexAquisicoesRecorrentes,
+        opexPessoal,
+        totalOpex,
+        totalTcoMunicipal,
+        vagasEmOperacaoMediaAno: Math.round(vagasMesNoAno),
+        receitaIncrementalFundeb,
+        receitaIncrementalPnae,
+        receitaVinculadaTotal,
+        esforcoLiquidoTesouroMde,
+      });
+    }
+
+    return {
+      valorAlunoAnoFundebIntegral,
+      valorAlunoAnoFundebParcial,
+      percentualMatriculasTempoIntegral,
+      repassePerCapitaPnaeAno,
+      valorMedioAlunoAnoFundeb,
+      repasseAnualFundebRegime,
+      repasseAnualPnaeRegime,
+      receitaVinculadaAnualRegime,
+      custoAnualRegimePleno,
+      esforcoLiquidoTesouroMdeRegime,
+      coberturaVinculadaRegimePct,
+      folhaMagisterioAnualRegime,
+      indiceMagisterioFundebPct,
+      totalCapexPlanoExpansao,
+      totalOpexPeriodoCusteio: projecao.resumoFinanceiro.totalGeralPeriodo,
+      totalTcoGlobal: totalCapexPlanoExpansao + projecao.resumoFinanceiro.totalGeralPeriodo,
+      fluxoIntegradoAnual,
+    };
+  }

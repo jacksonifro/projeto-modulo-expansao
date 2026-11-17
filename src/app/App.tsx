@@ -16,6 +16,8 @@ import {
   Baby,
   ChevronLeft,
   ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
   MapPin,
   Activity,
   Calculator,
@@ -65,14 +67,28 @@ export default function App() {
       <aside
         className={`flex flex-col bg-[#379dff] transition-all duration-200 shrink-0 ${collapsed ? 'w-16' : 'w-64'}`}
       >
-        {/* Logo / título */}
-        <div className={`flex flex-col items-center px-4 pt-3 pb-5 border-b border-white/10 ${collapsed ? 'px-2' : ''}`}>
+        {/* Logo / título + Botão superior de abrir/fechar menu */}
+        <div className={`relative flex flex-col items-center px-4 pt-3 pb-5 border-b border-white/10 ${collapsed ? 'px-2 gap-2' : ''}`}>
+          <div className={`w-full flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className="p-1.5 text-white hover:bg-white/15 rounded-lg transition-all"
+              title={collapsed ? 'Abrir menu lateral' : 'Fechar menu lateral'}
+              aria-label={collapsed ? 'Abrir menu lateral' : 'Fechar menu lateral'}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="w-5 h-5 text-white" />
+              ) : (
+                <PanelLeftClose className="w-5 h-5 text-white" />
+              )}
+            </button>
+          </div>
           {!collapsed ? (
             <>
               <img
                 src={logoBranca}
                 alt="Logo Central de Vagas"
-                className="w-44 h-auto object-contain"
+                className="w-44 h-auto object-contain -mt-2"
               />
               <p className="text-white font-bold text-sm leading-tight text-center px-2 mt-2">
                 Gestão de Vagas em Creches
@@ -127,10 +143,10 @@ export default function App() {
         <div className="p-2 border-t border-white/10">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={`w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all text-sm ${collapsed ? 'justify-center' : ''}`}
+            className={`w-full flex items-center gap-2 px-3 py-2 text-white font-medium hover:bg-white/15 rounded-lg transition-all text-sm ${collapsed ? 'justify-center' : ''}`}
             title={collapsed ? 'Expandir menu' : 'Recolher menu'}
           >
-            {collapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4" /><span>Recolher</span></>}
+            {collapsed ? <ChevronRight className="w-4 h-4 text-white" /> : <><ChevronLeft className="w-4 h-4 text-white" /><span>Recolher</span></>}
           </button>
         </div>
       </aside>

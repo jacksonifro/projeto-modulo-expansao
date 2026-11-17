@@ -18,6 +18,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Sliders,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExpansionPlan, PlanoCusteio, StatusPlanoCusteio } from './types';
@@ -32,6 +33,7 @@ import {
   extrairIntervencoesDoPlano,
   loadCatalogosCusteio,
   formatYMDisplay,
+  obterPeriodoExpansaoYM,
   calcularProjecaoPlanoCusteio,
 } from './utils/custeioCalculator';
 import PlanoCusteioWorkspace, { WorkspaceTabId } from './PlanoCusteioWorkspace';
@@ -271,40 +273,35 @@ export default function CusteioSimulacao({
     }, 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
-        {/* Cabeçalho */}
-        <div>
+    <div className="min-h-screen bg-slate-50">
+      <div className="p-6 md:p-8 max-w-7xl mx-auto">
+        {/* Cabeçalho padronizado com PlanosList */}
+        <div className="mb-6">
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-3 text-sm font-semibold transition-colors"
+            className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 mb-3 text-sm font-medium transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
             Voltar ao Dashboard
           </button>
 
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1a3a5c] to-[#2563eb] text-white flex items-center justify-center shadow-lg">
-                <Calculator className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
-                  Planos de Custeio
-                </h1>
-                <p className="text-slate-500 text-sm">
-                  Planejamento financeiro de funcionamento, aquisições e folha de pagamento vinculado aos Planos de Expansão
-                </p>
-              </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-800 mb-1">
+                Planos de Custeio
+              </h1>
+              <p className="text-slate-500 text-sm">
+                Planejamento financeiro de funcionamento, aquisições e folha de pagamento vinculado aos Planos de Expansão
+              </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               {onNavigate && (
                 <button
                   type="button"
                   onClick={() => onNavigate('configuracoes-custo')}
-                  className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold transition-colors shadow-2xs"
+                  className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors shadow-2xs"
                 >
                   Catálogos & Modelos Base
                 </button>
@@ -312,113 +309,25 @@ export default function CusteioSimulacao({
               <button
                 type="button"
                 onClick={() => setIsCreateOpen(true)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="w-4 h-4" />
                 Novo Plano de Custeio
               </button>
             </div>
           </div>
         </div>
 
-        {/* KPIs Consolidados no padrão de cards brancos com ícones coloridos */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
-                <span>Cenários de Custeio</span>
-                <FieldTooltip
-                  title="Planos de Custeio Cadastrados"
-                  text="Quantidade total de cenários financeiros criados para planejar o funcionamento das unidades escolares contempladas nos Planos de Expansão."
-                />
-              </div>
-              <div className="text-3xl font-black text-slate-800 mt-1">
-                {planosCusteio.length}
-              </div>
-              <div className="text-xs text-emerald-700 font-semibold mt-1">
-                {totalAprovados} cenário(s) aprovado(s)
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Calculator className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
-                <span>Vínculo com Expansão</span>
-                <FieldTooltip
-                  title="Relação 1:N com Planos de Expansão"
-                  text="Um mesmo Plano de Expansão físico pode ter múltiplos Planos de Custeio (ex.: Cenário Base, Cenário Otimizado ou horizontes plurianuais distintos)."
-                />
-              </div>
-              <div className="text-3xl font-black text-blue-700 mt-1">
-                {new Set(planosCusteio.map(p => p.planoExpansaoId)).size} / {expansionPlans.length}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                Planos de Expansão contemplados
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
-                <span>Custo Anual de Regime</span>
-                <FieldTooltip
-                  title="Custo Anual em Regime Pleno"
-                  text="Soma anualizada (12 meses cheios) de Serviços, Aquisições Recorrentes e Folha de Pessoal das unidades em funcionamento pleno, excluindo despesas únicas de implantação."
-                  formula="Serviços Anuais + Aq. Recorrentes + Folha (×13,33)"
-                />
-              </div>
-              <div className="text-2xl font-black text-emerald-700 mt-1">
-                {BRL0(somaRegimeAprovados)}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                Referência anual de operação plena
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <DollarSign className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-500">
-                <span>Regra Proporcional</span>
-                <FieldTooltip
-                  title="Escopo Proporcional às Intervenções"
-                  text="Novas creches calculam 100% da estrutura do modelo; ampliações e adaptações calculam apenas o incremento de salas, vagas e profissionais, sem duplicar direção ou contratos existentes."
-                />
-              </div>
-              <div className="text-sm font-bold text-slate-800 mt-2">
-                Serviços · Aquisições · Pessoal
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                Paridade integral com Modelos Base (ANO)
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <Layers className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Filtros */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-3.5">
+        {/* Filtros padronizados com PlanosList */}
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs mb-6 flex flex-col lg:flex-row gap-3">
           <div className="flex-1 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Buscar por nome, cenário ou descrição..."
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Buscar planos de custeio por nome, cenário ou descrição..."
+              className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
@@ -426,7 +335,7 @@ export default function CusteioSimulacao({
             <select
               value={filterExpansaoId}
               onChange={e => setFilterExpansaoId(e.target.value)}
-              className="px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm bg-white text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="todos">Todos os Planos de Expansão</option>
               {expansionPlans.map(ep => (
@@ -441,7 +350,7 @@ export default function CusteioSimulacao({
               <select
                 value={filterStatus}
                 onChange={e => setFilterStatus(e.target.value as StatusPlanoCusteio | 'Todos')}
-                className="pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm bg-white text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                className="pl-9 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm bg-white text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
               >
                 <option value="Todos">Todos os Status</option>
                 <option value="Rascunho">Rascunho</option>
@@ -453,8 +362,8 @@ export default function CusteioSimulacao({
           </div>
         </div>
 
-        {/* Lista de Planos de Custeio */}
-        <div className="space-y-4">
+        {/* Lista de Planos de Custeio padronizada com PlanosList */}
+        <div className="grid grid-cols-1 gap-4">
           {planosFiltrados.map(pc => {
             const expPlan = expansionPlans.find(ep => ep.id === pc.planoExpansaoId);
             const proj = calcularProjecaoPlanoCusteio(
@@ -465,7 +374,8 @@ export default function CusteioSimulacao({
               pc.aquisicoes,
               pc.pessoal,
               pc.parametrosSimulacao,
-              pc.resumoFinanceiro?.totalInicialAutomatico
+              pc.resumoFinanceiro?.totalInicialAutomatico,
+              pc.mobiliario
             );
             const rf = proj.resumoFinanceiro;
             const qtdCompletas = pc.intervencoes.filter(
@@ -482,22 +392,21 @@ export default function CusteioSimulacao({
             return (
               <div
                 key={pc.id}
-                className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden"
+                className="bg-white rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition-all overflow-hidden"
               >
                 <div className="p-6">
-                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
                         <h3 className="text-xl font-bold text-slate-800">{pc.nome}</h3>
 
-                        {/* Seletor Rápido de Status no Card (padrão PlanosList) */}
                         <select
                           value={pc.status}
                           onChange={e =>
                             handleQuickStatusChange(pc, e.target.value as StatusPlanoCusteio)
                           }
                           aria-label={`Status do plano ${pc.nome}`}
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-bold border cursor-pointer outline-none ${
+                          className={`px-2.5 py-0.5 rounded-md text-xs font-semibold border cursor-pointer outline-none transition-colors ${
                             statusBadgeCls[pc.status]
                           }`}
                         >
@@ -507,67 +416,50 @@ export default function CusteioSimulacao({
                           <option value="Arquivado">Arquivado</option>
                         </select>
 
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
                           {pc.cenarioLabel} · v{pc.versao}
                         </span>
 
                         {qtdAjustesManuais > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
                             <Sliders className="w-3 h-3" />
-                            {qtdAjustesManuais} ajuste(s) manual(is)
+                            {qtdAjustesManuais} ajuste(s)
                           </span>
                         )}
                       </div>
 
                       <p className="text-sm text-slate-600">{pc.descricao}</p>
-
-                      <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-500">
-                        <span className="flex items-center gap-1.5 font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg">
-                          <Building2 className="w-3.5 h-3.5" />
-                          Plano de Expansão:{' '}
-                          {expPlan ? expPlan.nome || expPlan.name : pc.planoExpansaoId}
-                        </span>
-                        <span className="flex items-center gap-1 font-semibold text-slate-700 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
-                          <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                          Vigência Custeio: {formatYMDisplay(pc.dataInicio)} a{' '}
-                          {formatYMDisplay(pc.dataFim)} ({proj.cronogramaMensal.length}m)
-                        </span>
-                        <span className="flex items-center gap-1 font-medium text-slate-600">
-                          <Layers className="w-3.5 h-3.5 text-purple-600" />
-                          {qtdCompletas} nova(s) · {qtdIncrementais} incremental(is) · +{rf.totalVagasContempladas} vagas
-                        </span>
-                      </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setWorkspaceTab('visao-geral');
-                          setSelectedPlanoId(pc.id);
-                        }}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        Abrir & Simular
-                      </button>
-
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => {
                           setWorkspaceTab('relatorio');
                           setSelectedPlanoId(pc.id);
                         }}
-                        className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors"
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Visualizar Relatório Consolidado"
                       >
-                        <FileText className="w-3.5 h-3.5 text-blue-600" />
-                        Relatório
+                        <FileText className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWorkspaceTab('visao-geral');
+                          setSelectedPlanoId(pc.id);
+                        }}
+                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Editar e Simular Plano de Custeio"
+                      >
+                        <Edit3 className="w-4 h-4" />
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleDuplicatePlano(pc)}
-                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                         title="Duplicar como novo cenário"
                       >
                         <Copy className="w-4 h-4" />
@@ -576,7 +468,7 @@ export default function CusteioSimulacao({
                       <button
                         type="button"
                         onClick={() => setPlanoParaExcluir(pc)}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Excluir Plano de Custeio"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -584,62 +476,100 @@ export default function CusteioSimulacao({
                     </div>
                   </div>
 
-                  {/* Resumo Financeiro por Categoria + Regime Pleno + Total Período */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-5 pt-4 border-t border-slate-100">
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-                      <div className="text-[11px] font-bold text-slate-500">A. Serviços</div>
-                      <div className="text-sm font-extrabold text-slate-800 mt-0.5">
-                        {BRL0(rf.totalServicosPeriodo)}
+                  {/* Grid de 4 blocos padrão PlanosList */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                    <div className="bg-slate-50 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-slate-600 mb-1">
+                        <Calendar className="w-4 h-4" />
+                        <span className="text-sm font-semibold">Vigência do Custeio</span>
                       </div>
+                      <p className="text-base font-bold text-slate-800">
+                        {formatYMDisplay(pc.dataInicio)} a {formatYMDisplay(pc.dataFim)} ({proj.cronogramaMensal.length}m)
+                      </p>
+                      {expPlan && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Período Expansão: {obterPeriodoExpansaoYM(expPlan).label}
+                        </p>
+                      )}
                     </div>
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-                      <div className="text-[11px] font-bold text-slate-500">
-                        B.1 Implantação (Única)
+
+                    <div className="bg-slate-50 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-slate-600 mb-1">
+                        <DollarSign className="w-4 h-4" />
+                        <span className="text-sm font-semibold">Custo Anual (Regime)</span>
                       </div>
-                      <div className="text-sm font-extrabold text-amber-700 mt-0.5">
-                        {BRL0(rf.totalAquisicoesPontuaisPeriodo)}
-                      </div>
-                    </div>
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-                      <div className="text-[11px] font-bold text-slate-500">
-                        B.2 Aq. Recorrentes
-                      </div>
-                      <div className="text-sm font-extrabold text-emerald-700 mt-0.5">
-                        {BRL0(rf.totalAquisicoesRecorrentesPeriodo)}
-                      </div>
-                    </div>
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-                      <div className="text-[11px] font-bold text-slate-500">
-                        C. Pessoal ({rf.totalProfissionais} prof.)
-                      </div>
-                      <div className="text-sm font-extrabold text-purple-700 mt-0.5">
-                        {BRL0(rf.totalPessoalPeriodo)}
-                      </div>
-                    </div>
-                    <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3">
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-800">
-                        <span>Regime Pleno / Ano</span>
-                        <FieldTooltip
-                          title="Custo Anual em Regime Pleno"
-                          text="Custo anual recorrente com todas as unidades ativas operando durante 12 meses completos."
-                          formula={`${BRL0(rf.custoPorVagaAdicionalAno)} / vaga / ano`}
-                        />
-                      </div>
-                      <div className="text-sm font-black text-emerald-800 mt-0.5">
+                      <p className="text-lg font-bold text-slate-800">
                         {BRL0(rf.custoAnualRegimePleno)}
-                      </div>
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {BRL0(rf.custoPorVagaAdicionalAno)} / vaga / ano
+                      </p>
                     </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-blue-800">
-                        <span>Total no Período</span>
-                        <FieldTooltip
-                          title="Total Projetado no Período"
-                          text="Soma de todos os desembolsos mensais dentro da vigência do plano, respeitando a data de entrada em operação de cada unidade."
-                        />
+
+                    <div className="bg-slate-50 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-slate-600 mb-1">
+                        <DollarSign className="w-4 h-4" />
+                        <span className="text-sm font-semibold">Total no Período</span>
                       </div>
-                      <div className="text-base font-black text-blue-800 mt-0.5">
+                      <p className="text-lg font-bold text-slate-800">
                         {BRL0(rf.totalGeralPeriodo)}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Mob.: {BRL0(rf.totalMobiliarioPeriodo)} · Serv.+Aq.: {BRL0(rf.totalServicosPeriodo + rf.totalAquisicoesRecorrentesPeriodo)} · Folha: {BRL0(rf.totalPessoalPeriodo)}
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-slate-600 mb-1">
+                        <Users className="w-4 h-4" />
+                        <span className="text-sm font-semibold">Responsável & Escopo</span>
                       </div>
+                      <p className="text-sm font-semibold text-slate-800 truncate">{pc.responsavelNome}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        +{rf.totalVagasContempladas} vagas · {rf.totalProfissionais} prof.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Barra de rodapé padrão PlanosList */}
+                  <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 mt-4 -mx-6 -mb-6">
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
+                      <span className="flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-slate-500" />
+                        <span>Plano de Expansão:</span>
+                        <strong className="text-slate-800">
+                          {expPlan ? expPlan.nome || expPlan.name : pc.planoExpansaoId}
+                        </strong>
+                      </span>
+                      <span className="text-slate-500">
+                        {qtdCompletas} nova(s) · {qtdIncrementais} incremental(is)
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWorkspaceTab('relatorio');
+                          setSelectedPlanoId(pc.id);
+                        }}
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg font-semibold transition-colors text-xs"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-slate-600" />
+                        Relatório
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWorkspaceTab('visao-geral');
+                          setSelectedPlanoId(pc.id);
+                        }}
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors text-xs"
+                      >
+                        Abrir Plano de Custeio
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -648,7 +578,7 @@ export default function CusteioSimulacao({
           })}
 
           {planosFiltrados.length === 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-xs">
               <Calculator className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <h3 className="text-lg font-bold text-slate-700">
                 Nenhum Plano de Custeio encontrado
@@ -659,7 +589,7 @@ export default function CusteioSimulacao({
               <button
                 type="button"
                 onClick={() => setIsCreateOpen(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold"
               >
                 <Plus className="w-4 h-4" />
                 Criar Primeiro Plano de Custeio
@@ -690,12 +620,12 @@ export default function CusteioSimulacao({
       {/* ─── MODAL: CRIAR NOVO PLANO DE CUSTEIO ──────────────────────────────── */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8">
-            <div className="bg-gradient-to-r from-[#1a3a5c] to-[#2563eb] text-white px-6 py-5 flex items-center justify-between">
+          <div className="bg-white rounded-xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8">
+            <div className="bg-gradient-to-r from-[#1a3a5c] to-[#2563eb] text-white px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Sparkles className="w-6 h-6" />
+                <Sparkles className="w-5 h-5" />
                 <div>
-                  <h2 className="text-xl font-bold">Novo Plano de Custeio</h2>
+                  <h2 className="text-lg font-bold">Novo Plano de Custeio</h2>
                   <p className="text-xs text-blue-100">
                     Vincule a um Plano de Expansão e gere a estimativa proporcional inicial em base anual
                   </p>
@@ -723,15 +653,42 @@ export default function CusteioSimulacao({
                 <select
                   value={novoExpansaoId}
                   onChange={e => handleSelectExpansionInModal(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {expansionPlans.map(ep => (
-                    <option key={ep.id} value={ep.id}>
-                      {ep.nome || ep.name} ({ep.periodoInicio}–{ep.periodoFim} · {ep.obras.length} obras,{' '}
-                      {ep.acoesUnidades.length} ações)
-                    </option>
-                  ))}
+                  {expansionPlans.map(ep => {
+                    const per = obterPeriodoExpansaoYM(ep);
+                    return (
+                      <option key={ep.id} value={ep.id}>
+                        {ep.nome || ep.name} (Período: {per.label} · {ep.obras.length} obras,{' '}
+                        {ep.acoesUnidades.length} ações)
+                      </option>
+                    );
+                  })}
                 </select>
+                {(() => {
+                  const selPlan = expansionPlans.find(ep => ep.id === novoExpansaoId);
+                  if (!selPlan) return null;
+                  const per = obterPeriodoExpansaoYM(selPlan);
+                  return (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                        Período do Plano de Expansão selecionado:{' '}
+                        <strong className="text-slate-900">{per.labelComMeses}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNovoDataInicio(per.dataInicio);
+                          setNovoDataFim(per.dataFim);
+                        }}
+                        className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-50 text-blue-700 border border-slate-300 font-semibold text-[11px] transition-colors"
+                      >
+                        Usar mesmo período no Custeio ({per.label})
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 2. Identificação do Plano de Custeio */}
@@ -748,7 +705,7 @@ export default function CusteioSimulacao({
                     type="text"
                     value={novoNome}
                     onChange={e => setNovoNome(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -764,7 +721,7 @@ export default function CusteioSimulacao({
                     value={novoCenario}
                     onChange={e => setNovoCenario(e.target.value)}
                     placeholder="Ex.: Cenário Base"
-                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -777,13 +734,13 @@ export default function CusteioSimulacao({
                   rows={2}
                   value={novoDescricao}
                   onChange={e => setNovoDescricao(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* 3. Período Próprio de Planejamento do Custeio */}
-              <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4">
-                <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-blue-800 mb-2">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-700 mb-2">
                   <span>3. Período Próprio do Plano de Custeio (Independente da Obra)</span>
                   <FieldTooltip
                     title="Vigência Financeira Independente"
@@ -800,7 +757,7 @@ export default function CusteioSimulacao({
                       type="month"
                       value={novoDataInicio}
                       onChange={e => setNovoDataInicio(e.target.value)}
-                      className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-white text-sm font-bold text-slate-800"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                   <div>
@@ -812,7 +769,7 @@ export default function CusteioSimulacao({
                       type="month"
                       value={novoDataFim}
                       onChange={e => setNovoDataFim(e.target.value)}
-                      className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-white text-sm font-bold text-slate-800"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                   <div>
@@ -823,7 +780,7 @@ export default function CusteioSimulacao({
                       type="text"
                       value={novoResponsavel}
                       onChange={e => setNovoResponsavel(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                   </div>
                 </div>
@@ -844,7 +801,7 @@ export default function CusteioSimulacao({
                     Parâmetros de custeio prontos para carga
                   </span>
                 </div>
-                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-48 overflow-y-auto bg-slate-50">
+                <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-48 overflow-y-auto bg-slate-50">
                   {previewIntervencoes.map(iv => (
                     <div
                       key={iv.id}
@@ -858,7 +815,7 @@ export default function CusteioSimulacao({
                         </span>
                       </div>
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
                           iv.escopo === 'unidade_completa'
                             ? 'bg-purple-100 text-purple-800'
                             : 'bg-amber-100 text-amber-800'
@@ -881,14 +838,14 @@ export default function CusteioSimulacao({
               <button
                 type="button"
                 onClick={() => setIsCreateOpen(false)}
-                className="px-4 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                className="px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleConfirmCreate}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md"
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors"
               >
                 Gerar Estimativa Inicial e Revisar
                 <ArrowRight className="w-4 h-4" />

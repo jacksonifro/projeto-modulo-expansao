@@ -1,8 +1,12 @@
-import { useState } from 'react';
-import { Building2, TrendingUp, Users, AlertCircle, DollarSign, Baby, Settings, BarChart3, MapPin, ArrowRight, Target, School, Map } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Building2, TrendingUp, Users, AlertCircle, DollarSign, Baby, Settings, BarChart3, MapPin, ArrowRight, Target, School, Map, Calculator } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { mockProjecaoVagas, mockPlans, mockDemandaEtapa, mockCadUnicoUnidade, mockUnidades } from './mockData';
 import { ExpansionPlan } from './types';
+import { calcularCustoObraTotal, calcularCustoAcaoTotal } from './utils/planLogic';
+import { calculateViewMetrics } from './utils/planoViewLogic';
+import { loadPlanosCusteio, getPlanoCusteioReferencia } from './utils/custeioMigration';
+import { calcularProjecaoPlanoCusteio, calcularBaselineAutomaticoPeriodo } from './utils/custeioCalculator';
 
 const demandaEtapa = mockDemandaEtapa.map(d => {
   const filaReal = mockUnidades.reduce((acc, u) => {
@@ -46,9 +50,73 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
 
   const planosAtivos = plans.filter(p => p.status === 'Em execução' || p.status === 'Planejamento');
 
-  // Total de fontes considerando apenas o saldo acumulado (Caixa Único)
-  const investimentoTotal = planosAtivos.reduce((total, p) => total + p.fontesFinanciamento.reduce((a, f) => a + f.valorPrevisto, 0), 0);
+  // Indicadores dinâmicos calculados a partir dos dados reais de demanda e planos ativos
+  const totalCadUnico = mockDemandaEtapa.reduce((s, d) => s + d.criancasResidentes, 0);
+  const totalVagasAtuais = mockDemandaEtapa.reduce((s, d) => s + d.vagasAtuais, 0);
+  const criancasForaDaCreche = Math.max(0, totalCadUnico - totalVagasAtuais);
+  const taxaAtualPct = totalCadUnico > 0 ? (totalVagasAtuais / totalCadUnico) * 100 : 0;
+
+  const novasVagasPrevistas = planosAtivos.reduce((total, p) => {
+    const vagasObras = p.obras.reduce((s, o) => s + (o.capacidadeEstimada || 0), 0);
+    const vagasAcoes = p.acoesUnidades.reduce(
+      (s, a) => s + Math.max(0, (a.novaCapacidade || 0) - (a.capacidadeAnterior || 0)),
+      0
+    );
+    return total + vagasObras + vagasAcoes;
+  }, 0);
+
+  const metaAtendimento2029Pct =
+    totalCadUnico > 0 ? ((totalVagasAtuais + novasVagasPrevistas) / totalCadUnico) * 100 : 0;
+
+  // Total de fontes (Caixa Único) vs. Investimento CAPEX necessário (obras + ações)
+  const fontesDisponiveisCapex = planosAtivos.reduce(
+    (total, p) => total + p.fontesFinanciamento.reduce((a, f) => a + f.valorPrevisto, 0),
+    0
+  );
+  const investimentoTotal = planosAtivos.reduce((total, p) => {
+    const capexObras = p.obras.reduce((s, o) => {
+      const des = o.desembolsoPorAno?.reduce((acc, d) => acc + d.valor, 0) || 0;
+      return s + (des > 0 ? des : calcularCustoObraTotal(o).total);
+    }, 0);
+    const capexAcoes = p.acoesUnidades.reduce((s, a) => {
+      const des = a.desembolsoPorAno?.reduce((acc, d) => acc + d.valor, 0) || 0;
+      return s + (des > 0 ? des : calcularCustoAcaoTotal(a).total);
+    }, 0);
+    return total + capexObras + capexAcoes;
+  }, 0);
   const totalObras = planosAtivos.reduce((total, p) => total + p.obras.length, 0);
+
+  // Impacto anual de custeio (OPEX em regime pleno) dos planos de custeio vinculados
+  const custoAnualOpexRegime = useMemo(() => {
+    try {
+      const todosCusteio = loadPlanosCusteio();
+      return planosAtivos.reduce((sum, p) => {
+        const pc =
+          (p.planoCusteioId ? todosCusteio.find(c => c.id === p.planoCusteioId) : undefined) ||
+          todosCusteio.find(c => c.planoExpansaoId === p.id);
+        if (!pc) return sum;
+        const base = calcularBaselineAutomaticoPeriodo(pc.dataInicio, pc.dataFim, pc.intervencoes);
+        const proj = calcularProjecaoPlanoCusteio(
+          pc.dataInicio,
+          pc.dataFim,
+          pc.intervencoes,
+          pc.servicos,
+          pc.aquisicoes,
+          pc.pessoal,
+          pc.parametrosSimulacao,
+          base
+        );
+        return sum + proj.resumoFinanceiro.custoAnualRegimePleno;
+      }, 0);
+    } catch {
+      return 0;
+    }
+  }, [planosAtivos]);
+
+  const projecaoVagasChart = useMemo(() => {
+    if (planosAtivos.length === 0) return mockProjecaoVagas;
+    return calculateViewMetrics(planosAtivos[0]).projecaoVagasDinamica;
+  }, [planosAtivos]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -76,7 +144,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               <div className="bg-red-50 p-2 rounded-lg"><AlertCircle className="w-5 h-5 text-red-600" /></div>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fora da Creche</span>
             </div>
-            <p className="text-4xl font-black text-slate-800 relative z-10">3.888</p>
+            <p className="text-4xl font-black text-slate-800 relative z-10">{criancasForaDaCreche.toLocaleString('pt-BR')}</p>
             <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">crianças do cadÚnico de 0–3 anos sem vaga</p>
           </div>
 
@@ -88,8 +156,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               <div className="bg-amber-50 p-2 rounded-lg"><TrendingUp className="w-5 h-5 text-amber-600" /></div>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Taxa Atual</span>
             </div>
-            <p className="text-4xl font-black text-slate-800 relative z-10">15,33%</p>
-            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">de atendimento em creche</p>
+            <p className="text-4xl font-black text-slate-800 relative z-10">{taxaAtualPct.toFixed(2).replace('.', ',')}%</p>
+            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">de atendimento em creche ({totalVagasAtuais} vagas)</p>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-slate-100 relative overflow-hidden group hover:shadow-md transition-shadow">
@@ -100,8 +168,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               <div className="bg-blue-50 p-2 rounded-lg"><Building2 className="w-5 h-5 text-blue-600" /></div>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Novas Vagas</span>
             </div>
-            <p className="text-4xl font-black text-slate-800 relative z-10">672</p>
-            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">previstas até 2029</p>
+            <p className="text-4xl font-black text-slate-800 relative z-10">{novasVagasPrevistas.toLocaleString('pt-BR')}</p>
+            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">previstas nos planos ativos até 2029</p>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm p-5 border border-slate-100 relative overflow-hidden group hover:shadow-md transition-shadow">
@@ -112,8 +180,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               <div className="bg-green-50 p-2 rounded-lg"><Target className="w-5 h-5 text-green-600" /></div>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Meta 2029</span>
             </div>
-            <p className="text-4xl font-black text-slate-800 relative z-10">29,97%</p>
-            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">taxa de atendimento</p>
+            <p className="text-4xl font-black text-slate-800 relative z-10">{metaAtendimento2029Pct.toFixed(2).replace('.', ',')}%</p>
+            <p className="text-xs text-slate-500 mt-1 font-medium relative z-10">taxa projetada de atendimento</p>
           </div>
         </div>
 
@@ -124,7 +192,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
               <TrendingUp className="w-5 h-5 text-blue-500" /> Projeção de Vagas (Geral)
             </h3>
             <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={mockProjecaoVagas}>
+              <AreaChart data={projecaoVagasChart}>
                 <defs>
                   <linearGradient id="gradVagas" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -218,23 +286,32 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
             <h3 className="font-bold text-slate-200 mb-6 flex items-center gap-2 relative z-10">
               <DollarSign className="w-5 h-5 text-emerald-400" /> Estimativa de Custo (Planos Ativos)
             </h3>
-            <div className="space-y-6 relative z-10">
+            <div className="space-y-5 relative z-10">
               <div>
-                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Recursos Necessários</div>
+                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Investimento CAPEX Necessário (Obras + Ações)</div>
                 <div className="text-3xl font-black text-emerald-400">
                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(investimentoTotal)}
                 </div>
               </div>
 
               <div>
-                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Recursos disponíveis no exercício</div>
-                <div className="text-2xl font-bold text-slate-200">
-                  R$ 5.350.000
+                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Fontes CAPEX Previstas (Caixa Único)</div>
+                <div className="text-xl font-bold text-slate-200">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(fontesDisponiveisCapex)}
                 </div>
               </div>
 
+              {custoAnualOpexRegime > 0 && (
+                <div className="border-t border-slate-700 pt-3">
+                  <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Custeio OPEX Anual (Regime Pleno)</div>
+                  <div className="text-xl font-bold text-amber-300">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(custoAnualOpexRegime)}/ano
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-sm border-t border-slate-700 pt-3">
                   <span className="text-slate-300">Planos em Andamento</span>
                   <span className="font-bold">{planosAtivos.length}</span>
                 </div>
@@ -264,29 +341,38 @@ export default function Dashboard({ onNavigate }: { onNavigate: (view: string, i
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {plans.map(plan => (
-              <div
-                key={plan.id}
-                className="group border border-slate-100 p-5 rounded-xl hover:border-blue-200 hover:shadow-md transition-all cursor-pointer bg-slate-50 hover:bg-white"
-                onClick={() => onNavigate('edit-plano', plan.id)}
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <h4 className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors">{plan.nome}</h4>
-                  <span className={`px-2.5 py-1 text-[10px] uppercase tracking-wider rounded-full font-bold ${plan.status === 'Em execução' ? 'bg-emerald-100 text-emerald-700' :
-                    plan.status === 'Planejamento' ? 'bg-blue-100 text-blue-700' :
-                      plan.status === 'Paralisado' ? 'bg-red-100 text-red-700' :
-                        'bg-slate-200 text-slate-700'
-                    }`}>
-                    {plan.status}
-                  </span>
+            {plans.map(plan => {
+              const custeioRef = getPlanoCusteioReferencia(plan);
+              return (
+                <div
+                  key={plan.id}
+                  className="group border border-slate-100 p-5 rounded-xl hover:border-blue-200 hover:shadow-md transition-all cursor-pointer bg-slate-50 hover:bg-white"
+                  onClick={() => onNavigate('edit-plano', plan.id)}
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <h4 className="font-bold text-slate-800 group-hover:text-blue-700 transition-colors">{plan.nome}</h4>
+                    <span className={`px-2.5 py-1 text-[10px] uppercase tracking-wider rounded-full font-bold ${plan.status === 'Em execução' ? 'bg-emerald-100 text-emerald-700' :
+                      plan.status === 'Planejamento' ? 'bg-blue-100 text-blue-700' :
+                        plan.status === 'Paralisado' ? 'bg-red-100 text-red-700' :
+                          'bg-slate-200 text-slate-700'
+                      }`}>
+                      {plan.status}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
+                    <span className="flex items-center gap-1.5"><School className="w-4 h-4" /> {plan.obras.length} Obras</span>
+                    <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4" /> {plan.acoesUnidades.length} Ações</span>
+                    <span className="flex items-center gap-1.5"><Target className="w-4 h-4" /> {plan.periodoInicio}-{plan.periodoFim}</span>
+                    {custeioRef && (
+                      <span className="flex items-center gap-1 text-emerald-700 font-semibold">
+                        <Calculator className="w-3.5 h-3.5" />
+                        OPEX: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(custeioRef.resumoFinanceiro.custoAnualRegimePleno || custeioRef.resumoFinanceiro.custoMedioAnual)}/ano
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
-                  <span className="flex items-center gap-1.5"><School className="w-4 h-4" /> {plan.obras.length} Obras</span>
-                  <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4" /> {plan.acoesUnidades.length} Ações</span>
-                  <span className="flex items-center gap-1.5"><Target className="w-4 h-4" /> {plan.periodoInicio}-{plan.periodoFim}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

@@ -27,6 +27,7 @@ interface NavigationState {
   view: View;
   planId?: string;
   schoolId?: string;
+  returnView?: View;
   reportType?: string;
   reportFilters?: any;
   custeioOptions?: any;
@@ -59,7 +60,26 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
     } else if (view === 'edit-school') {
       setNavigation({ view: 'edit-school', schoolId: id });
     } else if (view === 'view-school') {
-      setNavigation({ view: 'view-school', schoolId: id });
+      if (typeof id === 'object' && id !== null) {
+        setNavigation({
+          view: 'view-school',
+          schoolId: id.schoolId,
+          planId: id.planId,
+          returnView: id.from || (navigation.view === 'schools' ? 'schools' : 'planos'),
+        });
+      } else {
+        setNavigation({
+          view: 'view-school',
+          schoolId: id,
+          planId: navigation.planId,
+          returnView:
+            navigation.view === 'schools'
+              ? 'schools'
+              : navigation.view === 'planos'
+                ? 'planos'
+                : 'all-schools',
+        });
+      }
     } else if (view === 'reports') {
       setNavigation({ view: 'reports' });
     } else if (view === 'report-filters') {
@@ -101,7 +121,15 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
       setNavigation({ view: 'planos' });
     } else if (navigation.view === 'new-plano' || navigation.view === 'edit-plano' || navigation.view === 'view-plano') {
       setNavigation({ view: 'planos' });
-    } else if (navigation.view === 'new-school' || navigation.view === 'edit-school' || navigation.view === 'view-school') {
+    } else if (navigation.view === 'view-school') {
+      if (navigation.returnView === 'schools' && navigation.planId) {
+        setNavigation({ view: 'schools', planId: navigation.planId });
+      } else if (navigation.returnView === 'planos') {
+        setNavigation({ view: 'planos' });
+      } else {
+        setNavigation({ view: 'all-schools' });
+      }
+    } else if (navigation.view === 'new-school' || navigation.view === 'edit-school') {
       setNavigation({ view: 'all-schools' });
     } else if (navigation.view === 'report-filters') {
       setNavigation({ view: 'reports' });
@@ -140,6 +168,7 @@ export default function ExpansaoCreches({ initialView = 'dashboard' }: ExpansaoC
       {navigation.view === 'view-school' && navigation.schoolId && (
         <SchoolView
           schoolId={navigation.schoolId}
+          planId={navigation.planId}
           onNavigate={handleNavigate}
           onBack={handleBack}
         />

@@ -3,7 +3,7 @@ import {
   ChevronLeft, Save, X, Plus, Trash2, UserPlus,
   Building2, AlertCircle, CheckCircle2, BarChart3, Users,
   TrendingUp, MapPin, BookOpen, Wrench, ClipboardList, DollarSign,
-  Edit3, Copy, RotateCcw, Clock, Layers, Sparkles, PlusCircle, Check, ArrowRight, HardHat, Calendar, School, Filter, CheckCircle
+  Edit3, Copy, RotateCcw, Clock, Layers, Sparkles, PlusCircle, Check, ArrowRight, HardHat, Calendar, School, Filter, CheckCircle, Calculator, ShieldCheck
 } from 'lucide-react';
 import { mockServidores, mockUnidades, mockDemandaBairro, mockDemandaEtapa, mockProjecaoVagas, mockPlans, mockActivities, mockCadUnicoUnidade } from './mockData';
 import { mockModelosCreche, mockModelosAmbiente, calcularCustoCreche, calcularCustoAmbiente, mockCargosReferencia } from './mockDataCusto';
@@ -13,18 +13,25 @@ import {
   ModeloCreche, ModeloAmbiente, DesembolsoAnual, CargoReferencia,
   ConfiguracaoSala, ItemPessoal
 } from './types';
-import { calcularCustoObraTotal, calcularCustoAcaoTotal, calcularAutoDistribuicao } from './utils/planLogic';
-import { getPlanosCusteioByExpansaoId } from './utils/custeioMigration';
+import { calcularCustoObraTotal, calcularCustoAcaoTotal, calcularAutoDistribuicao, obterQuantidadeSalasAcao } from './utils/planLogic';
+import { getPlanosCusteioByExpansaoId, loadPlanosCusteio, savePlanosCusteio, upsertPlanoCusteio } from './utils/custeioMigration';
 import {
   formatYMDisplay,
+  listMonthsBetween,
+  obterPeriodoExpansaoYM,
   calcularVagasObraPadrao,
   calcularVagasAcaoPadrao,
   parseSalasFromAcao,
+  sincronizarPlanoCusteioComExpansao,
+  criarNovoPlanoCusteioAutomatico,
+  calcularSustentabilidadeFiscalCusteio,
+  calcularProjecaoPlanoCusteio,
 } from './utils/custeioCalculator';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Legend, ComposedChart, Line
 } from 'recharts';
+import MapCoordinatePickerModal from './components/MapCoordinatePickerModal';
 
 interface PlanoFormProps {
   onBack: () => void;
@@ -152,15 +159,15 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-100 my-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 my-auto">
         {/* Header temático com gradiente */}
-        <div className={`p-5 text-white flex items-center justify-between ${
+        <div className={`px-6 py-4 text-white flex items-center justify-between ${
           isAdapt
             ? 'bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-700'
             : 'bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-700'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
+            <div className="w-9 h-9 rounded-lg bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
               {isAdapt ? <Layers className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
             </div>
             <div>
@@ -177,7 +184,7 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -190,13 +197,13 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
             <button
               type="button"
               onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'adaptacao', salaId: '', custoPorSala: 0 } : prev)}
-              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+              className={`p-3 rounded-xl border-2 text-left transition-all flex items-start gap-3 ${
                 isAdapt
                   ? 'border-purple-600 bg-purple-50/70 text-purple-950 shadow-xs'
                   : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
               }`}
             >
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                 isAdapt ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-400'
               }`}>
                 <Layers className="w-4 h-4" />
@@ -214,13 +221,13 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
             <button
               type="button"
               onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'ampliacao', salaId: '', custoPorSala: 0 } : prev)}
-              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+              className={`p-3 rounded-xl border-2 text-left transition-all flex items-start gap-3 ${
                 !isAdapt
                   ? 'border-blue-600 bg-blue-50/70 text-blue-950 shadow-xs'
                   : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
               }`}
             >
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                 !isAdapt ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
               }`}>
                 <Building2 className="w-4 h-4" />
@@ -237,7 +244,7 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
           </div>
 
           {/* Unidade Escolar */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
               Unidade Escolar *
             </label>
@@ -249,7 +256,7 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
                 salaId: '',
                 custoPorSala: 0
               } : prev)}
-              className="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               required
             >
               <option value="">Selecione a unidade escolar...</option>
@@ -350,11 +357,16 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
                     onChange={e => {
                       const selId = e.target.value;
                       const ma = ambientesAmpliacao.find(a => a.id === selId);
-                      const custo = ma ? calcularCustoAmbiente(ma).total : 0;
-                      const cap = ma?.capacidadeAlunos || 20;
+                      const calcAmb = ma ? calcularCustoAmbiente(ma) : null;
+                      const incluiMob = draft.incluiMobiliarioNoCapex !== false;
+                      const custo = calcAmb ? (incluiMob ? calcAmb.total : calcAmb.obras) : 0;
+                      const qtdSalas = draft.quantidadeSalas || 1;
+                      const cap = (ma?.capacidadeAlunos || 20) * qtdSalas;
                       setDraft(prev => prev ? {
                         ...prev,
                         salaId: selId,
+                        ambienteModeloId: selId,
+                        quantidadeSalas: qtdSalas,
                         custoPorSala: custo,
                         novaCapacidade: cap
                       } : prev);
@@ -375,17 +387,79 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
               )}
             </div>
 
+            {!isAdapt && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    3. Quantidade de Novas Salas a Construir *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={draft.quantidadeSalas || 1}
+                    onChange={e => {
+                      const qtd = Math.max(1, Number(e.target.value) || 1);
+                      const ma = ambientesAmpliacao.find(a => a.id === draft.salaId);
+                      const capUnit = ma?.capacidadeAlunos || 20;
+                      setDraft(prev => prev ? {
+                        ...prev,
+                        quantidadeSalas: qtd,
+                        novaCapacidade: capUnit * qtd,
+                      } : prev);
+                    }}
+                    className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-blue-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-start gap-2 p-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer text-xs text-slate-700 w-full">
+                    <input
+                      type="checkbox"
+                      checked={draft.incluiMobiliarioNoCapex === true}
+                      onChange={e => {
+                        const checked = e.target.checked;
+                        const ma = ambientesAmpliacao.find(a => a.id === draft.salaId);
+                        const calcAmb = ma ? calcularCustoAmbiente(ma) : null;
+                        setDraft(prev => prev ? {
+                          ...prev,
+                          incluiMobiliarioNoCapex: checked,
+                          custoPorSala: calcAmb ? (checked ? calcAmb.total : calcAmb.obras) : prev.custoPorSala,
+                        } : prev);
+                      }}
+                      className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>
+                      <strong>Incluir Mobiliário/Equip. no CAPEX da Obra</strong>
+                      <span className="block text-[10px] text-slate-500">
+                        Se marcado, o Plano de Custeio não cobrará o enxoval em duplicidade na implantação.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
             {/* Caixa de Custo Dinâmico */}
             {draft.custoPorSala > 0 && custoCalculado && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="space-x-3 text-emerald-800">
                   <span><strong>Obras:</strong> {BRL(custoCalculado.obras)}</span>
                   <span><strong>Mobiliário:</strong> {BRL(custoCalculado.mobiliario)}</span>
                   <span><strong>Equipamentos:</strong> {BRL(custoCalculado.equipamentos)}</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-[11px] text-emerald-600 font-bold block">CUSTO POR SALA</span>
-                  <span className="text-base font-black text-emerald-800">{BRL(draft.custoPorSala)}</span>
+                <div className="flex items-center gap-4 text-right">
+                  <div>
+                    <span className="text-[10px] text-emerald-600 font-bold block">CUSTO / SALA</span>
+                    <span className="text-sm font-bold text-emerald-800">{BRL(draft.custoPorSala)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-emerald-700 font-bold block">
+                      TOTAL ({draft.quantidadeSalas || 1} SALA{(draft.quantidadeSalas || 1) > 1 ? 'S' : ''})
+                    </span>
+                    <span className="text-base font-black text-emerald-900">
+                      {BRL(draft.custoPorSala * (draft.quantidadeSalas || 1))}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -482,7 +556,7 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
               <button
                 type="button"
                 onClick={onDelete}
-                className="px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1.5"
               >
                 <Trash2 className="w-4 h-4" />
                 Excluir Ação
@@ -492,13 +566,13 @@ function ModalAcao({ isOpen, acao, onClose, onSave, onDelete, modelos, ambientes
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className={`px-5 py-2 text-sm font-bold text-white rounded-xl shadow-sm transition-all ${
+                className={`px-5 py-2 text-sm font-bold text-white rounded-lg shadow-xs transition-all ${
                   isAdapt
                     ? 'bg-purple-600 hover:bg-purple-700'
                     : 'bg-blue-600 hover:bg-blue-700'
@@ -531,9 +605,11 @@ interface ModalObraProps {
 
 function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes, fontes, periodoInicio }: ModalObraProps) {
   const [draft, setDraft] = useState<ObraConstrucao | null>(obra);
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState<boolean>(false);
 
   useEffect(() => {
     setDraft(obra ? { ...obra } : null);
+    setIsMapPickerOpen(false);
   }, [obra, isOpen]);
 
   if (!isOpen || !draft) return null;
@@ -552,15 +628,15 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-100 my-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 my-auto">
         {/* Header temático com gradiente */}
-        <div className={`p-5 text-white flex items-center justify-between ${
+        <div className={`px-6 py-4 text-white flex items-center justify-between ${
           isRetomada
             ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700'
             : 'bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-700'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
+            <div className="w-9 h-9 rounded-lg bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
               {isRetomada ? <RotateCcw className="w-5 h-5" /> : <HardHat className="w-5 h-5" />}
             </div>
             <div>
@@ -577,7 +653,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -590,13 +666,13 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
             <button
               type="button"
               onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'retomada', statusObra: 'em_execucao' } : prev)}
-              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+              className={`p-3 rounded-xl border-2 text-left transition-all flex items-start gap-3 ${
                 isRetomada
                   ? 'border-orange-500 bg-orange-50/70 text-orange-950 shadow-xs'
                   : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
               }`}
             >
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                 isRetomada ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-400'
               }`}>
                 <RotateCcw className="w-4 h-4" />
@@ -614,13 +690,13 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
             <button
               type="button"
               onClick={() => setDraft(prev => prev ? { ...prev, tipo: 'nova', statusObra: 'planejada' } : prev)}
-              className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-start gap-3 ${
+              className={`p-3 rounded-xl border-2 text-left transition-all flex items-start gap-3 ${
                 !isRetomada
                   ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 shadow-xs'
                   : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
               }`}
             >
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                 !isRetomada ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'
               }`}>
                 <HardHat className="w-4 h-4" />
@@ -637,7 +713,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
           </div>
 
           {/* Identificação e Localização */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
             <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block">
               Identificação & Localização
             </span>
@@ -650,7 +726,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
                   value={draft.nome}
                   onChange={e => setDraft(prev => prev ? { ...prev, nome: e.target.value } : prev)}
                   placeholder="Ex: Creche Municipal — Bairro Esperança"
-                  className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   required
                 />
               </div>
@@ -662,46 +738,83 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
                   value={draft.bairro}
                   onChange={e => setDraft(prev => prev ? { ...prev, bairro: e.target.value, localizacao: e.target.value } : prev)}
                   placeholder="Ex: Bairro Liberdade"
-                  className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   required
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              <div className="sm:col-span-4">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Latitude</label>
                 <input
                   type="number"
                   step="any"
-                  value={draft.coordenadas?.lat || ''}
+                  value={draft.coordenadas?.lat ?? ''}
                   onChange={e => setDraft(prev => prev ? {
                     ...prev,
-                    coordenadas: { ...prev.coordenadas!, lat: parseFloat(e.target.value) || 0 }
+                    coordenadas: {
+                      lat: parseFloat(e.target.value) || 0,
+                      lng: prev.coordenadas?.lng ?? -61.4484,
+                    }
                   } : prev)}
                   placeholder="-11.4500"
-                  className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white outline-none"
+                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div>
+              <div className="sm:col-span-4">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Longitude</label>
                 <input
                   type="number"
                   step="any"
-                  value={draft.coordenadas?.lng || ''}
+                  value={draft.coordenadas?.lng ?? ''}
                   onChange={e => setDraft(prev => prev ? {
                     ...prev,
-                    coordenadas: { ...prev.coordenadas!, lng: parseFloat(e.target.value) || 0 }
+                    coordenadas: {
+                      lat: prev.coordenadas?.lat ?? -11.4343,
+                      lng: parseFloat(e.target.value) || 0,
+                    }
                   } : prev)}
                   placeholder="-61.4500"
-                  className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white outline-none"
+                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <div className="sm:col-span-4">
+                <button
+                  type="button"
+                  onClick={() => setIsMapPickerOpen(true)}
+                  className="w-full px-3 py-2 rounded-lg bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  title="Abrir janela do Google Maps para buscar por endereço ou clicar no ponto do mapa"
+                >
+                  <MapPin className="w-4 h-4 text-[#ea4335] fill-[#ea4335]/20 shrink-0" />
+                  <span>Buscar no Google Maps</span>
+                </button>
               </div>
             </div>
           </div>
 
+          <MapCoordinatePickerModal
+            isOpen={isMapPickerOpen}
+            initialLat={draft.coordenadas?.lat}
+            initialLng={draft.coordenadas?.lng}
+            initialQuery={draft.bairro || draft.localizacao || ''}
+            onClose={() => setIsMapPickerOpen(false)}
+            onConfirm={({ lat, lng, suggestedBairro }) => {
+              setDraft(prev => {
+                if (!prev) return prev;
+                const novoBairro = prev.bairro?.trim() ? prev.bairro : (suggestedBairro || prev.bairro);
+                return {
+                  ...prev,
+                  bairro: novoBairro,
+                  localizacao: prev.localizacao?.trim() ? prev.localizacao : novoBairro,
+                  coordenadas: { lat, lng },
+                };
+              });
+            }}
+          />
+
           {/* Modelo de Custo (com destaque de cor no tema) */}
-          <div className={`p-4 rounded-2xl border-2 space-y-3 ${
+          <div className={`p-4 rounded-xl border-2 space-y-3 ${
             isRetomada ? 'border-orange-200 bg-orange-50/30' : 'border-emerald-200 bg-emerald-50/30'
           }`}>
             <span className={`text-xs font-black uppercase tracking-wider block ${
@@ -738,7 +851,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
                     ]
                   } : prev);
                 }}
-                className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full text-sm px-3.5 py-2 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               >
                 <option value="">Selecione o modelo de referência...</option>
                 {modelos.map(m => {
@@ -753,7 +866,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
             </div>
 
             {/* Resumo de Custo */}
-            <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+            <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-xs">
               <div>
                 <span className="text-slate-400 block text-[11px]">Custo Médio por Sala</span>
                 <span className="font-bold text-slate-800 text-sm">
@@ -761,12 +874,35 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-slate-400 block text-[11px]">Custo Total da Obra</span>
+                <span className="text-slate-400 block text-[11px]">
+                  {isRetomada && (draft.percentualConclusaoAtual || 0) > 0
+                    ? `Saldo Remanescente (${100 - (draft.percentualConclusaoAtual || 0)}%)`
+                    : 'Custo Total da Obra'}
+                </span>
                 <span className="font-black text-blue-700 text-base">
                   {cc.total > 0 ? BRL(Math.round(cc.total)) : '—'}
                 </span>
               </div>
             </div>
+
+            <label className="flex items-start gap-2 p-2.5 rounded-lg bg-white border border-slate-200 cursor-pointer text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={draft.incluiMobiliarioNoCapex === true}
+                onChange={e =>
+                  setDraft(prev =>
+                    prev ? { ...prev, incluiMobiliarioNoCapex: e.target.checked } : prev
+                  )
+                }
+                className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span>
+                <strong>Orçamento da Obra já contempla Mobiliário e Equipamentos permanentes (CAPEX)</strong>
+                <span className="block text-[10px] text-slate-500">
+                  Se marcado, o Plano de Custeio marcará o enxoval de salas e áreas comuns como coberto pelo CAPEX da obra, evitando dupla contagem.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* Dimensionamento & Status */}
@@ -778,7 +914,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
                 min={1}
                 value={draft.numeroDeSalas}
                 onChange={e => setDraft(prev => prev ? { ...prev, numeroDeSalas: Number(e.target.value) } : prev)}
-                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-bold"
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none font-bold"
                 required
               />
             </div>
@@ -790,7 +926,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
                 min={1}
                 value={draft.capacidadeAlunos || 0}
                 onChange={e => setDraft(prev => prev ? { ...prev, capacidadeAlunos: Number(e.target.value) } : prev)}
-                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none font-bold text-emerald-700"
+                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none font-bold text-emerald-700"
                 required
               />
             </div>
@@ -800,7 +936,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
               <select
                 value={draft.statusObra || 'planejada'}
                 onChange={e => setDraft(prev => prev ? { ...prev, statusObra: e.target.value as ObraConstrucao['statusObra'] } : prev)}
-                className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-xl bg-white outline-none"
+                className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg bg-white outline-none"
               >
                 <option value="planejada">Planejada</option>
                 <option value="licitacao">Em Licitação</option>
@@ -817,14 +953,14 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
                 value={draft.numeroConvenio || ''}
                 onChange={e => setDraft(prev => prev ? { ...prev, numeroConvenio: e.target.value } : prev)}
                 placeholder="Ex: FNDE/2023"
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none"
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none"
               />
             </div>
           </div>
 
           {/* Campo de Conclusão para Retomada com Slider interativo */}
           {isRetomada && (
-            <div className="p-4 rounded-2xl bg-orange-50/60 border border-orange-200/80 space-y-2">
+            <div className="p-4 rounded-xl bg-orange-50/60 border border-orange-200/80 space-y-2">
               <div className="flex justify-between items-center text-xs">
                 <span className="font-bold text-orange-950 flex items-center gap-1.5">
                   <RotateCcw className="w-3.5 h-3.5 text-orange-600" />
@@ -862,7 +998,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
               type="date"
               value={draft.previsaoConclusao}
               onChange={e => setDraft(prev => prev ? { ...prev, previsaoConclusao: e.target.value } : prev)}
-              className="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full text-sm px-3.5 py-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
 
@@ -872,7 +1008,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
               <button
                 type="button"
                 onClick={onDelete}
-                className="px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1.5"
               >
                 <Trash2 className="w-4 h-4" />
                 Excluir Obra
@@ -882,13 +1018,13 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className={`px-5 py-2 text-sm font-bold text-white rounded-xl shadow-sm transition-all ${
+                className={`px-5 py-2 text-sm font-bold text-white rounded-lg shadow-xs transition-all ${
                   isRetomada
                     ? 'bg-orange-500 hover:bg-orange-600'
                     : 'bg-emerald-600 hover:bg-emerald-700'
@@ -907,6 +1043,7 @@ function ModalObra({ isOpen, obra, onClose, onSave, onDelete, modelos, ambientes
 export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }: PlanoFormProps) {
   const [activeTab, setActiveTab] = useState<TabId>('dados');
   const planosCusteioVinculados = planId ? getPlanosCusteioByExpansaoId(planId) : [];
+  const [gerarCusteioAoSalvar, setGerarCusteioAoSalvar] = useState<boolean>(true);
 
   // Carregar planos e dados de custo do localStorage
   const [plans, setPlans] = useState<ExpansionPlan[]>(() => {
@@ -941,9 +1078,32 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
   const planParaEditar = isEdit && planId ? plans.find(p => p.id === planId) : null;
 
   // Aba 0 — Dados
+  const periodoInicialPadrao = obterPeriodoExpansaoYM(planParaEditar || undefined);
   const [nome, setNome] = useState(() => planParaEditar ? planParaEditar.nome : 'Plano de Expansão de Creches 2026–2029');
+  const [dataInicio, setDataInicio] = useState<string>(() => periodoInicialPadrao.dataInicio);
+  const [dataFim, setDataFim] = useState<string>(() => periodoInicialPadrao.dataFim);
   const [periodoInicio, setPeriodoInicio] = useState(() => planParaEditar ? planParaEditar.periodoInicio : 2026);
   const [periodoFim, setPeriodoFim] = useState(() => planParaEditar ? planParaEditar.periodoFim : 2029);
+
+  const handleChangeDataInicio = (ym: string) => {
+    setDataInicio(ym);
+    const y = parseInt((ym || '').slice(0, 4), 10);
+    if (Number.isFinite(y) && y >= 2000 && y <= 2100) {
+      setPeriodoInicio(y);
+      if (y > periodoFim) {
+        setPeriodoFim(y);
+        if (ym > dataFim) setDataFim(`${y}-12`);
+      }
+    }
+  };
+
+  const handleChangeDataFim = (ym: string) => {
+    setDataFim(ym);
+    const y = parseInt((ym || '').slice(0, 4), 10);
+    if (Number.isFinite(y) && y >= 2000 && y <= 2100) {
+      setPeriodoFim(Math.max(periodoInicio, y));
+    }
+  };
   const [status, setStatus] = useState<ExpansionPlan['status']>(() => planParaEditar ? planParaEditar.status : 'Planejamento');
   const [descricao, setDescricao] = useState(() => planParaEditar ? planParaEditar.descricao : '');
   const [objetivo, setObjetivo] = useState(() => planParaEditar ? (planParaEditar.objetivoEstrategico || planParaEditar.description || '') : 'Ampliar o acesso à educação pública de qualidade para a primeira infância, gerando oportunidades e reduzindo desigualdades.');
@@ -1030,7 +1190,10 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     if (isEdit && planId) {
       const target = plans.find(p => p.id === planId);
       if (target) {
+        const per = obterPeriodoExpansaoYM(target);
         setNome(target.nome);
+        setDataInicio(per.dataInicio);
+        setDataFim(per.dataFim);
         setPeriodoInicio(target.periodoInicio);
         setPeriodoFim(target.periodoFim);
         setStatus(target.status);
@@ -1424,6 +1587,8 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     const planData: ExpansionPlan = {
       id: isEdit && planId ? planId : `p-${Date.now()}`,
       nome: nome.trim(),
+      dataInicio,
+      dataFim,
       periodoInicio,
       periodoFim,
       status: 'Rascunho',
@@ -1446,8 +1611,8 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
       responsible: responsavelNome,
       fundingSource: fontePrincipal,
       estimatedValue: totalFontes,
-      startDate: `${periodoInicio}-01-01`,
-      expectedEndDate: `${periodoFim}-12-31`,
+      startDate: `${dataInicio}-01`,
+      expectedEndDate: `${dataFim}-28`,
     };
 
     let updatedPlansList: ExpansionPlan[];
@@ -1458,6 +1623,15 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     }
 
     localStorage.setItem("exp_creches_plans", JSON.stringify(updatedPlansList));
+    const todosCusteiosRasc = loadPlanosCusteio();
+    if (todosCusteiosRasc.some(pc => pc.planoExpansaoId === planData.id)) {
+      const atualizados = todosCusteiosRasc.map(pc =>
+        pc.planoExpansaoId === planData.id
+          ? sincronizarPlanoCusteioComExpansao(pc, planData)
+          : pc
+      );
+      savePlanosCusteio(atualizados);
+    }
     alert("Plano salvo com sucesso como RASCUNHO! Você pode continuar o preenchimento a qualquer momento.");
     onBack();
   };
@@ -1486,6 +1660,8 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     const planData: ExpansionPlan = {
       id: isEdit && planId ? planId : `p-${Date.now()}`,
       nome: nome.trim(),
+      dataInicio,
+      dataFim,
       periodoInicio,
       periodoFim,
       status: statusFinal,
@@ -1508,8 +1684,8 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
       responsible: responsavelNome,
       fundingSource: fontePrincipal,
       estimatedValue: totalFontes,
-      startDate: `${periodoInicio}-01-01`,
-      expectedEndDate: `${periodoFim}-12-31`,
+      startDate: `${dataInicio}-01`,
+      expectedEndDate: `${dataFim}-28`,
     };
 
     let updatedPlansList: ExpansionPlan[];
@@ -1520,9 +1696,29 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     }
 
     localStorage.setItem("exp_creches_plans", JSON.stringify(updatedPlansList));
+    const todosCusteios = loadPlanosCusteio();
+    if (todosCusteios.some(pc => pc.planoExpansaoId === planData.id)) {
+      const atualizados = todosCusteios.map(pc =>
+        pc.planoExpansaoId === planData.id
+          ? sincronizarPlanoCusteioComExpansao(pc, planData)
+          : pc
+      );
+      savePlanosCusteio(atualizados);
+    } else if (gerarCusteioAoSalvar && (planData.obras.length > 0 || planData.acoesUnidades.length > 0)) {
+      const novoCusteio = criarNovoPlanoCusteioAutomatico({
+        planoExpansao: planData,
+        nome: `Plano de Custeio — ${planData.nome}`,
+        descricao: `Planejamento financeiro de funcionamento, aquisições e folha de pagamento vinculado ao plano "${planData.nome}".`,
+        cenarioLabel: 'Cenário Base Oficial',
+        dataInicio: planData.dataInicio || `${planData.periodoInicio}-01`,
+        dataFim: planData.dataFim || `${planData.periodoFim}-12`,
+        responsavelNome: planData.responsible || 'Equipe SEMED',
+      });
+      upsertPlanoCusteio(novoCusteio);
+    }
     alert(isEdit && planParaEditar?.status !== 'Rascunho' 
-      ? "Plano atualizado com sucesso!" 
-      : "Plano CRIADO com sucesso! O plano agora está em Planejamento e pronto para iniciar sua execução.");
+      ? "Plano atualizado com sucesso (e Planos de Custeio vinculados sincronizados)!" 
+      : "Plano CRIADO com sucesso! O plano agora está em Planejamento e integrado ao Plano de Custeio.");
     onBack();
   };
 
@@ -1540,13 +1736,36 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     anoConclusao: number | null;
   }
 
+  const extrairAnoEntregaFisica = (
+    previsao: string | undefined,
+    desembolsos: { ano: number; valor: number }[],
+    anosRef: number[]
+  ): number => {
+    const minAno = anosRef[0] || periodoInicio;
+    const maxAno = anosRef[anosRef.length - 1] || periodoFim;
+    if (previsao) {
+      const m = previsao.match(/^(\d{4})/);
+      if (m) {
+        const y = parseInt(m[1], 10);
+        return Math.min(maxAno, Math.max(minAno, y));
+      }
+    }
+    const comValor = desembolsos.filter(d => d.valor > 0).map(d => d.ano);
+    if (comValor.length > 0) {
+      return Math.min(maxAno, Math.max(minAno, Math.max(...comValor)));
+    }
+    return minAno;
+  };
+
   const consolidarProjecaoOrcamentaria = (): ItemOrcamentario[] => {
     const itens: ItemOrcamentario[] = [];
     const anosPlano = [periodoInicio, periodoInicio + 1, periodoInicio + 2, periodoInicio + 3];
 
     // Obras
     obras.forEach(obra => {
-      const totalDesembolso = obra.desembolsoPorAno.reduce((s, d) => s + d.valor, 0);
+      const { total: custoCalcObra } = calcularCustoObraTotal(obra, modelos, ambientes);
+      const somaDesembolso = obra.desembolsoPorAno.reduce((s, d) => s + d.valor, 0);
+      const totalDesembolso = somaDesembolso > 0 ? somaDesembolso : custoCalcObra;
       const desembolsoConsolidado = anosPlano.map(ano => ({
         ano,
         valor: obra.desembolsoPorAno
@@ -1555,7 +1774,7 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
       }));
 
       const vagasEstimadas = calcularVagasObraPadrao(obra, modelos);
-      const anoConclusao = obra.previsaoConclusao ? new Date(obra.previsaoConclusao).getFullYear() : null;
+      const anoConclusao = extrairAnoEntregaFisica(obra.previsaoConclusao, desembolsoConsolidado, anosPlano);
 
       itens.push({
         id: obra.id,
@@ -1573,7 +1792,9 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     // Ações
     acoes.forEach(acao => {
       const unidade = mockUnidades.find(u => u.id === acao.unidadeId);
-      const totalDesembolso = acao.desembolsoPorAno?.reduce((s, d) => s + d.valor, 0) || acao.custoPorSala;
+      const { total: custoCalcAcao, salas: salasAcao } = calcularCustoAcaoTotal(acao);
+      const somaDesembolso = acao.desembolsoPorAno?.reduce((s, d) => s + d.valor, 0) || 0;
+      const totalDesembolso = somaDesembolso > 0 ? somaDesembolso : custoCalcAcao;
       const desembolsoConsolidado = anosPlano.map(ano => ({
         ano,
         valor: (acao.desembolsoPorAno || [])
@@ -1583,21 +1804,21 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
 
       // Se não há desembolso por ano, usar o ano de conclusão
       if (totalDesembolso > 0 && desembolsoConsolidado.every(d => d.valor === 0) && acao.previsaoConclusao) {
-        const anoConclusao = new Date(acao.previsaoConclusao).getFullYear();
-        const idx = desembolsoConsolidado.findIndex(d => d.ano === anoConclusao);
+        const anoConc = extrairAnoEntregaFisica(acao.previsaoConclusao, desembolsoConsolidado, anosPlano);
+        const idx = desembolsoConsolidado.findIndex(d => d.ano === anoConc);
         if (idx >= 0) {
           desembolsoConsolidado[idx].valor = totalDesembolso;
         }
       }
 
-      const anoConclusao = acao.previsaoConclusao ? new Date(acao.previsaoConclusao).getFullYear() : null;
+      const anoConclusao = extrairAnoEntregaFisica(acao.previsaoConclusao, desembolsoConsolidado, anosPlano);
 
       itens.push({
         id: acao.id,
         tipo: 'acao',
         nome: `${acao.tipo === 'adaptacao' ? 'Adaptação' : 'Ampliação'} — ${unidade?.nome || 'Unidade'}`,
         descricao: acao.descricao || '',
-        salas: parseSalasFromAcao(acao.descricao, acao.capacidadeAnterior, acao.novaCapacidade),
+        salas: salasAcao,
         vagas: calcularVagasAcaoPadrao(acao),
         desembolsoPorAno: desembolsoConsolidado,
         totalInvestimento: totalDesembolso,
@@ -1620,19 +1841,13 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
     vagasPorAno: anosProjecao.map(ano => ({
       ano,
       vagas: itensOrcamentarios
-        .filter(item => {
-          const desembolso = item.desembolsoPorAno.find(d => d.ano === ano);
-          return desembolso && desembolso.valor > 0;
-        })
+        .filter(item => item.anoConclusao === ano)
         .reduce((s, item) => s + item.vagas, 0)
     })),
     salasPorAno: anosProjecao.map(ano => ({
       ano,
       salas: itensOrcamentarios
-        .filter(item => {
-          const desembolso = item.desembolsoPorAno.find(d => d.ano === ano);
-          return desembolso && desembolso.valor > 0;
-        })
+        .filter(item => item.anoConclusao === ano)
         .reduce((s, item) => s + item.salas, 0)
     })),
     totalInvestimento: itensOrcamentarios.reduce((s, item) => s + item.totalInvestimento, 0),
@@ -1789,16 +2004,35 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Ano Início</label>
-                      <input type="number" value={periodoInicio} onChange={e => setPeriodoInicio(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-blue-600" />
+                        Período de Vigência do Plano de Expansão (Mês/Ano)
+                      </span>
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-white text-blue-800 border border-blue-200 shadow-2xs">
+                        {formatYMDisplay(dataInicio)} a {formatYMDisplay(dataFim)} ({listMonthsBetween(dataInicio, dataFim).length} meses · {periodoInicio}–{periodoFim})
+                      </span>
                     </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Ano Fim</label>
-                      <input type="number" value={periodoFim} onChange={e => setPeriodoFim(Number(e.target.value))}
-                        className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Data de Início (Mês/Ano)</label>
+                        <input
+                          type="month"
+                          value={dataInicio}
+                          onChange={e => handleChangeDataInicio(e.target.value)}
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white font-semibold text-blue-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Data de Fim (Mês/Ano)</label>
+                        <input
+                          type="month"
+                          value={dataFim}
+                          onChange={e => handleChangeDataFim(e.target.value)}
+                          className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white font-semibold text-blue-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -3282,37 +3516,210 @@ export default function PlanoForm({ onBack, onNavigate, isEdit = false, planId }
                     <p className="text-slate-500">Distribuição de investimentos físicos por ano e intervenção planejada</p>
                   </div>
 
-                  {/* Card de Consulta aos Planos de Custeio Operacional Vinculados */}
-                  <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h3 className="font-bold text-blue-900 text-sm flex items-center gap-2">
-                        <Users className="w-4 h-4 text-blue-600" />
-                        Planejamento de Funcionamento, Serviços, Aquisições e Pessoal (Plano de Custeio)
-                      </h3>
-                      <p className="text-xs text-blue-800 mt-1">
-                        O dimensionamento de pessoal e os custos operacionais são gerenciados de forma independente na funcionalidade <strong>Plano de Custeio</strong>.
-                        {planosCusteioVinculados.length > 0
-                          ? ` Este plano possui ${planosCusteioVinculados.length} Plano(s) de Custeio vinculado(s): ${planosCusteioVinculados.map(pc => `${pc.nome} (${formatYMDisplay(pc.dataInicio)}–${formatYMDisplay(pc.dataFim)})`).join('; ')}.`
-                          : ' Salve o Plano de Expansão para criar e vincular cenários de custeio operacional.'}
-                      </p>
-                    </div>
-                    {onNavigate && isEdit && planId && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onNavigate('custeio-simulacao', {
-                            planoExpansaoId: planId,
-                            openCreateModal: planosCusteioVinculados.length === 0,
-                          })
-                        }
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-colors"
-                      >
-                        {planosCusteioVinculados.length > 0
-                          ? 'Consultar Planos de Custeio'
-                          : 'Criar Plano de Custeio'}
-                      </button>
-                    )}
-                  </div>
+                  {/* Card Integrado: Plano de Custeio Operacional (OPEX) & Visão Global TCO */}
+                  {(() => {
+                    const draftExpPlan: ExpansionPlan = {
+                      id: planId || 'draft-plan',
+                      nome: nome || 'Plano de Expansão',
+                      dataInicio,
+                      dataFim,
+                      periodoInicio,
+                      periodoFim,
+                      status: 'Planejamento',
+                      descricao,
+                      objetivoEstrategico: objetivo,
+                      fontesFinanciamento: fontes,
+                      responsavelId: '',
+                      dataElaboracao: '',
+                      dataRevisao: '',
+                      equipe,
+                      estrategias,
+                      acoesUnidades: acoes,
+                      obras,
+                      name: nome,
+                      year: periodoInicio,
+                      description: descricao,
+                      responsible: 'Equipe SEMED',
+                      fundingSource: fontes[0]?.fonte || 'Recurso Próprio',
+                      estimatedValue: totalFontes,
+                      startDate: `${dataInicio}-01`,
+                      expectedEndDate: `${dataFim}-28`,
+                    };
+
+                    const custeioExistente =
+                      planosCusteioVinculados.find(pc => pc.id === planParaEditar?.planoCusteioId) ||
+                      planosCusteioVinculados.find(pc => pc.status === 'Aprovado') ||
+                      planosCusteioVinculados[0];
+
+                    const custeioSimulado = custeioExistente
+                      ? sincronizarPlanoCusteioComExpansao(custeioExistente, draftExpPlan)
+                      : criarNovoPlanoCusteioAutomatico({
+                          planoExpansao: draftExpPlan,
+                          nome: `Plano de Custeio — ${nome || 'Novo Plano'}`,
+                          descricao: 'Prévia integrada em tempo real',
+                          cenarioLabel: 'Cenário Base',
+                          dataInicio,
+                          dataFim,
+                        });
+
+                    const projCusteio = calcularProjecaoPlanoCusteio(
+                      custeioSimulado.dataInicio,
+                      custeioSimulado.dataFim,
+                      custeioSimulado.intervencoes,
+                      custeioSimulado.servicos,
+                      custeioSimulado.aquisicoes,
+                      custeioSimulado.pessoal,
+                      custeioSimulado.parametrosSimulacao,
+                      custeioSimulado.resumoFinanceiro?.totalInicialAutomatico
+                    );
+
+                    const fiscal = calcularSustentabilidadeFiscalCusteio(
+                      custeioSimulado,
+                      projCusteio,
+                      draftExpPlan
+                    );
+
+                    return (
+                      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                        <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                              <Calculator className="w-4 h-4 text-blue-600" />
+                              Integração em Tempo Real com Plano de Custeio (OPEX & Sustentabilidade Fiscal)
+                            </h3>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {custeioExistente
+                                ? `Sincronizado com "${custeioExistente.nome}" (${custeioExistente.cenarioLabel} · Vigência ${formatYMDisplay(custeioSimulado.dataInicio)} a ${formatYMDisplay(custeioSimulado.dataFim)}).`
+                                : `Prévia automática calculada a partir das ${obras.length} obra(s) e ${acoes.length} ação(ões) deste Plano de Expansão.`}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                            {planosCusteioVinculados.length === 0 && (
+                              <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={gerarCusteioAoSalvar}
+                                  onChange={e => setGerarCusteioAoSalvar(e.target.checked)}
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                Gerar Plano de Custeio ao Salvar
+                              </label>
+                            )}
+
+                            {onNavigate && isEdit && planId && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onNavigate('custeio-simulacao', {
+                                    planoExpansaoId: planId,
+                                    planoCusteioId: custeioExistente?.id,
+                                    openCreateModal: planosCusteioVinculados.length === 0,
+                                  })
+                                }
+                                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                              >
+                                <Calculator className="w-3.5 h-3.5" />
+                                {custeioExistente ? 'Abrir Plano de Custeio' : 'Criar Plano de Custeio'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {(obras.length > 0 || acoes.length > 0) && (
+                          <div className="p-5 space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+                                <div className="text-[11px] font-bold uppercase text-slate-500">
+                                  Custeio Anual (Regime Pleno)
+                                </div>
+                                <div className="text-base font-bold text-slate-800 mt-0.5">
+                                  {BRL(projCusteio.resumoFinanceiro.custoAnualRegimePleno)}/ano
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  {projCusteio.resumoFinanceiro.totalProfissionais} prof. · +{projCusteio.resumoFinanceiro.totalVagasContempladas} vagas
+                                </div>
+                              </div>
+
+                              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+                                <div className="text-[11px] font-bold uppercase text-slate-500">
+                                  OPEX Total no Período ({projCusteio.cronogramaMensal.length}m)
+                                </div>
+                                <div className="text-base font-bold text-blue-700 mt-0.5">
+                                  {BRL(projCusteio.resumoFinanceiro.totalGeralPeriodo)}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  Implantação + Operação pro-rata
+                                </div>
+                              </div>
+
+                              <div className="p-3.5 rounded-lg bg-emerald-50/70 border border-emerald-200">
+                                <div className="text-[11px] font-bold uppercase text-emerald-800">
+                                  Repasse Est. FUNDEB + PNAE
+                                </div>
+                                <div className="text-base font-bold text-emerald-900 mt-0.5">
+                                  {BRL(fiscal.receitaVinculadaAnualRegime)}/ano
+                                </div>
+                                <div className="text-[11px] text-emerald-700 mt-0.5">
+                                  Cobre {fiscal.coberturaVinculadaRegimePct.toFixed(1)}% do OPEX em regime
+                                </div>
+                              </div>
+
+                              <div className="p-3.5 rounded-lg bg-blue-50/70 border border-blue-200">
+                                <div className="text-[11px] font-bold uppercase text-blue-800">
+                                  Orçamento Global TCO (CAPEX+OPEX)
+                                </div>
+                                <div className="text-base font-bold text-blue-900 mt-0.5">
+                                  {BRL(totaisConsolidados.totalInvestimento + projCusteio.resumoFinanceiro.totalGeralPeriodo)}
+                                </div>
+                                <div className="text-[11px] text-blue-700 mt-0.5">
+                                  Obras + Manutenção no período
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Matriz Integrada CAPEX + OPEX por Ano */}
+                            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                              <table className="w-full text-xs">
+                                <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-bold">Exercício</th>
+                                    <th className="text-right px-3 py-2 font-bold">CAPEX (Obras/Ações)</th>
+                                    <th className="text-right px-3 py-2 font-bold">OPEX (Custeio Operacional)</th>
+                                    <th className="text-right px-3 py-2 font-bold bg-blue-50 text-blue-900">Total TCO (CAPEX + OPEX)</th>
+                                    <th className="text-right px-3 py-2 font-bold text-emerald-800">Repasse Est. FUNDEB+PNAE</th>
+                                    <th className="text-right px-3 py-2 font-bold text-amber-900">Esforço Líquido MDE (OPEX)</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {fiscal.fluxoIntegradoAnual.map(row => (
+                                    <tr key={row.ano} className="hover:bg-slate-50">
+                                      <td className="px-3 py-2 font-bold text-slate-800">{row.ano}</td>
+                                      <td className="px-3 py-2 text-right font-medium text-slate-700">
+                                        {row.capexObrasAcoes > 0 ? BRL(row.capexObrasAcoes) : '—'}
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-medium text-purple-800">
+                                        {row.totalOpex > 0 ? BRL(row.totalOpex) : '—'}
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-bold bg-blue-50/40 text-blue-900">
+                                        {BRL(row.totalTcoMunicipal)}
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-semibold text-emerald-700">
+                                        {row.receitaVinculadaTotal > 0 ? `+${BRL(row.receitaVinculadaTotal)}` : '—'}
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-bold text-amber-900">
+                                        {row.esforcoLiquidoTesouroMde > 0 ? BRL(row.esforcoLiquidoTesouroMde) : 'R$ 0,00'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {itensOrcamentarios.length === 0 && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-center">
